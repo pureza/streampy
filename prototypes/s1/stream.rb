@@ -1,3 +1,5 @@
+require 'tuple.rb'
+
 class Stream
 
     attr_reader :data
@@ -6,7 +8,12 @@ class Stream
         @parent = parent
         @children = []
         @data = []
-        parent.data.each { |tuple| add(tuple) } if parent
+    end
+
+
+    def subscribe(stream)
+        @children << stream
+        @data.each { |tuple| stream.add(tuple) }
     end
 
 
@@ -32,19 +39,16 @@ class Stream
 
 
     def filter(&block)
-        child = Stream.new(self) do
-            alias :old_add :add
-            alias :old_remove :remove
-
-            def add(tuple)
-                old_add(tuple) if block(tuple)
+        child = Class.new(Stream) do
+            define_method :add do |tuple|
+                super(tuple) if block.call(tuple)
             end
 
-            def remove(tuple)
-                old_remove(tuple) if block(tuple)
+            define_method :remove do |tuple|
+                super(tuple) if block.call(tuple)
             end
-        end
-        @children << child
+        end.new(self)
+        subscribe(child)
         child
     end
 
@@ -60,42 +64,43 @@ class Stream
             end
 
         end.new(self)
-        @children << child
+        subscribe(child)
         child
     end
 
 
     def groupby(*fields, &block)
-        Class.new do
-            def initialize
-                @parent.children << self
-                @substreams = {}
+        child = Class.new do
+            def initialize(parent)
+                @substreams = Hash.new { |hash, key| hash[key] = Stream.new }
             end
 
-            def add(tuple)
-                key = fields.map { |field| new.send(field) }
-                substream[key] << new
+            define_method :add do |tuple|
+                key = fields.map { |field| tuple[field] }
+                @substreams[key].add(tuple)
             end
 
-            def remove(tuple)
-                key = fields.map { |field| new.send(field) }
-                substream[key].shift
+            define_method :remove do |tuple|
+                key = fields.map { |field| tuple[field] }
+                @substreams[key].shift
             end
 
-            def [](key)
-                block(substream[key])
+            define_method :[] do |key|
+                block.call(@substreams[key])
             end
-        end
+        end.new(self)
+        subscribe(child)
+        child
     end
 
 
-    def fold(initial, &block)
-        @data.inject(initial) { |accum, tuple| block(accum, tuple) }
+    def fold(initial, function)
+        @data.inject(initial) { |accum, tuple| accum = function.call(accum, tuple) }
     end
 
 
     def sum(field)
-        fold(0, lambda { |m, n| m += n })
+        fold(0, lambda { |m, n| m += n[field] })
     end
 
 
