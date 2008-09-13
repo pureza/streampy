@@ -10,6 +10,16 @@ class Tuple
         @fields[field]
     end
 
+    def select(new_fields)
+        Tuple.new(@timestamp, new_fields)
+    end
+
+
+    def method_missing(name)
+        @fields[name]
+    end
+
+
     def to_s
         str = "#{@timestamp}: ("
         @fields.each_pair { |k, v| str += "#{k} => #{v}, " }
