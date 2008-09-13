@@ -42,14 +42,14 @@ class Stream
     end
 
 
-    def filter(&block)
+    def filter(&predicate)
         Class.new(Stream) do
             define_method :add do |tuple|
-                super(tuple) if block.call(tuple)
+                super(tuple) if predicate.call(tuple)
             end
 
             define_method :remove do |tuple|
-                super(tuple) if block.call(tuple)
+                super(tuple) if predicate.call(tuple)
             end
         end.new(self)
     end
@@ -140,9 +140,34 @@ class Stream
     end
 
 
+    def >>(action)
+        action.call(self)
+    end
+
+
     def to_s
         data.to_s
     end
+end
+
+
+def groupby(*fields, &block)
+    lambda { |stream| stream.groupby(*fields, &block) }
+end
+
+
+def partitionby(*fields, &block)
+    lambda { |stream| stream.partitionby(*fields, &block) }
+end
+
+
+def map(&block)
+    lambda { |stream| stream.map(&block) }
+end
+
+
+def filter(&predicate)
+    lambda { |stream| stream.filter(&predicate) }
 end
 
 
