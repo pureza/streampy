@@ -3,7 +3,7 @@ require 'clock.rb'
 
 class Stream
 
-    attr_reader :data
+    attr_reader :data, :children
 
     def initialize(parent = nil)
         @parent = parent
@@ -38,7 +38,17 @@ class Stream
 
 
     def last
-        data.last
+        Class.new(Stream) do
+            define_method :add do |tuple|
+            end
+
+            define_method :remove do |tuple|
+            end
+
+            define_method :data do
+                @parent.data.last
+            end
+        end.new(self)
     end
 
 
@@ -117,16 +127,24 @@ class Stream
             end
 
             define_method :data do
-                @substreams.values.map { |stream| block.call(stream) }.flatten.sort { |a, b| a.timestamp <=> b.timestamp }
+                @substreams.values.map { |stream| block.call(stream).data }.flatten.sort { |a, b| a.timestamp <=> b.timestamp }
             end
         end.new(self)
-        subscribe(child)
-        child
     end
 
 
     def fold(initial, function)
-        data.inject(initial) { |accum, tuple| accum = function.call(accum, tuple) }
+        Class.new(Stream) do
+            define_method :add do |tuple|
+            end
+
+            define_method :remove do |tuple|
+            end
+
+            define_method :data do
+                @parent.data.inject(initial) { |accum, tuple| accum = function.call(accum, tuple) }
+            end
+        end.new(self)
     end
 
 
@@ -139,6 +157,10 @@ class Stream
         sum(field) / data.length
     end
 
+
+    def min(field)
+        fold(data.first[field], lambda { |m, n| m = [m, n[field]].min })
+    end
 
     def >>(action)
         action.call(self)

@@ -30,33 +30,40 @@ class TC_MyTest < Test::Unit::TestCase
 
 
     def test_fold
-        assert_equal 45, @stream.sum(:value)
+        sum = @stream.sum(:value)
+        assert_equal 45, sum.data
+
+        @stream.add(Tuple.new(20, :set => 0, :value => 200))
+        assert_equal 245, sum.data
     end
 
 
     def test_groupby
         other = @stream.groupby(:set) { |stream| stream.sum(:value) }
-        assert_equal 18, other[0]
-        assert_equal 12, other[1]
-        assert_equal 15, other[2]
+        assert_equal 18, other[0].data
+        assert_equal 12, other[1].data
+        assert_equal 15, other[2].data
 
         other = @stream >> groupby(:set) { |stream| stream.sum(:value) }
-        assert_equal 18, other[0]
-        assert_equal 12, other[1]
-        assert_equal 15, other[2]
+        assert_equal 18, other[0].data
+        assert_equal 12, other[1].data
+        assert_equal 15, other[2].data
+
+        @stream.add(Tuple.new(20, :set => 0, :value => 200))
+        assert_equal 218, other[0].data
     end
 
 
     def test_partitionby
-        other = @stream.partitionby(:set) { |stream| stream.last }
-        @stream.add(Tuple.new(20, :set => 0, :value => 200))
-        assert_equal [[7, 1], [8, 2], [20, 0]], other.data.map { |tuple| [tuple.timestamp, tuple.set] }
+         other = @stream.partitionby(:set) { |stream| stream.last }
+         @stream.add(Tuple.new(20, :set => 0, :value => 200))
+         assert_equal [[7, 1], [8, 2], [20, 0]], other.data.map { |tuple| [tuple.timestamp, tuple.set] }
 
-        last_even_set = @stream.partitionby(:set) { |stream| stream.last }.filter { |tuple| tuple.set.even? }
-        assert_equal [[8, 2], [20, 0]], last_even_set.data.map { |tuple| [tuple.timestamp, tuple.set] }
+         last_even_set = @stream.partitionby(:set) { |stream| stream.last }.filter { |tuple| tuple.set.even? }
+         assert_equal [[8, 2], [20, 0]], last_even_set.data.map { |tuple| [tuple.timestamp, tuple.set] }
 
-        last_even_set = @stream >> partitionby(:set) { |stream| stream.last } >> filter { |tuple| tuple.set.even? }
-        assert_equal [[8, 2], [20, 0]], last_even_set.data.map { |tuple| [tuple.timestamp, tuple.set] }
+         last_even_set = @stream >> partitionby(:set) { |stream| stream.last } >> filter { |tuple| tuple.set.even? }
+         assert_equal [[8, 2], [20, 0]], last_even_set.data.map { |tuple| [tuple.timestamp, tuple.set] }
     end
 
 
@@ -67,5 +74,25 @@ class TC_MyTest < Test::Unit::TestCase
         Clock.instance.advance 1
 
         assert_equal [7, 8, 9], other.data
+    end
+
+
+    def test_last
+        last_stream = @stream.partitionby(:set) { |stream| stream.filter { |tuple| tuple.value.odd? } >> map { |tuple| tuple.select :value => tuple.value ** 2 } }.last
+        assert_equal 81, last_stream.data.value
+
+        @stream.add(Tuple.new(11, :value => 2, :set => 1))
+        assert_equal 81, last_stream.data.value
+
+        @stream.add(Tuple.new(12, :value => 3, :set => 1))
+        assert_equal 9, last_stream.data.value
+    end
+
+
+    def test_sort
+        min_per_set = @stream.groupby(:set) { |stream| stream.min(:value) }
+        assert_equal 0, min_per_set[0].data
+        assert_equal 1, min_per_set[1].data
+        assert_equal 2, min_per_set[2].data
     end
 end
