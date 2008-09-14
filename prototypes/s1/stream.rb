@@ -154,7 +154,17 @@ class Stream
 
 
     def avg(field)
-        sum(field) / data.length
+        Class.new(Stream) do
+            define_method :add do |tuple|
+            end
+
+            define_method :remove do |tuple|
+            end
+
+            define_method :data do
+                @parent.sum(field).data / @parent.data.length
+            end
+        end.new(self)
     end
 
 

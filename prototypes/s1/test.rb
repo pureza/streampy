@@ -30,11 +30,11 @@ class TC_MyTest < Test::Unit::TestCase
 
 
     def test_fold
-        sum = @stream.sum(:value)
-        assert_equal 45, sum.data
+        sum = @stream.filter { |tuple| tuple.value.odd? }.sum(:value)
+        assert_equal 25, sum.data
 
-        @stream.add(Tuple.new(20, :set => 0, :value => 200))
-        assert_equal 245, sum.data
+        @stream.add(Tuple.new(20, :set => 0, :value => 25))
+        assert_equal 50, sum.data
     end
 
 
@@ -94,5 +94,21 @@ class TC_MyTest < Test::Unit::TestCase
         assert_equal 0, min_per_set[0].data
         assert_equal 1, min_per_set[1].data
         assert_equal 2, min_per_set[2].data
+    end
+
+
+    def test_complex_query
+        avg_value = @stream.avg(:value)
+
+        value_equals_avg = @stream.partitionby(:set) { |stream| stream.filter { |tuple| tuple.value == avg_value.data } }
+        assert_equal 4, avg_value.data
+        assert_equal [avg_value.data], value_equals_avg.data.map { |tuple| tuple.value }
+
+        @stream.add(Tuple.new(12, :value => 12, :set => 1))
+        assert_equal 5, avg_value.data
+        assert_equal [avg_value.data], value_equals_avg.data.map { |tuple| tuple.value }
+
+        value_equals_avg_in_group = @stream.partitionby(:set) { |stream| stream.filter { |tuple| tuple.value == stream.min(:value).data } }
+        assert_equal [0, 1, 2], value_equals_avg_in_group.data.map { |tuple| tuple.value }
     end
 end
