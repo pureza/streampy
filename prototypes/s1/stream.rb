@@ -37,7 +37,7 @@ class Stream
     end
 
 
-    def last
+    def last(number = 1)
         Class.new(Stream) do
             define_method :add do |tuple|
             end
@@ -46,7 +46,11 @@ class Stream
             end
 
             define_method :data do
-                @parent.data.last
+                if number > 1
+                    @parent.data.last(number)
+                else
+                    @parent.data.last
+                end
             end
         end.new(self)
     end
@@ -81,27 +85,8 @@ class Stream
 
 
     def groupby(*fields, &block)
-        child = Class.new do
-            def initialize(parent)
-                @substreams = Hash.new { |hash, key| hash[key] = Stream.new }
-            end
-
-            define_method :add do |tuple|
-                key = fields.map { |field| tuple[field] }
-                key = key[0] if key.length == 1
-                @substreams[key].add(tuple)
-            end
-
-            define_method :remove do |tuple|
-                key = fields.map { |field| tuple[field] }
-                key = key[0] if key.length == 1
-                @substreams[key].shift
-            end
-
-            define_method :[] do |key|
-                block.call(@substreams[key])
-            end
-        end.new(self)
+        child = HashStream.new(self, *fields)
+        child.class.send :define_method, :[], lambda { |key| block.call(@substreams[key]) }
         subscribe(child)
         child
     end
@@ -123,7 +108,7 @@ class Stream
             define_method :remove do |tuple|
                 key = fields.map { |field| tuple[field] }
                 key = key[0] if key.length == 1
-                @substreams[key].shift
+                @substreams[key].remove(tuple)
             end
 
             define_method :data do
@@ -172,6 +157,53 @@ class Stream
         fold(data.first[field], lambda { |m, n| m = [m, n[field]].min })
     end
 
+
+    def sort(*fields)
+        Class.new(Stream) do
+            define_method :add do |tuple|
+                super
+                comparator = lambda do |a, b, f|
+                    first, rest = f
+                    result = a[first] <=> b[first]
+                    if result == 0 && rest
+                        comparator.call(a, b, rest)
+                    else
+                        result
+                    end
+                end
+                @data.sort! { |a, b| comparator.call(a, b, fields) }
+            end
+
+            define_method :remove do |tuple|
+                @data.delete(tuple)
+            end
+        end.new(self)
+    end
+
+
+    def join(other, field_a, field_b = field_a)
+        Class.new(Stream) do
+            define_method :add do |tuple|
+            end
+
+            define_method :remove do |tuple|
+            end
+
+            define_method :data do
+                result = []
+                for elem in @parent.data
+                    for other_elem in other.data
+                        if elem[field_a] == other_elem[field_b]
+                            result << elem.merge(other_elem)
+                        end
+                    end
+                end
+                result
+            end
+        end.new(self)
+    end
+
+
     def >>(action)
         action.call(self)
     end
@@ -207,7 +239,7 @@ class WindowedStream < Stream
     def initialize(parent, window)
         @clock = Clock.instance
         @clock.on_advance do
-            while data.first.timestamp < @clock.now - @window
+            while data.first.timestamp <= @clock.now - @window
                 remove(data.first)
             end
         end
@@ -217,7 +249,40 @@ class WindowedStream < Stream
 
 
     def add(tuple)
-        super if tuple.timestamp >= @clock.now - @window
+        super if tuple.timestamp > @clock.now - @window
+    end
+end
+
+
+class HashStream < Stream
+    def initialize(parent, *fields)
+        @substreams = Hash.new { |hash, key| hash[key] = Stream.new }
+        @fields = fields
+        @children = []
+    end
+
+
+    def add(tuple)
+        key = @fields.map { |field| tuple[field] }
+        key = key[0] if key.length == 1
+        @substreams[key].add(tuple)
+    end
+
+
+    def data
+        []
+    end
+
+
+    def remove(tuple)
+        key = @fields.map { |field| tuple[field] }
+        key = key[0] if key.length == 1
+        @substreams[key].remove(tuple)
+    end
+
+
+    def [](key)
+        @substreams[key]
     end
 end
 

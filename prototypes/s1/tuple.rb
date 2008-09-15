@@ -1,5 +1,6 @@
 class Tuple
     attr_reader :timestamp
+    attr_reader :fields
 
     def initialize(timestamp, fields)
         @timestamp = timestamp
@@ -15,7 +16,13 @@ class Tuple
     end
 
 
+    def merge(other)
+        Tuple.new([timestamp, other.timestamp].min, @fields.merge(other.fields))
+    end
+
+
     def method_missing(name)
+        raise "Unknown field: #{name}" unless @fields.has_key? name
         @fields[name]
     end
 
