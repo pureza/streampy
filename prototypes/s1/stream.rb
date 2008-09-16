@@ -18,7 +18,6 @@ class Stream
         data.each { |tuple| stream.add(tuple) }
     end
 
-
     def add(tuple)
         data << tuple
         @children.each { |child| child.add(tuple) }
@@ -26,8 +25,7 @@ class Stream
 
 
     def remove(tuple)
-        raise unless tuple == data.first
-        data.shift
+        data.delete(tuple)
         @children.each { |child| child.remove(tuple) }
     end
 
@@ -59,11 +57,13 @@ class Stream
     def filter(&predicate)
         Class.new(Stream) do
             define_method :add do |tuple|
-                super(tuple) if predicate.call(tuple)
             end
 
             define_method :remove do |tuple|
-                super(tuple) if predicate.call(tuple)
+            end
+
+            define_method :data do
+                @parent.data.select { |tuple| predicate.call(tuple) }
             end
         end.new(self)
     end
@@ -72,21 +72,31 @@ class Stream
     def map(&block)
         Class.new(Stream) do
             define_method :add do |tuple|
-                new_tuple = block.call(tuple)
-                super(block.call(tuple))
             end
 
             define_method :remove do |tuple|
-                super(block.call(tuple))
             end
 
+            define_method :data do
+                @parent.data.map { |tuple| block.call(tuple) }
+            end
         end.new(self)
     end
 
 
     def groupby(*fields, &block)
-        child = HashStream.new(self, *fields)
-        child.class.send :define_method, :[], lambda { |key| block.call(@substreams[key]) }
+        child = Class.new(HashStream) do
+            def initialize(parent, fields, block)
+                super(parent, *fields)
+                @block = block
+            end
+
+            alias :old_fetch :[]
+
+            def [](key)
+                @block.call(old_fetch(key)) if old_fetch(key)
+            end
+        end.new(self, fields, block)
         subscribe(child)
         child
     end
@@ -161,7 +171,12 @@ class Stream
     def sort(*fields)
         Class.new(Stream) do
             define_method :add do |tuple|
-                super
+            end
+
+            define_method :remove do |tuple|
+            end
+
+            define_method :data do
                 comparator = lambda do |a, b, f|
                     first, rest = f
                     result = a[first] <=> b[first]
@@ -171,12 +186,9 @@ class Stream
                         result
                     end
                 end
-                @data.sort! { |a, b| comparator.call(a, b, fields) }
+                @parent.data.sort { |a, b| comparator.call(a, b, fields) }
             end
 
-            define_method :remove do |tuple|
-                @data.delete(tuple)
-            end
         end.new(self)
     end
 
@@ -239,9 +251,8 @@ class WindowedStream < Stream
     def initialize(parent, window)
         @clock = Clock.instance
         @clock.on_advance do
-            while data.first.timestamp <= @clock.now - @window
-                remove(data.first)
-            end
+            to_remove = data.select { |tuple| tuple.timestamp <= @clock.now - @window }
+            to_remove.each { |tuple| remove(tuple) }
         end
         @window = window
         super(parent)
@@ -256,7 +267,8 @@ end
 
 class HashStream < Stream
     def initialize(parent, *fields)
-        @substreams = Hash.new { |hash, key| hash[key] = Stream.new }
+        @parent = parent
+        @substreams = {}
         @fields = fields
         @children = []
     end
@@ -265,12 +277,18 @@ class HashStream < Stream
     def add(tuple)
         key = @fields.map { |field| tuple[field] }
         key = key[0] if key.length == 1
+        @substreams[key] ||= Stream.new
         @substreams[key].add(tuple)
     end
 
 
+    def keys
+        @substreams.keys
+    end
+
+
     def data
-        []
+        keys.map { |k| Tuple.new(-1, :key => k, :value => self[k].data) }
     end
 
 
@@ -283,6 +301,37 @@ class HashStream < Stream
 
     def [](key)
         @substreams[key]
+    end
+
+
+    def join(other)
+        Class.new(HashStream) do
+            define_method :add do |tuple|
+            end
+
+            define_method :remove do |tuple|
+            end
+
+            define_method :keys do
+                @parent.keys & other.keys
+            end
+
+            define_method :[] do |key|
+                p = @parent
+                Class.new(Stream) do
+                    define_method :data do
+                        value_a = p[key]
+                        value_b = other[key]
+
+                        if value_a.nil? or value_b.nil?
+                            nil
+                        else
+                            [value_a.data, value_b.data]
+                        end
+                    end
+                end.new
+            end
+        end.new(self)
     end
 end
 

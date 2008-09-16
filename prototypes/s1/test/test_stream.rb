@@ -136,4 +136,13 @@ class StreamTest < Test::Unit::TestCase
         joined = @stream.join(streamb, :value, :id)
         assert_equal [0, 2, 4, 6, 8, 10, 12, 14, 16, 18], joined.data.map { |tuple| [tuple[:value], tuple[:id]] }.map { |a, b| a + b }
     end
+
+
+    def test_windowed_sort
+        sorted_stream_5s = @stream.sort(:set)[5.s]
+        assert_equal [6, 9, 7, 8], sorted_stream_5s.data.map { |tuple| tuple.value }
+
+        Clock.instance.advance 2
+        assert_equal [9, 8], sorted_stream_5s.data.map { |tuple| tuple.value }
+    end
 end
