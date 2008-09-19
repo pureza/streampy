@@ -34,6 +34,7 @@ class HashStreamTest < Test::Unit::TestCase
         assert_equal [11, 13], other.data.map { |tuple| tuple.value }
     end
 
+
     def test_sort_groupby
         other = @stream[11.s].groupby(:set) { |stream| stream.sum(:value) }.sort(:value)
         assert_equal [12, 15, 18], other.data.map { |tuple| tuple.value }

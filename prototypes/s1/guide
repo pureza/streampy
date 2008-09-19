@@ -1,0 +1,43 @@
+== Overview ==
+
+Streams are implemented internally as lists of data. Each stream contains:
+
+- A parent
+- Children streams
+- The data itself
+
+Most of the times the data is sorted in timestamp order. However, sort operations are possible, which complicates matters a bit.
+
+When a new tuple is added, it is propagated to the children streams. The same for deletion.
+
+Aggregators, in the prototype are implemented as streams without data. Instead, when their data method is called, aggregators get the necessary data from their parents and perform the aggregation at that time. Thus, aggregators are not really streams because you can't access previous results. Instead they should be implemented as "continuous values". It remains to be seen whether the lack of this feature is an impediment in any way.
+
+The groupby operation works by keeping a set of substreams - one for each group. Currently, the result of a groupby is an aggregator that can be accessed in a hashtable-like way.
+
+This hashtable behaves like a stream and can be further filtered, mapped, sorted, etc. This complicates the simple model presented above, because these streams will not have a single parent anymore. For example, consider the following query:
+
+input.groupby(:country) { |country| country.count() }.avg(:value)
+
+When a new country is received, should the average be recalculated immediately? I.e., should it be propagated right away? If so, the avg stream would have several parents, one per groupby substream.
+
+Currently, however, a simpler approach has been implemented. Basically, most derived streams (including filters and maps) don't contain any data by themselvs. Instead, on evaluation, they fetch the data from their parent and operate on them on-the-fly, just like aggregators. This is obviously not the most efficient way to do things. A simple optimization would be to memoize values and invalidate them when the stream changes.
+
+== TODO ==
+
+- Aggregators as continuous values instead of false streams;
+- groupby of groupby, partition of groupby, groupby of partition...;
+- joins other than inner joins
+
+== IDEAS DUMP ==
+
+velhos = input.filter { |p| p.age > 65 }
+adultos = input.filter { |p| p.age > 18 && p.age < 65 }
+putos = input.filter { |p| p.age < 18 }
+
+input.partition { |p| p.age } do
+    when (65..+Inf) velhos
+    when (18, 64) adultos
+    else putos
+end
+
+resultado = velhos + adultos + putos

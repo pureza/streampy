@@ -1,0 +1,129 @@
+- Considera que tens uma única stream de dados à entrada. Esta representa o valor corrente de acções na bolsa. Tem três campos: ":tick" (representa o símbolo da cotação), ":value" (representa o preço corrente), ":volume" (representa o número de acções vendidas no último lot, ao preço especificado).
+
+Agora tenta exprimir coisas como:
+1) Para uma dada acção (:tick = "AAPL"), imprime os preços que estão a chegar
+
+input.filter { |a| a.tick == "AAPL" } >> print
+input ~ (:tick => "APPL") >> print
+
+
+2) Para uma dada acção (:tick = "AAPL"), imprime o preço médio dos últimos 5 minutos
+
+input[5.min].filter { |a| a.tick == "AAPL" }.avg(:value) >> print
+input[5.min] ~ (:tick => "APPL") >> avg(:value) >> print
+input ~ (:timestamp < 5.min.ago, :tick => "APPL") >> avg(:value) >> print
+
+
+3) Para uma dada acção (:tick = "AAPL"), imprime o preço médio das últimas 5 samples (valores)
+
+input[0..4].filter { |a| a.tick == "AAPL" }.avg(:value) >> print
+input[0..4] ~ (:tick => "APPL") >> avg(:value) >> print
+
+
+4) Repetir 1, 2 e 3 para todas as acções que estão a chegar
+
+input >> print
+
+
+input[5.min].groupby(:tick) { |s| s.avg(:value) >> print }
+input[5.min] ~ (:tick => tick) >> print avg(:value) # O operador ~ faz um filtro para cada tick, logo neste caso e' igual a um groupby.
+
+
+input[0..4].groupby(:tick) { |s| s.avg(:value) >> print }
+input[0..4] ~ (:tick => tick) >> print avg(:value) # O operador ~ faz um filtro para cada tick, logo neste caso e' igual a um groupby.
+
+
+5) Para todas as acções, encontrar aquelas cujo preço aumentou mais de 2% nos últimos 5 minutos
+
+valores_ha_5_mins = input[> 5.min].partitionby(:tick) { |s| s.last() } # Vai buscar o ultimo valor ate ha 5 min atras
+valores_actuais   = input.partitionby(:tick) { |s| s.last() }
+
+valores_actuais.join(valores_ha_5_mins, :tick).filter { |s| s.a::value > s.b::value * 1.02 } >> print
+
+valores_ha_5_mins ~ (:tick => tick, :value => value) and valores_actuais ~ (:tick => tick, :value >= value * 1.02) >> print
+
+Talvez faca sentido um operador lastby():
+
+valores_ha_5_mins = input[> 5.min].lastby(:tick)
+valores_actuais   = input.lastby(:tick)
+
+
+6) Para uma dada acção (:tick = "AAPL"), calcular a média de preços dos últimos 30 dias e a média de preços dos últimos 5. Caso a média dos últimos 5 ultrapasse a média dos últimos 30, emitir uma operação "Comprar". (Este é um exemplo típico).
+
+media_30_dias = input[30.days].groupby(:tick) { |s| s.avg(:value) }
+media_05_dias = input[05.days].groupby(:tick) { |s| s.avg(:value) }
+
+media_30_dias.join(media_05_dias) { |v| if (v[1] > v[0]) COMPRA }
+
+ou
+
+for tick in media_30_dias.keys
+    if media_30_dias[tick] > media_05_dias[tick]
+        COMPRA
+    end
+end
+
+ou
+
+media_30_dias ~ (:tick => ?t, :value => ?v) and media_05_dias ~ (:tick == ?t, :value >= ?v) >> compra
+
+
+7) A mesma coisa do que 6, mas em que o declive de aumento de preço dos últimos 30 e 5 dias é positivo (i.e. os preços estão a subir).
+
+# (Preco actual - Preco ha X dias) / numero de dias
+declive_30_dias = input[30.days].groupby(:tick) { |s| (s.last.value - s.first.value) / days_between(s.first, s.last) }
+declive_05_dias = input[05.days].groupby(:tick) { |s| (s.last.value - s.first.value) / days_between(s.first, s.last) }
+
+declive_30_dias ~ (:value >= 0) and declive_05_dias ~ (:value >= 0) >> compra
+
+
+8) A mesma coisa do que em 7, mas em que o declive de aumento de preços dos últimos 5 dias é superior a 2%/dia.
+
+declive_30_dias ~ (:value >= 0) and declive_05_dias ~ (:value >= 2) >> compra
+
+
+9) A mesma coisa do que em 8, mas em que o volume, caso esteja a cair, não cai abaixo de 10.000. (Isto é muito comum: tu só queres comprar uma acção que está a aumentar de preço se ainda existir muita gente a vender. Isto porque, podes querer vender a seguir.)
+
+input ~ (:volume > 10000)
+
+
+10) Repetir 5-9, mas detectando todas as acções que se encontram nesta situação.
+11) Para comprar acções, um dos indicadores mais simples que se pode usar é uma MACD (http://en.wikipedia.org/wiki/MACD). Basicamente, a MACD é uma diferença entre duas médias móveis. Depois, é necessário fazer uma média móvel das médias móveis. Sempre que a diferença de médias móveis ultrapassa a segunda média móvel (signal), isso pode sinalizar uma compra. Exprime este indicador na tua linguagem, encontrando entre todas as acções aquelas que estão a sinalizar "comprar".
+
+medias_diarias = input[26.days].groupby(:tick, :day) { |s| s.avg(:value) }
+    => { :tick => { :day => avg(:value) } }
+
+ema_12 = medias_diarias.groupby(:tick) { |s| s[12].ema(:value) }
+ema_26 = medias_diarias.groupby(:tick) { |s| s[26].ema(:value) }
+    => { :tick => ema(:value) }
+
+# O macd do tick :tick no dia the_day e' ...
+macd = ema_12.join(ema_26) { |s| :day => the_day, :value => s[0] - s[1] }
+    => { :tick => (day, macd) }
+
+# O signal do tick :tick no dia the_day e' ...
+signal = macd.groupby(:tick) { |s| (the_day, s[9].ema()) }
+
+
+
+
+def ema(tick, start, days)
+    medias_diarias[tick][start - days].ema(:value)
+end
+
+def macd(tick, start, days_fast, days_slow)
+    ema(tick, start, days_fast) - ema(tick, start, days_slow)
+end
+
+def signal(tick, days)
+    macd(tick, days, 12, 26).ema()
+end
+
+if macd("AAPL", today, 12, 26) > signal("AAPL", 9) ...
+
+
+
+
+ema = medias_diarias.ema(:value)
+macd = ema[12.days] - ema[26.days]
+signal = macd[9.days].ema()
