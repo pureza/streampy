@@ -1,0 +1,56 @@
+\documentclass[twoside]{report}
+
+\newcommand{\tuple}[1]{$(#1)$}
+
+\usepackage{alltt}
+
+\begin{document}
+\title{The rationale for the design of the StreamPy language}
+\author{Lu\'{\i}s Pureza}
+
+\maketitle
+
+\chapter{Introduction}
+This document presents the StreamPy language as well as the rationale behind every decision taken during the design process. By the end of it, the language should just make sense. Every feature or construct should have a well-defined purpose and be generally applicable to a wide-range of problems. If this is not the case, then something has failed.
+
+\section{A word of advice}
+Any new programming language such as StreamPy, must be designed with a set of principles in mind. Some of these are quite general --- ``Be useful!'', while others are choosen carefully by the designers to set the new language apart from any other, like Python's ``There should be one --- and preferably only one --- obvious way to do it.''. These principles end-up being called the philosophy\footnote{Don't fall asleep. I'll never use the word ``philosophy'' again, I promise!} of the language.
+
+These are the principles that drove the design of the StreamPy language:
+
+\begin{description}
+\item[Be powerful] The set of operations allowed in a query should be large enough to accommodate most things users might want to do with their data. Frequent operations should be simple and rare operations should be possible. But let's be pragmatic: complex operations can always be delegated to a different application (Matlab comes to mind);
+\item[Be expressive] StreamPy queries should be straightforward to read, write and understand by the developer. In particular, it should be possible to partition big queries into smaller ones in a step-by-step fashion --- like a procedural programming language, where each statement specifies a new operation acting on the result of the previous statement. Also, common operations should be expressible directly by what they mean and not as an opaque set of SQL-like constructs that hide their real meaning;
+\item[Be consistent] In Smalltalk, everything is an object and even the addition of two numbers is seen as a message with the second number handled by the first one. Lisp programs are just data. Java, on the other hand, distinguishes between built-in types like integers and user-defined types and this distinction frequently bothers developers. Consistency makes the language easier to understand. But it's far more than that: a consistent language shows how well-thought it was. This kind of elegance cannot be ignored.
+\end{description}
+
+Also, please note that, at this point, implementation details are not a major concern. Let's not start discarding possibilities just because they \emph{could} be slow or hard to implement.
+
+\chapter{Core operations}
+The core-operations include all the SQL-like constructs that can be used to manipulate data. They are the ``assembly language'' of StreamPy and everything the user can do with StreamPy, he can do so using these core operations.
+
+All the core operations act on streams and return new streams. This is an important point to retain, and one that will make sense by the end of this chapter.
+
+\section{Projections}
+A projection allows one to manipulate all the tuples on a stream. For instance, if \emph{stocks} is a stream with tuples of the form \tuple{Tick, Value, Volume} representing stock exchanges, one could obtain only the \emph{Tick} and the \emph{Value} with:
+\begin{alltt}
+  ticks_and_values = stocks.map { |t| (:Tick => t.Tick, :Value => t.Value) }\footnote{Please note that, at this point, the syntax is not yet set in stone. Actually, it could become something completely different like Python's list comprehensions. I'm more worried with the semantics, not the syntax.}
+\end{alltt}
+In this example, the code inside brackets is applied for every tuple in the stream. \verb=t= is the tuple. To access the value of any field of the tuple you use the . (dot) operator followed by the name of the field. Finally, the code inside parenthesis creates a new tuple with two fields --- ``Tick'' and ``Value''. By now it should be clear that these new tuples will contain those two fields of the original tuple \verb=t=.
+
+The result of the map operation is a stream. Thus, you can perform further operations, like multiplying the value by the scalar 2:
+
+\begin{verbatim}
+  ticks_and_values.map { |t| (:Tick => t.Tick, :ValueX2 => t.Value * 2) }
+\end{verbatim}
+
+\section{Filters}
+\section{Aggregators}
+\section{Sorting}
+\section{``Group by'' and ``having''}
+\section{Joining multiple streams}
+\section{Windows}
+
+\chapter{Recognizing events through pattern matching}
+\chapter{More examples}
+\end{document}

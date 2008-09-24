@@ -91,7 +91,7 @@ input ~ (:volume > 10000)
 11) Para comprar acções, um dos indicadores mais simples que se pode usar é uma MACD (http://en.wikipedia.org/wiki/MACD). Basicamente, a MACD é uma diferença entre duas médias móveis. Depois, é necessário fazer uma média móvel das médias móveis. Sempre que a diferença de médias móveis ultrapassa a segunda média móvel (signal), isso pode sinalizar uma compra. Exprime este indicador na tua linguagem, encontrando entre todas as acções aquelas que estão a sinalizar "comprar".
 
 medias_diarias = input[26.days].groupby(:tick, :day) { |s| s.avg(:value) }
-    => { :tick => { :day => avg(:value) } }
+    => { (:tick, :day) => avg(:value) }
 
 ema_12 = medias_diarias.groupby(:tick) { |s| s[12].ema(:value) }
 ema_26 = medias_diarias.groupby(:tick) { |s| s[26].ema(:value) }
@@ -108,7 +108,7 @@ signal = macd.groupby(:tick) { |s| (the_day, s[9].ema()) }
 
 
 def ema(tick, start, days)
-    medias_diarias[tick][start - days].ema(:value)
+    medias_diarias[tick][start - days .. start].ema(:value)
 end
 
 def macd(tick, start, days_fast, days_slow)
@@ -127,3 +127,90 @@ if macd("AAPL", today, 12, 26) > signal("AAPL", 9) ...
 ema = medias_diarias.ema(:value)
 macd = ema[12.days] - ema[26.days]
 signal = macd[9.days].ema()
+
+
+medias_diarias = input.groupby(:tick, :day) { |s| s.avg(:value) }
+    => { (:tick, :day) => avg(:value) }
+
+
+# medias_diarias[:tick => tick] devolve a média diária das acções de um determinado tick
+# ...[days.days] devolve apenas as médias dos últimos X dias
+# ....ema(:value) pega nas médias todas e faz um EMA dos valores.
+ema(tick, days) = medias_diarias[:tick => tick][days.days].ema(:value)
+
+
+ema("AAPL", 12)
+    => ema da Apple nos últimos 12 dias
+
+ema("AAPL", 12)@1.day - ema() de ontem
+ema("AAPL", 12)@1.year - ema() de ha um ano atrás
+
+
+# Aqui estamos a subtrair duas streams... O resultado vai ser uma stream?
+# Se sim, os valores da stream são os macd's imediatamente anteriores, ou os do dias anteriores...?
+def macd(tick, days_fast, days_slow)
+    ema(tick, days_fast) - ema(tick, days_slow)
+end
+
+
+def signal(tick, days)
+    macd(tick, 12, 26).ema()
+end
+
+
+# E uma cena tipo J?
+def signal(tick, days)
+    (macd(tick, 12, 26) @ 0 .. 9).ema()
+    ou
+    0 .. 9.map { |i| macd(tick, 12, 26) @ i }.ema()
+end
+
+# Desvantagem? Já não podemos pensar na função macd() como uma stream...
+# O que eu gostava mesmo é que a função macd() fosse uma stream com os macds dos últimos dias... assim bastava fazer macd(...).ema().
+# Mas quando surge um novo valor, o macd altera-se. Assim, o penultimo valor deverá passar a ser o valor anterior ou esse deve-se perder e o penultimo deve ser o valor de ontem? Pode-se fazer um partitionby e guardar o último de cada dia... UGLY
+
+# Outra hipotese:
+
+def macd(tick, days_fast, days_slow) : daily
+    ema(tick, days_fast) - ema(tick, days_slow)
+end
+
+# daily significa que o macd muda diariamente e assim macd[-1] ia buscar o de ontem...
+
+# Uma alternativa...
+daily macd(tick, days_fast, days_slow)
+    ema(tick, days_fast) - ema(tick, days_slow)
+end
+
+
+# E se quiseres fazer um ema() das emas() ?
+# ema("AAPL", 12).ema()
+# ema() vai acender a stream[-1].
+# Não será mais natural fazer
+
+(ema("AAPL", 12) @ 0 .. 9).ema() ?!
+
+# Pelo menos é menos magia...
+# Mas ema(...) @ 1 significa o valor de ema exactamente há 24 horas ou no final do dia de ontem?
+
+Eu quero pensar no macd(), avg(), ema(), etc, como streams, para poder fazer, por exemplo macd(...).ema(). Mas como dizer que o macd só deve guardar o último valor do dia??? Isto é, que macd[-1] é o macd de ontem e não o macd anterior... E se não quisermos guardar o último, mas outro qualquer? Se usarmos aquele daily, o operador @ desaparece? Eu gosto do @ ...
+
+Pensando melhor, talvez macd[-1] ser o macd de ontem não seja muito boa ideia. Então como ir buscar o de ontem?
+
+E se fizermos apenas:
+
+macd(...)[9.days].latestby(:day).ema(...)
+
+== CONCLUSÃO (ou nao) ==
+  
+A stream ema(...) só vai ser alterada uma vez por dia, ao fim do dia (porque nós não queremos contar a média diária de hoje). Logo, ema[-1] é a ema de anteontem! Logo, macd[-1] é o macd de anteontem e não o macd anterior de hoje.
+
+E a questão que se coloca é: e se contassemos com a média de hoje, mesmo sem o dia estar acabado? Nesse caso o macd estava sempre a mudar... e teriamos de fazer o partitionby... Isto parece magia a mais...
+
+
+
+O .ema() acede 'a stream MACD[-1], MACD[-2], etc. Estes valores são calculados na altura. Como? O StreamPY consegue ver que o macd depende do ema(), e o ema() depende da stream medias_diarias[tick]. Então, para calcular macd[-1], usa medias_diarias[tick] SEM CONTAR com os elementos que foram adicionados depois e que já fazem parte de macd[0].
+
+Outra hipótese consiste em guardar os valores à medida que eles vão sendo calculados. Exemplo. Quando aparece um novo dado no input, esse dado altera a medida diaria de hoje, o que eventualmente altera o macd de hoje. Mas não altera o macd de ontem - nem pode. Era bom que, de algum modo, o sistema percebesse que o MACD de ontem está confinado aos dados de ontem. Por outro lado, os dados de hoje substituem o MACD de hoje, mas MACD[-1] é o de ontem e não o que acabou de ser subsitutido!
+
+Quando computo o macd, obtenho um ContinuousValue. Mas esse continuous value tem um referencial temporal - hoje, ontem, anteontem. Há medida que o tempo passa, o referencial mantem-se constante, pelo que obtenho só valores de ontem, anteontem, etc. No entanto, macd[-1], usa esse continuousvalue de ontem... A questão é: como é que o sistema sabe os referenciais? Como é que ele sabe que queremos os dados de um dia, queremos os dados de hoje - mas tendo em atenção que o dia ainda não acabou...
