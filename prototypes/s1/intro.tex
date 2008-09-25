@@ -34,9 +34,9 @@ All the core operations act on streams and return new streams. This is an import
 \section{Projections}
 A projection allows one to manipulate all the tuples on a stream. For instance, if \emph{stocks} is a stream with tuples of the form \tuple{Tick, Value, Volume} representing stock exchanges, one could obtain only the \emph{Tick} and the \emph{Value} with:
 \begin{alltt}
-  ticks_and_values = stocks.map { |t| (:Tick => t.Tick, :Value => t.Value) }\footnote{Please note that, at this point, the syntax is not yet set in stone. Actually, it could become something completely different like Python's list comprehensions. I'm more worried with the semantics, not the syntax.}
+  ticks_and_values = stocks.map \{ |t| (:Tick => t.Tick, :Value => t.Value) \}\footnote{Please note that, at this point, the syntax is not yet set in stone. Actually, it could become something completely different like Python's list comprehensions. I'm more worried with the semantics, not the syntax.}
 \end{alltt}
-In this example, the code inside brackets is applied for every tuple in the stream. \verb=t= is the tuple. To access the value of any field of the tuple you use the . (dot) operator followed by the name of the field. Finally, the code inside parenthesis creates a new tuple with two fields --- ``Tick'' and ``Value''. By now it should be clear that these new tuples will contain those two fields of the original tuple \verb=t=.
+In this example, the code inside brackets is applied for every tuple in the stream. \verb=t= is the tuple. To access the value of any field of the tuple you use the . (dot) operator followed by the name of the field. Finally, the code inside parenthesis creates a new tuple with two fields --- ``Tick'' and ``Value''. By now it should be clear that these new tuples will contain those two fields from the original tuple \verb=t=.
 
 The result of the map operation is a stream. Thus, you can perform further operations, like multiplying the value by the scalar 2:
 
@@ -45,9 +45,63 @@ The result of the map operation is a stream. Thus, you can perform further opera
 \end{verbatim}
 
 \section{Filters}
+
+One can also filter tuples in a stream based on a predicate. The resulting stream will include only those tuples where the predicate returns true. For example, to obtain only the Apple tuples one could do:
+
+\begin{verbatim}
+  apple_stocks = input.filter { |t| t.Tick == "AAPL" }
+\end{verbatim}
+
+Sometimes the user may want to partition a given stream into two or more streams. For example,
+
+\begin{verbatim}
+  apple_stocks = input.filter { |t| t.Tick == "AAPL" }
+  msft_stocks = input.filter { |t| t.Tick == "MSFT" }
+  google_stocks = input.filter { |t| t.Tick == "GOOG" }
+\end{verbatim}
+
+Maybe it's a good idea to create a language construct just to simplify these cases:
+
+\begin{verbatim}
+input.partition(:Tick)
+    | "AAPL"    >> apple_stocks
+    | "MSFT"    >> msft_stocks
+    | "GOOG"    >> google_stocks
+    | otherwise >> other_stocks
+\end{verbatim}
+
+
 \section{Aggregators}
+
+Aggregators represent a set of functions that are applied to the entire stream and return a single value. Example aggregators include \verb=min()=, \verb=max()=, \verb=sum()= or \verb=average()=. A generic aggregator like Lisp's \verb=reduce= is also included:
+
+\begin{verbatim}
+  input.fold(0) { |a, t| a += t.Value * t.Volume }
+\end{verbatim}
+
+In this example, \verb=0= is the initial value of the aggregator, \verb=a= is an accumulator that starts with that initial value and \verb=t= is the tuple. For each tuple, the product of the tuple's \emph{Value} and \emph{Volume} is added to the accumulator. The result of the entire operation is the final value of the accumulator.
+
+As new tuples arrive into the stream, the value of the aggregator changes. Thus, the aggregator itself can be seen as a stream of values. That is, in fact, the case in StreamPy. Treating the value of an aggregator as a normal stream comes with a few advantages as normal stream operations can be applied to this stream. Want to know when was the average of all stocks bigger than a given threshold? Easy. Want to calculate a moving average over the average of Apple stocks for the last few days? Easy.
+
 \section{Sorting}
+
+As the name implies, sorting allows the developer to sort the tuples contained in a stream by some field:
+
+\begin{verbatim}
+  input.sort(:Value)
+\end{verbatim}
+
+It should also be possible to specify the order of the sort (ascending or descending) and sort by multiple fields. Also, more complex sorting operations where the user specifies the comparator should also be allowed.
+
 \section{``Group by'' and ``having''}
+
+In its simplest form, \emph{group by} creates a new group for each value of a given field and assigns tuples to those groups based on the value of that field. Then, for each group, an aggregator is applied:
+
+\begin{verbatim}
+  input.groupby(:Tick) { |group| group.max(:Value) }
+\end{verbatim}
+
+
 \section{Joining multiple streams}
 \section{Windows}
 
