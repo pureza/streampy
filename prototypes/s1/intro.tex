@@ -90,7 +90,7 @@ input.partition(:Tick)
 
 \section{Aggregators}
 
-Aggregators represent a set of functions that are applied to the entire stream and return a single value. Example aggregators include \verb=min()=, \verb=max()=, \verb=sum()= or \verb=average()=. A generic aggregator like Lisp's \verb=reduce= is also included:
+Aggregators represent a set of functions that are applied to the entire stream and return a single value. Example aggregators include \verb=min()=, \verb=max()=, \verb=sum()= or \verb=avg()=. A generic aggregator like Lisp's \verb=reduce= is also included:
 
 \begin{verbatim}
   input.fold(0) { |a, t| a += t.Value * t.Volume }
@@ -99,6 +99,13 @@ Aggregators represent a set of functions that are applied to the entire stream a
 In this example, \verb=0= is the initial value of the aggregator. \verb=fold= calls the code block inside brackets for every tuple in the stream. This block receives two arguments: \verb=a= is an accumulator that starts with the initial value (0 in this case) and \verb=t= is the tuple. For every tuple, the product of the tuple's \emph{Value} and \emph{Volume} is added to the accumulator. The result of the entire operation is the final value of the accumulator\footnote{How generic is fold? Can you do a simple average with it?}.
 
 As new tuples arrive into the stream, the value of the aggregator changes. Thus, the aggregator itself can be seen as a stream of values. That is, in fact, the case in StreamPy. Treating the value of an aggregator as a normal stream comes with a few advantages as normal stream operations can be applied to this stream. Want to know when was the average of all stocks bigger than a given threshold? Easy. Want to calculate a moving average over the average of Apple stocks for the last few days? Easy\footnote{I wrote this before I knew that Oracle allows you to save historical data. Seemed a bit of a crazy idea before :-)}.
+
+You can access some previous value of an aggregator just as you can access some previous in a normal stream:
+
+\begin{verbatim}
+  value[2] ?? Hmmm?? 2?? Won't this return the last 2 values? Clarify!
+\end{verbatim}
+
 
 \section{Sorting}
 
@@ -139,9 +146,180 @@ It's not clear at this point if it is mandatory that an aggregator be applied fo
 Does ``having'' make sense in this case?
 
 \section{Joining multiple streams}
-\section{Windows}
+
+Types of joins:
+\begin{itemize}
+\item equi-join
+\item Cross join
+\item Left and right outer joins
+\item Full outer join
+\item What about the cogroup operator in pig latin?
+
+\end{itemize}
+\section{Sliding windows}
+
+Windows allow the developer to specify which parts of the stream he is interested in. There are two types of sliding windows in StreamPy: temporal and fixed. Temporal windows select only the tuples within a given timestamp. For example, to obtain the tuples received in the last 5 minutes, one could do:
+
+\begin{verbatim}
+input[5min]
+\end{verbatim}
+
+Fixed windows, on the other hand, select tuples based on their position inside the stream. The following code selects the last 10 elements received:
+
+\begin{verbatim}
+input[10]
+\end{verbatim}
+
+It should also be possible to specify ranges. For example, the stream containing every tuple received between the last 5 and 10 minutes could be defined with:
+
+\begin{verbatim}
+input[5min:10min]
+\end{verbatim}
+
+Or everything up to 5 minutes ago:
+
+\begin{verbatim}
+input[5min:]
+\end{verbatim}
+
+
+But how to specify more complex windows? What if the user wants all the tuples received in the last week up to yesterday?
+
+\begin{verbatim}
+input[yesterday midnight:1 week ago 0am] ??? See http://chronic.rubyforge.org/
+\end{verbatim}
+
+
+Again, the result of a sliding window is still a normal stream that can be the subject of other stream operations.
+
 \section{The flux operator}
+
+The flux (\verb=>>=) operator is basically just a replacement for the . (dot) operator that intends to clarify how tuples flow between streams. For example, to filter all Apple tuples and convert the ``Value'' from dollars to euros and then obtain the average, one could write:
+
+\begin{verbatim}
+input.filter { |t| t.Tick == "Apple }.map { |t| (:Tick => t.Tick,
+    :ValueEUR => dol2eur(t.Value) }.avg(:ValueEUR)
+\end{verbatim}
+
+Where \verb=dol2eur= is some function that receives the amount in dollars and converts it to euros using your prefered conversion method. With the flux operator, the same query could be written as:
+
+\begin{verbatim}
+input >> filter { |t| t.Tick == "Apple }
+      >> map { |t| (:Tick => t.Tick, :ValueEUR => dol2eur(t.Value) }
+      >> avg(:ValueEUR)
+\end{verbatim}
+
+Note how it looks like a pipeline where each stage modifies the stream in some way.
+
 \section{More examples}
+
+\subsection{For a given company, print its stock prices as they arrive}
+\begin{alltt}
+input.filter \{ |a| a.Tick == "AAPL" \} >> print\footnote{I have not yet defined what is print in this context and wich semantics does it follow. For now, think of print as a function that is called everytime a tuple arrives on a stream and that receives this new tuple as an argument.}
+\end{alltt}
+
+\subsection{For a given company, print the average of stock prices over the last 5 minutes}
+\begin{verbatim}
+input[5min].filter { |a| a.Tick == "AAPL" }.avg(:Value) >> print
+\end{verbatim}
+
+\subsection{For a given company, print the average of stock prices over the last 5 samples}
+\begin{verbatim}
+input[5].filter { |a| a.Tick == "AAPL" }.avg(:Value) >> print
+\end{verbatim}
+
+\subsection{For all companies, print their stock prices as they arrive}
+\begin{verbatim}
+input >> print
+\end{verbatim}
+
+\subsection{For all companies, print the average of their stock prices over the last 5 minutes}
+\begin{alltt}
+input[5min].groupby(:Tick) \{ |g| g.avg(:Value) >> print \}\footnote{Hmmm... print inside the groupby? What does print return? Do we need a way to iterate over the groupby result?}
+\end{alltt}
+
+\subsection{For all companies, print the average of their stock prices over the last 5 samples}
+\begin{verbatim}
+input.groupby(:Tick) { |g| g[5].avg(:Value) >> print }
+\end{verbatim}
+
+\subsection{Find all companies whose stocks have increased more than 2\% over the last 5 minutes}
+\begin{alltt}
+# Get the most recent tuple older than 5 minutes.
+values_5_mins_ago = input[5min:].groupby(:Tick) \{ |s| s[0] \}
+
+# Current values: same thing, but do not constrain the input.
+current_values    = input.groupby(:Tick) \{ |s| s[0] \}
+
+# Join both streams by tick and filter by the condition
+current_values >> join(values_5_mins_ago, :Tick)
+               >> filter \{ |s| s.a:Value\footnote{a:Value is just a temporary way to represent the :Value field from the first joined stream, while b:Value represents the :Value field from the second stream.} > s.b:Value * 1.02 \}
+               >> print
+
+\end{alltt}
+
+It's not very clear what this code does just by looking at it. How can we improve it?
+
+
+\subsection{For a given company find the average over the last 30 days and the last 5. If the second passes the first, buy!}
+
+\begin{alltt}
+avg_30_days = input[30days].groupby(:Tick) \{ |s| s.avg(:value) \}
+avg_05_days = input[05days].groupby(:Tick) \{ |s| s.avg(:value) \}
+
+avg_30_days.join(avg_05_days, :Tick) \{ |v|
+    # Check if they crossed
+    v.filter \{ |t| v.a:Value\footnote{Value here refers to the average. This needs to be clarified.} < v.b:Value and v.a:Value[-1] >= v.b:Value[-1] \}
+        >> buy
+\}
+
+\end{alltt}
+
+Is this expressive enough? No. That join hides the real meaning.
+
+In a familiar programming language, one would do something like:
+
+\begin{verbatim}
+    # Remember that a groupby acts like a dictionary.
+    foreach tick, avg30 in avg_30_days.pairs():
+        if avg_5_days[tick] > avg30 &&
+           avg_5_days[tick].previous() <= avg30.previous():
+            buy()
+\end{verbatim}
+
+\subsection{Buy if the slopes over the last 5 and 30 days are positive}
+
+\begin{verbatim}
+
+# (Preco actual - Preco ha X dias) / numero de dias
+slope_30_days = input[30days].groupby(:Tick) { |s|
+    # Hmm, this is not an aggregator like sum() or avg()...
+    (s.last().Value - s.first().Value) / days_between(s.first(), s.last())
+}
+
+slope_05_days = input[05days].groupby(:Tick) { |s|
+    (s.last().Value - s.first().Value) / days_between(s.first(), s.last())
+}
+
+# Do the same as in the previous example...
+
+\end{verbatim}
+
+\subsection{Same as before, but verify if the slope over the last 5 days is above 2\%/day}
+
+\begin{verbatim}
+
+slope_05_days >> filter { |t| t.Value > 0.02 }
+
+# And then do the same as before
+
+\end{verbatim}
+
+\subsection{Same as before, but the current volume must be above 10000}
+
+valid_candidates = input.groupby(:Tick) { |g| g.last().Volume }.having { |g| g.Value > 10000 }
+
+# And then check if the tick is in valid_candidates...
 
 \chapter{Recognizing events through pattern matching}
 \chapter{More examples}
