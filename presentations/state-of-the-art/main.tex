@@ -1,0 +1,273 @@
+\documentclass[brown, compress, mathserif]{beamer}
+
+\mode<presentation>
+{
+  \usetheme{Singapore}
+  \useinnertheme{rectangles}
+  \setbeamertemplate{background canvas}[vertical shading][bottom=white,top=white]
+}
+
+
+\usepackage[english]{babel}
+\usepackage{eurosym}
+\usepackage{booktabs}
+\usepackage{colortbl}
+
+\input {highlight.sty}
+
+\title{Survey of languages for data stream query processing}
+
+\author{Lu\'{i}s Pureza \\ \texttt{pureza@student.dei.uc.pt}}
+
+\institute[University of Coimbra]
+{
+  Department of Informatics Engineering\\
+  University of Coimbra, Portugal
+}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{Outline}
+  \tableofcontents
+\end{frame}
+
+\section{Introduction}
+
+\begin{frame}{Two paradigms}
+  \begin{itemize}
+  \item Declarative (SQL based)
+    \begin{itemize}
+    \item Coral8 CCL
+    \item StreamSQL
+    \item Esper EPL
+    \item BEA's EPL
+    \item Stanford's CQL
+    \end{itemize}
+  \item Procedural
+    \begin{itemize}
+    \item Apama MonitorScript
+    \item Aleri's SPLASH
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\section{Declarative languages}
+
+\begin{frame}{Declarative languages}
+  \hlstd{}\hlkwa{INSERT INTO }\hlstd{PriceMicrosoft}\hspace*{\fill}\\
+  \hlkwa{SELECT }\hlstd{price}\hspace*{\fill}\\
+  \hlkwa{FROM }\hlstd{StockTrades }\hlkwa{WHERE }\hlstd{symbol }\hlsym{= }\hlstd{}\hlstr{'MSFT'}\hlstd{}\hspace*{\fill}\\
+\end{frame}
+
+
+\begin{frame}{On top of that...}
+  \begin{itemize}
+  \item Windows
+  \item Pattern matching
+  \end{itemize}
+\end{frame}
+
+\subsection{Windows}
+
+\begin{frame}{Windows}
+  All kinds of windows:
+  \begin{itemize}
+  \item Fixed-size or temporal windows;
+  \item Sliding or jumping windows;
+  \item Groups and windows.
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}{Fixed-size sliding windows}
+  \hlstd{}\hlkwa{INSERT INTO }\hlstd{AvgPriceMicrosoft}\hspace*{\fill}\\
+  \hlkwa{SELECT }\hlstd{}\hlkwd{avg}\hlstd{}\hlsym{(}\hlstd{price}\hlsym{) }\hlstd{}\\
+  \hlkwa{FROM }\hlstd{StockTrades }\hlkwa{KEEP }\hlnum{3 }\hlkwa{ROWS }\\
+  \hlkwa{WHERE }\hlstd{symbol }\hlsym{= }\hlstd{}\hlstr{'MSFT'}\hlstd{}\hspace*{\fill}\\
+  \mbox{}
+  \begin{itemize}
+  \item \hlkwa{KEEP} \hlnum{1} \hlkwa{ROW} is equivalent to \hlkwa{KEEP LAST ROW};
+  \item \hlkwa{KEEP ALL} retains everything;
+  \item \hlkwa{KEEP} \hlnum{10} \hlkwa{LARGEST DISTINCT BY} price
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}{Fixed-size jumping windows}
+  \hlstd{}\hlslc{{-}{-} Window is cleared every 3 rows}\hspace*{\fill}\\
+  \hlstd{}\hlkwa{INSERT INTO }\hlstd{AvgPriceMicrosoft}\hspace*{\fill}\\
+  \hlkwa{SELECT }\hlstd{}\hlkwd{avg}\hlstd{}\hlsym{(}\hlstd{price}\hlsym{) }\hlstd{}\\
+  \hlkwa{FROM }\hlstd{StockTrades }\hlkwa{KEEP EVERY }\hlnum{3 }\hlkwa{ROWS }\\
+  \hlkwa{WHERE }\hlstd{symbol }\hlsym{= }\hlstd{}\hlstr{'MSFT'}\hlstd{}\hspace*{\fill}\\
+\end{frame}
+
+
+\begin{frame}{Time-based sliding windows}
+  \hlstd{}\hlkwa{INSERT INTO }\hlstd{AvgPriceMicrosoft}\hspace*{\fill}\\
+  \hlkwa{SELECT }\hlstd{}\hlkwd{avg}\hlstd{}\hlsym{(}\hlstd{price}\hlsym{) }\hlstd{}\\
+  \hlkwa{FROM }\hlstd{StockTrades }\hlkwa{KEEP }\hlnum{3 }\hlkwa{HOURS }\\
+  \hlkwa{WHERE }\hlstd{symbol }\hlsym{= }\hlstd{}\hlstr{'MSFT'}\hlstd{}\hspace*{\fill}\\
+\end{frame}
+
+
+\begin{frame}{Time-based jumping windows}
+  \hlstd{}\hlslc{{-}{-} Window is cleared after 3 hours}\hspace*{\fill}\\
+  \hlstd{}\hlkwa{INSERT INTO }\hlstd{AvgPriceMicrosoft}\hspace*{\fill}\\
+  \hlkwa{SELECT }\hlstd{}\hlkwd{avg}\hlstd{}\hlsym{(}\hlstd{price}\hlsym{) }\hlstd{}\\
+  \hlkwa{FROM }\hlstd{StockTrades }\hlkwa{KEEP EVERY }\hlnum{3 }\hlkwa{HOURS }\\
+  \hlkwa{WHERE }\hlstd{symbol }\hlsym{= }\hlstd{}\hlstr{'MSFT'}\hlstd{}\hspace*{\fill}\\
+\end{frame}
+
+
+\begin{frame}{Groups and windows}
+  \hlstd{}\hlslc{{-}{-} 10 rows per group, not 10 rows overall!}\hspace*{\fill}\\
+  \hlstd{}\hlkwa{INSERT INTO }\hlstd{MaxPrices}\hspace*{\fill}\\
+  \hlkwa{SELECT }\hlstd{}\hlkwd{max}\hlstd{}\hlsym{(}\hlstd{price}\hlsym{) }\hlstd{}\\
+  \hlkwa{FROM }\hlstd{StockTrades }\hlkwa{KEEP }\hlnum{10 }\hlkwa{ROWS }\\
+  \hlkwa{GROUP BY }\hlstd{symbol }\hlstd{}\hspace*{\fill}\\
+\end{frame}
+
+
+\begin{frame}[fragile]
+  \frametitle{What about... StreamSQL}
+  \begin{itemize}
+  \item Pretty much the same thing.
+  \end{itemize}
+
+\begin{verbatim}
+SIZE size ADVANCE increment
+  {TIME | TUPLES | ON field_identifier_w}
+  [PARTITION BY field_identifier_p[,...]]
+  [VALID ALWAYS]
+  [OFFSET offset]
+  [TIMEOUT timeout]
+\end{verbatim}
+\end{frame}
+
+
+\begin{frame}{What about... Esper EPL (1)}
+  \begin{itemize}
+  \item Mostly the same too.
+    \bigskip\\
+    \hlkwa{SELECT } \hlstd{tickDataFeed}, \hlkwd{stddev}(\hlstd{price})\\
+    \hlkwa{FROM } \hlstd{StockTickEvent}\hlsym{(}\hlstd{symbol\hlsym{=}'IBM')}.win\hlsym{:}length(\hlnum{10})\\
+    \hlkwa{WHERE } \hlstd{volume} \hlsym{$>$} \hlnum{1000}\\
+    \hlkwa{GROUP BY } tickDataFeed\\
+    \hlkwa{HAVING } \hlkwd{stddev}(price) \hlsym{$>$} \hlnum{0.8}
+
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}{What about... ESPER EPL (2)}
+  \begin{itemize}
+  \item Esper also supports \alert{istream} and \alert{rstream}
+    \bigskip\\
+    \hlkwa{SELECT RSTREAM } \hlsym{*}\\
+    \hlkwa{FROM } \hlstd{StockTickEvent}\hlsym{(}\hlstd{symbol\hlsym{=}'IBM')}.win\hlsym{:}time(\hlnum{10})\\
+  \end{itemize}
+\end{frame}
+
+
+\subsection{Pattern matching}
+
+
+\begin{frame}{Pattern matching}
+  \hlstd{}\hlslc{{-}{-} Fast price increases}\hspace*{\fill}\\
+  \hlkwa{INSERT INTO } StockGains\\
+  \hlkwa{SELECT } First.tradeid, Second.tradeid\\
+  \hlkwa{FROM }  StockTrades as First, StockTrades as Second\\
+  \hlkwa{MATCHING }[\hlnum{5} seconds: First, Second]\\
+  \hlkwa{ON    } First.symbol = Second.symbol\\
+  \hlkwa{WHERE }(Second.price - First.price) $>$ \hlnum{1.0};
+\end{frame}
+
+
+\begin{frame}{Operators}
+  \begin{itemize}
+  \item Sequence (,)
+  \item Negation (!)
+  \item Conjunction (\&\&)
+  \item Disjunction ($||$)
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+  \frametitle{More examples}
+  \begin{itemize}
+  \item A followed by B and then not followed by any C within 10 seconds:
+\begin{verbatim}
+    [10 SECONDS: A, B, !C]
+\end{verbatim}
+  \item A B not preceded by an A in the previous 10 seconds and not followed by any C within the next 20 seconds:
+\begin{verbatim}
+    [20 SECONDS: [10 SECONDS: !A, B], !C]
+\end{verbatim}
+  \item An A or a B not followed by any C within the next minute:
+\begin{verbatim}
+    [1 MINUTE: A || B, !C]
+\end{verbatim}
+  \end{itemize}
+
+\end{frame}
+
+
+\section{Procedural languages}
+
+\subsection{Apama monitorscript}
+
+
+\begin{frame}{Apama monitorscript}
+  \begin{itemize}
+  \item \textbf{monitors} are event processing ``agents'';
+    \begin{itemize}
+    \item Monitors can create listeners that await on events;
+    \item When an event arrives, it processes it;
+    \end{itemize}
+  \item \textbf{route} creates new events that will be caught by other monitors;
+  \item \textbf{actions} are similar to methods.
+  \item Monitors can have state!
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+  \frametitle{It looks like this}
+
+  \begin{verbatim}
+monitor ProcessMarket {
+    action onload {
+        Symbol sym;
+        on all Symbol(): sym {
+           processSymbol(sym);
+           route SymbolAck(sym.id);
+        }
+    }
+
+    action processSymbol(Symbol sym) {
+       log "Received Symbol Event = " + sym;
+    }
+}
+\end{verbatim}
+
+\end{frame}
+
+
+\begin{frame}{Aleri's SPLASH}
+  TODO
+\end{frame}
+
+
+\begin{frame}{End!}
+  \begin{center}
+    Thank you!
+  \end{center}
+\end{frame}
+
+\end{document}
+
