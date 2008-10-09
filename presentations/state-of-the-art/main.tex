@@ -5,6 +5,17 @@
   \usetheme{Singapore}
   \useinnertheme{rectangles}
   \setbeamertemplate{background canvas}[vertical shading][bottom=white,top=white]
+  \setbeamertemplate{footline}[frame number]
+  \setbeamertemplate{navigation symbols}{}
+}
+
+
+\AtBeginDocument{
+  \pgfdeclareverticalshading{beamer@headfade}{\paperwidth}
+  {
+    color(0cm)=(bg);
+    color(1.25cm)=(bg)
+  }
 }
 
 
@@ -44,8 +55,7 @@
     \item Coral8 CCL
     \item StreamSQL
     \item Esper EPL
-    \item BEA's EPL
-    \item Stanford's CQL
+    \item UCLA's ESL
     \end{itemize}
   \item Procedural
     \begin{itemize}
@@ -64,7 +74,7 @@
 \end{frame}
 
 
-\begin{frame}{On top of that...}
+\begin{frame}{On top of that\ldots}
   \begin{itemize}
   \item Windows
   \item Pattern matching
@@ -78,7 +88,7 @@
   \begin{itemize}
   \item Fixed-size or temporal windows;
   \item Sliding or jumping windows;
-  \item Groups and windows.
+  \item Partitioned windows.
   \end{itemize}
 \end{frame}
 
@@ -123,7 +133,7 @@
 \end{frame}
 
 
-\begin{frame}{Groups and windows}
+\begin{frame}{Partitioned windows}
   \hlstd{}\hlslc{{-}{-} 10 rows per group, not 10 rows overall!}\hspace*{\fill}\\
   \hlstd{}\hlkwa{INSERT INTO }\hlstd{MaxPrices}\hspace*{\fill}\\
   \hlkwa{SELECT }\hlstd{}\hlkwd{max}\hlstd{}\hlsym{(}\hlstd{price}\hlsym{) }\hlstd{}\\
@@ -133,7 +143,7 @@
 
 
 \begin{frame}[fragile]
-  \frametitle{What about... StreamSQL}
+  \frametitle{What about\ldots StreamSQL}
   \begin{itemize}
   \item Pretty much the same thing.
   \end{itemize}
@@ -149,12 +159,12 @@ SIZE size ADVANCE increment
 \end{frame}
 
 
-\begin{frame}{What about... Esper EPL (1)}
+\begin{frame}{What about\ldots Esper EPL (1)}
   \begin{itemize}
   \item Mostly the same too.
     \bigskip\\
     \hlkwa{SELECT } \hlstd{tickDataFeed}, \hlkwd{stddev}(\hlstd{price})\\
-    \hlkwa{FROM } \hlstd{StockTickEvent}\hlsym{(}\hlstd{symbol\hlsym{=}'IBM')}.win\hlsym{:}length(\hlnum{10})\\
+    \hlkwa{FROM } \hlstd{StockTickEvent}\hlsym{(}\hlstd{symbol\hlsym{=}\hlstr{'IBM'})}.win\hlsym{:}length(\hlnum{10})\\
     \hlkwa{WHERE } \hlstd{volume} \hlsym{$>$} \hlnum{1000}\\
     \hlkwa{GROUP BY } tickDataFeed\\
     \hlkwa{HAVING } \hlkwd{stddev}(price) \hlsym{$>$} \hlnum{0.8}
@@ -163,15 +173,54 @@ SIZE size ADVANCE increment
 \end{frame}
 
 
-\begin{frame}{What about... ESPER EPL (2)}
+\begin{frame}{What about\ldots Esper EPL (2)}
   \begin{itemize}
   \item Esper also supports \alert{istream} and \alert{rstream}
     \bigskip\\
     \hlkwa{SELECT RSTREAM } \hlsym{*}\\
-    \hlkwa{FROM } \hlstd{StockTickEvent}\hlsym{(}\hlstd{symbol\hlsym{=}'IBM')}.win\hlsym{:}time(\hlnum{10})\\
+    \hlkwa{FROM } \hlstd{StockTickEvent}\hlsym{(}\hlstd{symbol\hlsym{=}\hlstr{'IBM'})}.win\hlsym{:}time(\hlnum{10 sec})\\
   \end{itemize}
 \end{frame}
 
+
+\begin{frame}{What about\ldots ESL}
+  \begin{footnotesize}
+  \hlkwa{INSERT INTO} stdout\\
+  \hlkwa{SELECT} IdemID, current\_time \\
+  \hlkwa{FROM} ClosedAuction \hlkwa{AS} C,\\
+  \hlkwa{ TABLE}(OpenAuction \hlkwa{OVER} (\hlkwa{RANGE} \hlnum{24} \hlkwa{HOUR PRECEDING} C)) \hlkwa{AS} O\\
+  \hlkwa{WHERE} O.itemID = C.itemID;
+  \end{footnotesize}
+\end{frame}
+
+\begin{frame}{Is this enough? (1)}
+  \framesubtitle{Semantic windows}
+  \begin{definition}
+    Windows whose endpoints may depend on events rather than being fixed.
+  \end{definition}
+
+  \begin{example}
+    How many people entered the room while I was there?
+  \end{example}
+\end{frame}
+
+\begin{frame}{Is this enough? (2)}
+  \framesubtitle{Future windows}
+  \begin{center}
+    \begin{example}
+      The RFID reader must detect the product 10 seconds before or after it detects personnel.
+    \end{example}
+  \end{center}
+
+  \begin{small}
+    \hlkwa{SELECT} person.tagid\\
+    \hlkwa{FROM} tag readings \hlkwa{AS} person\\
+    \hlkwa{WHERE} person.tagtype = ’person’ \hlkwa{AND NOT EXISTS}\\
+    \ (\hlkwa{SELECT} * \hlkwa{FROM} tag readings \hlkwa{AS} item\\
+    \ \ \hlkwa{OVER} [\hlnum{10} \hlkwa{SECONDS PRECEDING AND FOLLOWING} person]\\
+    \ \ \hlkwa{WHERE} item.tagtype = ’item’)
+  \end{small}
+\end{frame}
 
 \subsection{Pattern matching}
 
@@ -216,6 +265,61 @@ SIZE size ADVANCE increment
 
 \end{frame}
 
+\begin{frame}{Is this enough?}
+\framesubtitle{SASE+}
+  \begin{center}
+    \begin{example}
+      Stock increases from 10 to 20 within 1 hour.
+    \end{example}
+  \end{center}
+\hlkwa{PATTERN SEQ}(STOCK+ a[ ])\\
+\hlkwa{WHERE} \hlkwd{skip\_till\_next\_match}(a[ ]!)\\
+    \{\\
+    \ \ \ \ [symbol] \hlkwa{AND}\\
+    \ \ \ \   a[\hlnum{1}].price = \hlnum{10} \hlkwa{AND}\\
+    \ \ \ \   a[i].price $>$ a[i-\hlnum{1}].price \hlkwa{AND}\\
+    \ \ \ \   a[a.LEN].price = \hlnum{20}\\
+    \}\\
+\hlkwa{WITHIN} \hlnum{1} hour\\
+\hlkwa{RETURN} a[\hlnum{1}].symbol, a[].price \hlstd{}\hlslc{{-}{-} Returns the list of prices!}\hspace*{\fill}\\
+\end{frame}
+
+\subsection{User defined aggregates}
+
+\begin{frame}{User defined aggregates (UDAs)}
+  \begin{itemize}
+  \item SQL let's you define your own aggregates;
+  \item How to implement UDAs for continuous queries?
+  \end{itemize}
+\end{frame}
+
+
+\begin{frame}[fragile]
+  \frametitle{UDAs in ESL}
+  \begin{footnotesize}
+    \begin{verbatim}
+WINDOW AGGREGATE myavg(Next Real) : Real
+{
+    TABLE state(tsum Int, cnt Real);
+
+    INITIALIZE : {
+        INSERT INTO state VALUES (Next, 1);
+    }
+
+    ITERATE : {
+        UPDATE state SET tsum=tsum+Next, cnt=cnt+1;
+        INSERT INTO RETURN
+            SELECT tsum/cnt FROM state;
+    }
+
+    EXPIRE: {
+        UPDATE state SET cnt= cnt-1,
+                 tsum = tsum - oldest()
+    }
+}
+\end{verbatim}
+  \end{footnotesize}
+\end{frame}
 
 \section{Procedural languages}
 
@@ -257,11 +361,53 @@ monitor ProcessMarket {
 
 \end{frame}
 
+\subsection{Aleri's SPLASH}
 
 \begin{frame}{Aleri's SPLASH}
-  TODO
+  \begin{example}
+    Suppose there is a stream of Trades data, with fields TradeId, Symbol
+(e.g., MSFT), and Price. Suppose we'd like to stamp each IBM trade --- and only the IBM
+trades --- with a sequence number.
+  \end{example}
 \end{frame}
 
+
+\begin{frame}{SQL solution}
+SequenceNumber =\\
+ \hlkwa{ SELECT} max(T.TradeId) \hlkwa{as} TradeId, count(T.Symbol) \hlkwa{as} SeqNo\\
+ \hlkwa{ FROM} Trades T\\
+ \hlkwa{ WHERE} T.Symbol = \hlstr{'IBM'}\\
+ \hlkwa{ GROUP BY} T.Symbol\\
+\vspace{10 mm}
+TaggedIBMTrades =\\
+ \hlkwa{ SELECT} T.TradeId, T.Symbol, T.Price,\\
+   (\hlkwa{CASE WHEN} T.Symbol = \hlstr{'IBM'} \hlkwa{THEN} S.SeqNo \hlkwa{ELSE} null \hlkwa{END}) \hlkwa{as} IBMNumber\\
+ \hlkwa{ FROM} Trades T, SequenceNumber S\\
+ \hlkwa{ WHERE} T.TradeId = S.TradeId
+\end{frame}
+
+
+\begin{frame}[fragile]
+  \frametitle{SPLASH's solution}
+\begin{verbatim}
+int32 seqNo := 0;
+if (Trades.Symbol = 'IBM') {
+    output [
+        TradeId = Trades.TradeId;
+        Symbol = Trades.Symbol;
+        IBMNumber = seqNo
+    ];
+    seqNo := seqNo + 1;
+} else {
+    output [
+        TradeId = Trades.TradeId;
+        Symbol = Trades.Symbol;
+        IBMNumber = null
+    ];
+}
+
+\end{verbatim}
+\end{frame}
 
 \begin{frame}{End!}
   \begin{center}
