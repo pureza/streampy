@@ -1,4 +1,5 @@
 require 'tuple.rb'
+require 'aggregator.rb'
 require 'clock.rb'
 
 class Stream
@@ -9,13 +10,12 @@ class Stream
         @parent = parent
         @children = []
         @data = []
-        parent.subscribe(self) if parent
+        @parent.subscribe self if @parent
     end
 
 
     def subscribe(stream)
         @children << stream
-        data.each { |tuple| stream.add(tuple) }
     end
 
     def add(tuple)
@@ -25,195 +25,157 @@ class Stream
 
 
     def remove(tuple)
-        data.delete(tuple)
+        data.shift
         @children.each { |child| child.remove(tuple) }
     end
 
 
-    def [](since)
-        WindowedStream.new(self, since)
+    def [](interval)
+        WindowedStream.new(self, interval)
     end
 
 
-    def last(number = 1)
-        Class.new(Stream) do
-            define_method :add do |tuple|
-            end
+#     def last(number = 1)
+#         Class.new(Stream) do
+#             define_method :add do |tuple|
+#             end
 
-            define_method :remove do |tuple|
-            end
+#             define_method :remove do |tuple|
+#             end
 
-            define_method :data do
-                if number > 1
-                    @parent.data.last(number)
-                else
-                    @parent.data.last
-                end
-            end
-        end.new(self)
-    end
+#             define_method :data do
+#                 if number > 1
+#                     @parent.data.last(number)
+#                 else
+#                     @parent.data.last
+#                 end
+#             end
+#         end.new(self)
+#     end
 
 
     def filter(&predicate)
         Class.new(Stream) do
             define_method :add do |tuple|
+                super(tuple) if predicate.call(tuple)
             end
 
             define_method :remove do |tuple|
-            end
-
-            define_method :data do
-                @parent.data.select { |tuple| predicate.call(tuple) }
+                super(tuple) if predicate.call(tuple)
             end
         end.new(self)
     end
 
 
-    def map(&block)
-        Class.new(Stream) do
-            define_method :add do |tuple|
-            end
+#     def map(&block)
+#         Class.new(Stream) do
+#             define_method :add do |tuple|
+#             end
 
-            define_method :remove do |tuple|
-            end
+#             define_method :remove do |tuple|
+#             end
 
-            define_method :data do
-                @parent.data.map { |tuple| block.call(tuple) }
-            end
-        end.new(self)
-    end
-
-
-    def groupby(*fields, &block)
-        child = Class.new(HashStream) do
-            def initialize(parent, fields, block)
-                super(parent, *fields)
-                @block = block
-            end
-
-            alias :old_fetch :[]
-
-            def [](key)
-                @block.call(old_fetch(key)) if old_fetch(key)
-            end
-        end.new(self, fields, block)
-        subscribe(child)
-        child
-    end
+#             define_method :data do
+#                 @parent.data.map { |tuple| block.call(tuple) }
+#             end
+#         end.new(self)
+#     end
 
 
-    def partitionby(*fields, &block)
-        child = Class.new(Stream) do
-            def initialize(parent)
-                @substreams = Hash.new { |hash, key| hash[key] = Stream.new }
-                super
-            end
-
-            define_method :add do |tuple|
-                key = fields.map { |field| tuple[field] }
-                key = key[0] if key.length == 1
-                @substreams[key].add(tuple)
-            end
-
-            define_method :remove do |tuple|
-                key = fields.map { |field| tuple[field] }
-                key = key[0] if key.length == 1
-                @substreams[key].remove(tuple)
-            end
-
-            define_method :data do
-                @substreams.values.map { |stream| block.call(stream).data }.flatten.sort { |a, b| a.timestamp <=> b.timestamp }
-            end
-        end.new(self)
-    end
+     def groupby(*fields, &block)
+         Map.new(self, fields, &block)
+     end
 
 
-    def fold(initial, function)
-        Class.new(Stream) do
-            define_method :add do |tuple|
-            end
+#     def partitionby(*fields, &block)
+#         child = Class.new(Stream) do
+#             def initialize(parent)
+#                 @substreams = Hash.new { |hash, key| hash[key] = Stream.new }
+#                 super
+#             end
 
-            define_method :remove do |tuple|
-            end
+#             define_method :add do |tuple|
+#                 key = fields.map { |field| tuple[field] }
+#                 key = key[0] if key.length == 1
+#                 @substreams[key].add(tuple)
+#             end
 
-            define_method :data do
-                @parent.data.inject(initial) { |accum, tuple| accum = function.call(accum, tuple) }
-            end
-        end.new(self)
-    end
+#             define_method :remove do |tuple|
+#                 key = fields.map { |field| tuple[field] }
+#                 key = key[0] if key.length == 1
+#                 @substreams[key].remove(tuple)
+#             end
 
-
-    def sum(field)
-        fold(0, lambda { |m, n| m += n[field] })
-    end
-
-
-    def avg(field)
-        Class.new(Stream) do
-            define_method :add do |tuple|
-            end
-
-            define_method :remove do |tuple|
-            end
-
-            define_method :data do
-                @parent.sum(field).data / @parent.data.length
-            end
-        end.new(self)
-    end
+#             define_method :data do
+#                 @substreams.values.map { |stream| block.call(stream).data }.flatten.sort { |a, b| a.timestamp <=> b.timestamp }
+#             end
+#         end.new(self)
+#     end
 
 
-    def min(field)
-        fold(data.first[field], lambda { |m, n| m = [m, n[field]].min })
-    end
+     def sum(field)
+         SumAggregator.new(self, field)
+     end
 
 
-    def sort(*fields)
-        Class.new(Stream) do
-            define_method :add do |tuple|
-            end
-
-            define_method :remove do |tuple|
-            end
-
-            define_method :data do
-                comparator = lambda do |a, b, f|
-                    first, rest = f
-                    result = a[first] <=> b[first]
-                    if result == 0 && rest
-                        comparator.call(a, b, rest)
-                    else
-                        result
-                    end
-                end
-                @parent.data.sort { |a, b| comparator.call(a, b, fields) }
-            end
-
-        end.new(self)
-    end
+     def avg(field = nil)
+         AvgAggregator.new(self, field)
+     end
 
 
-    def join(other, field_a, field_b = field_a)
-        Class.new(Stream) do
-            define_method :add do |tuple|
-            end
 
-            define_method :remove do |tuple|
-            end
 
-            define_method :data do
-                result = []
-                for elem in @parent.data
-                    for other_elem in other.data
-                        if elem[field_a] == other_elem[field_b]
-                            result << elem.merge(other_elem)
-                        end
-                    end
-                end
-                result
-            end
-        end.new(self)
-    end
+#     def min(field)
+#         fold(data.first[field], lambda { |m, n| m = [m, n[field]].min })
+#     end
+
+
+#     def sort(*fields)
+#         Class.new(Stream) do
+#             define_method :add do |tuple|
+#             end
+
+#             define_method :remove do |tuple|
+#             end
+
+#             define_method :data do
+#                 comparator = lambda do |a, b, f|
+#                     first, rest = f
+#                     result = a[first] <=> b[first]
+#                     if result == 0 && rest
+#                         comparator.call(a, b, rest)
+#                     else
+#                         result
+#                     end
+#                 end
+#                 @parent.data.sort { |a, b| comparator.call(a, b, fields) }
+#             end
+
+#         end.new(self)
+#     end
+
+
+#     def join(other, field_a, field_b = field_a)
+#         Class.new(Stream) do
+#             define_method :add do |tuple|
+#             end
+
+#             define_method :remove do |tuple|
+#             end
+
+#             define_method :data do
+#                 result = []
+#                 for elem in @parent.data
+#                     for other_elem in other.data
+#                         if elem[field_a] == other_elem[field_b]
+#                             result << elem.merge(other_elem)
+#                         end
+#                     end
+#                 end
+#                 result
+#             end
+#         end.new(self)
+#     end
 
 
     def >>(action)
@@ -265,19 +227,21 @@ class WindowedStream < Stream
 end
 
 
-class HashStream < Stream
-    def initialize(parent, *fields)
+class Map
+    def initialize(parent, fields, &block)
         @parent = parent
         @substreams = {}
         @fields = fields
         @children = []
+        @block = block
+        @parent.subscribe self
     end
 
 
     def add(tuple)
         key = @fields.map { |field| tuple[field] }
         key = key[0] if key.length == 1
-        @substreams[key] ||= Stream.new
+        @substreams[key] ||= @block.call(Stream.new)
         @substreams[key].add(tuple)
     end
 
@@ -286,53 +250,40 @@ class HashStream < Stream
         @substreams.keys
     end
 
-
-    def data
-        keys.map { |k| Tuple.new(-1, :key => k, :value => self[k].data) }
-    end
-
-
-    def remove(tuple)
-        key = @fields.map { |field| tuple[field] }
-        key = key[0] if key.length == 1
-        @substreams[key].remove(tuple)
-    end
-
-
     def [](key)
         @substreams[key]
     end
 
 
-    def join(other)
-        Class.new(HashStream) do
-            define_method :add do |tuple|
-            end
+#     def join(other)
+#         Class.new(HashStream) do
+#             define_method :add do |tuple|
+#             end
 
-            define_method :remove do |tuple|
-            end
+#             define_method :remove do |tuple|
+#             end
 
-            define_method :keys do
-                @parent.keys & other.keys
-            end
+#             define_method :keys do
+#                 @parent.keys & other.keys
+#             end
 
-            define_method :[] do |key|
-                p = @parent
-                Class.new(Stream) do
-                    define_method :data do
-                        value_a = p[key]
-                        value_b = other[key]
+#             define_method :[] do |key|
+#                 p = @parent
+#                 Class.new(Stream) do
+#                     define_method :data do
+#                         value_a = p[key]
+#                         value_b = other[key]
 
-                        if value_a.nil? or value_b.nil?
-                            nil
-                        else
-                            [value_a.data, value_b.data]
-                        end
-                    end
-                end.new
-            end
-        end.new(self)
-    end
+#                         if value_a.nil? or value_b.nil?
+#                             nil
+#                         else
+#                             [value_a.data, value_b.data]
+#                         end
+#                     end
+#                 end.new
+#             end
+#         end.new(self)
+#     end
 end
 
 

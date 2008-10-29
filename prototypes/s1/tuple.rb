@@ -8,7 +8,11 @@ class Tuple
     end
 
     def [](field)
-        @fields[field]
+        if field.nil?
+            @fields.values.first
+        else
+            @fields[field]
+        end
     end
 
     def select(new_fields)
