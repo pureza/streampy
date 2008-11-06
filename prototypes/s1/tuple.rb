@@ -32,8 +32,15 @@ class Tuple
 
 
     def to_s
-        str = "#{@timestamp}: ("
+        str = "@#{@timestamp}("
         @fields.each_pair { |k, v| str += "#{k} => #{v}, " }
         str[0..-3] + ")"
+    end
+
+    def pretty_print(pp)
+        pp.group() do
+            pp.text "@#{@timestamp} "
+            pp.pp @fields
+        end
     end
 end

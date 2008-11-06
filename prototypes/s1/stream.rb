@@ -1,16 +1,21 @@
 require 'tuple.rb'
+require 'schema.rb'
 require 'aggregator.rb'
 require 'clock.rb'
 
+Now = 0
+
 class Stream
 
-    attr_reader :data, :children
+    attr_reader :data, :children, :schema
 
-    def initialize(parent = nil)
+    def initialize(parent = nil, &block)
         @parent = parent
         @children = []
         @data = []
         @parent.subscribe self if @parent
+        @schema = Schema.new
+        block.call(@schema) if block
     end
 
 
@@ -20,7 +25,9 @@ class Stream
 
     def add(tuple)
         data << tuple
+        antes = @children.length
         @children.each { |child| child.add(tuple) }
+        puts "MERDA" if @children.length != antes
     end
 
 
@@ -34,6 +41,10 @@ class Stream
         WindowedStream.new(self, interval)
     end
 
+
+    def last
+        data.last
+    end
 
 #     def last(number = 1)
 #         Class.new(Stream) do
@@ -63,23 +74,51 @@ class Stream
             define_method :remove do |tuple|
                 super(tuple) if predicate.call(tuple)
             end
+
+             define_method :pretty_print do |pp|
+                 pp.group(1, "§filter:", '') {
+                     pp.seplist(self.pretty_print_instance_variables, lambda { text ',' }) {|v|
+                        pp.breakable
+                         v = v.to_s if Symbol === v
+                         pp.text v
+                         pp.text '='
+                         pp.group(1) {
+                            pp.breakable ' '
+                            pp.pp(self.instance_eval(v))
+                         }
+                     }
+                 }
+             end
         end.new(self)
     end
 
 
-#     def map(&block)
-#         Class.new(Stream) do
-#             define_method :add do |tuple|
-#             end
+     def map(&block)
+        Class.new(Stream) do
+            define_method :add do |tuple|
+                super(tuple.select(block.call(tuple)))
+            end
 
-#             define_method :remove do |tuple|
-#             end
+            define_method :remove do |tuple|
+                super(block.call(tuple))
+            end
 
-#             define_method :data do
-#                 @parent.data.map { |tuple| block.call(tuple) }
-#             end
-#         end.new(self)
-#     end
+             define_method :pretty_print do |pp|
+                 pp.group(1, "§map:", '') {
+                     pp.seplist(self.pretty_print_instance_variables, lambda { text ',' }) {|v|
+                         pp.breakable
+                         v = v.to_s if Symbol === v
+                         pp.text v
+                         pp.text '='
+                         pp.group(1) {
+                             pp.breakable ' '
+                             pp.pp(self.instance_eval(v))
+                         }
+                     }
+                 }
+             end
+        end.new(self)
+     end
 
 
      def groupby(*fields, &block)
@@ -183,8 +222,13 @@ class Stream
     end
 
 
+    def pretty_print_instance_variables
+        [:data]
+    end
+
+
     def to_s
-        data.to_s
+        "§[#{data.join(" ")}]"
     end
 end
 
@@ -210,19 +254,19 @@ end
 
 
 class WindowedStream < Stream
-    def initialize(parent, window)
+    def initialize(parent, interval)
         @clock = Clock.instance
         @clock.on_advance do
-            to_remove = data.select { |tuple| tuple.timestamp <= @clock.now - @window }
+            to_remove = data.select { |tuple| !interval.include?(tuple.timestamp - @clock.now) }
             to_remove.each { |tuple| remove(tuple) }
         end
-        @window = window
+        @interval = interval
         super(parent)
     end
 
 
     def add(tuple)
-        super if tuple.timestamp > @clock.now - @window
+        super if @interval.include?(tuple.timestamp - @clock.now)
     end
 end
 
@@ -231,6 +275,7 @@ class Map
     def initialize(parent, fields, &block)
         @parent = parent
         @substreams = {}
+        @results = {}
         @fields = fields
         @children = []
         @block = block
@@ -241,19 +286,32 @@ class Map
     def add(tuple)
         key = @fields.map { |field| tuple[field] }
         key = key[0] if key.length == 1
-        @substreams[key] ||= @block.call(Stream.new)
+        @substreams[key] ||= Stream.new
+        @results[key] ||= @block.call(@substreams[key])
         @substreams[key].add(tuple)
     end
 
 
-    def keys
-        @substreams.keys
+    def remove(tuple)
+        key = @fields.map { |field| tuple[field] }
+        key = key[0] if key.length == 1
+        @substreams[key].remove(tuple)
     end
+
+
+    def keys
+        @results.keys
+    end
+
 
     def [](key)
-        @substreams[key]
+        @results[key]
     end
 
+
+    def to_s
+        @substreams.to_s
+    end
 
 #     def join(other)
 #         Class.new(HashStream) do
