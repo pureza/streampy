@@ -21,19 +21,18 @@ class Stream
 
     def subscribe(stream)
         @children << stream
+        @data.each { |t| stream.add(t) }
     end
 
     def add(tuple)
         data << tuple
-        antes = @children.length
-        @children.each { |child| child.add(tuple) }
-        puts "MERDA" if @children.length != antes
+        @children.dup.each { |child| child.add(tuple) }
     end
 
 
     def remove(tuple)
         data.shift
-        @children.each { |child| child.remove(tuple) }
+        @children.dup.each { |child| child.remove(tuple) }
     end
 
 

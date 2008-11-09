@@ -13,19 +13,19 @@ $leave = Stream.new do |schema|
     schema.fields :pid, :room_id
 end
 
+SimClock.new
 
 
 class Sensor < Entity
 end
 
 
-
 class Room < Entity
     has_many :sensors
 #    has_many :products
 
-    defstream :temperature do
-        @sensors.avg(:temp)
+    defstream :temperature do |room|
+        room.sensors.avg(:temp)
     end
 end
 
@@ -45,20 +45,24 @@ class Product < Entity
 #        | when enter(this.pid, rfid) -> rfid2room(rfid)
 #        | when leave(this.pid, _) -> null
 
-    defstream :temperature do
+#    defstream :temperature do
     # o defstream cria uma stream que subscreve a stream @room.temperature
-        @room.temperature
-    end
+ #       @room.temperature
+#    end
 
 #    stop when leave(p.pid, rfid) where rfid2room(rfid) = room3
 end
 
 
 
-$temperatures.add Tuple.new(0, :sid => 1, :temp => 20, :room_id => 1)
-$temperatures.add Tuple.new(5, :sid => 1, :temp => 30, :room_id => 1)
-$temperatures.add Tuple.new(10, :sid => 2, :temp => 30, :room_id => 2)
+$temperatures.add Tuple.new(Clock.instance.now, :sid => 1, :temp => 20, :room_id => 1)
+Clock.instance.advance(5)
+$temperatures.add Tuple.new(Clock.instance.now, :sid => 1, :temp => 30, :room_id => 1)
+Clock.instance.advance(5)
+$temperatures.add Tuple.new(Clock.instance.now, :sid => 2, :temp => 40, :room_id => 1)
 
+
+pp "----------"
 pp Room.all[:room_id => 1].sensors
 
-pp Sensor.all #.values.select { |s| s.room.room_id == 1 }
+#pp Sensor.all #.values.select { |s| s.room.room_id == 1 }

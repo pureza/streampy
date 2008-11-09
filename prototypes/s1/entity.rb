@@ -6,7 +6,7 @@ class Entity
     def self.inherited(child)
         child.class_eval %q{
             @@primary_key = []
-            @@all = ObjectMap.new(self)
+            @@all = ObjectMap.new { |key| self.new(key) }
 
             def self.primary_key
                 @@primary_key
@@ -23,13 +23,29 @@ class Entity
 
         def initialize(keys)
             keys.each_pair { |k, v| self.instance_variable_set("@#{k}", v) }
+            @stream_attributes = []
+            @subscribers = []
         end
 
 
-        def id
-            @@primary_key.map { |k| self.send(k) }
+        def key
+            Hash[*self.class.primary_key.zip(self.class.primary_key.map { |k| self.send(k) }).flatten]
+        end
+
+        def add_stream_attribute(stream)
+            @stream_attributes << stream
+            self.instance_variable_get("@#{stream}").subscribe(self)
+        end
+
+        def add(tuple)
+            @subscribers.each { |s| s.on_modified(self) }
+        end
+
+        def subscribe(listener)
+            @subscribers << listener
         end
     end
+
 
     def self.derive_from(stream, options)
         self.primary_key = options[:unique_id]
@@ -45,7 +61,10 @@ class Entity
                 end
 
                 constants.each { |c| self.instance_variable_set("@#{c}", keys[c]) }
-                streams.each { |s| self.instance_variable_set("@#{s}", @values.map { |t| { s => t[s] } }) }
+                streams.each do |s|
+                    self.instance_variable_set("@#{s}", @values.map { |t| { s => t[s] } })
+                    add_stream_attribute(s)
+                end
             end
             stream.schema.fields.each { |f| attr_reader f }
         end
@@ -53,20 +72,23 @@ class Entity
         stream.subscribe(self)
     end
 
+
     def self.belongs_to(entity)
         klass = eval(entity.to_s.capitalize)
 
         self.class_eval do
             attr_reader entity
-            alias_method :old_init, :initialize
+            alias_method :old_init1, :initialize
             define_method :initialize do |keys|
-                old_init(keys)
+                old_init1(keys)
                 entity_id = "#{entity}_id".to_sym
                 entity_id_stream = self.send(entity_id)
                 self.instance_variable_set("@#{entity}", entity_id_stream.map { |t| { entity => klass.all[{entity_id => t.send(entity_id) }] } })
+                add_stream_attribute(entity)
             end
         end
     end
+
 
     def self.has_many(entity)
         klass = eval(ActiveSupport::Inflector.singularize(entity).capitalize)
@@ -74,16 +96,25 @@ class Entity
 
         self.class_eval do
             attr_reader entity
-            alias_method :old_init, :initialize
+            alias_method :old_init2, :initialize
             define_method :initialize do |keys|
-                old_init(keys)
+                old_init2(keys)
                 self.instance_variable_set("@#{entity}", klass.all.having { |v| v.send(other_attr).last[other_attr.to_sym] == self })
             end
         end
     end
 
-    def self.defstream(name)
+    def self.defstream(name, &block)
+        self.class_eval do
+            attr_reader name
+            alias_method :old_init3, :initialize
+            define_method :initialize do |keys|
+                old_init3(keys)
+                self.instance_variable_set("@#{name}", block.call(self))
+            end
+        end
     end
+
 
     def self.add(tuple)
         key = Hash[*self.primary_key.zip(self.primary_key.map { |e| tuple[e]}).flatten]
