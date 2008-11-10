@@ -12,6 +12,7 @@ class Stream
     def initialize(parent = nil, &block)
         @parent = parent
         @children = []
+        @update_actions = []
         @data = []
         @parent.subscribe self if @parent
         @schema = Schema.new
@@ -27,12 +28,19 @@ class Stream
     def add(tuple)
         data << tuple
         @children.dup.each { |child| child.add(tuple) }
+        @update_actions.each { |action| action.call }
     end
 
 
     def remove(tuple)
         data.shift
         @children.dup.each { |child| child.remove(tuple) }
+        @update_actions.each { |action| action.call }
+    end
+
+
+    def on_update(&block)
+        @update_actions << block
     end
 
 

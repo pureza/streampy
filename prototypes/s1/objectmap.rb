@@ -5,6 +5,7 @@ class ObjectMap
 
     def initialize(&init_block)
         @children = []
+        @update_actions = []
         @init_block = init_block
         @objects = {}
     end
@@ -21,17 +22,24 @@ class ObjectMap
     def add(key, object)
         @objects[key] = object
         @children.each { |c| c.add(key, object) }
+        @update_actions.each { |action| action.call }
     end
 
 
     def delete(object)
         @objects.delete(object.key)
         @children.each { |c| c.delete(object) }
+        @update_actions.each { |action| action.call }
     end
 
 
     def subscribe(child)
         @children << child
+    end
+
+
+    def on_update(&block)
+        @update_actions << block
     end
 
 
@@ -66,7 +74,7 @@ class HavingObjectMap < ObjectMap
     end
 
 
-    def on_modified(object)
+    def object_updated(object)
         if @block.call(object)
             add(object.key, object, false)
         else
@@ -76,13 +84,11 @@ class HavingObjectMap < ObjectMap
 
 
     def avg(field)
-        map = self
-        Class.new(Stream) do
-            define_method :add do |key, object|
-                objects = map.objects.values
-                avg = objects.map { |o| o.send(field).last[field] }.inject(0) { |m, n| m += n } / objects.length
-                super(Tuple.new(Clock.instance.now, field => avg))
-            end
-        end.new(self)
+        if @objects.empty?
+            nil
+        else
+            pp @objects
+            @objects.values.map { |o| o.send(field).cur() }.inject(0) { |m, n| m += n } / @objects.length
+        end
     end
 end

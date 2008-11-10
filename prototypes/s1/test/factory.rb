@@ -24,7 +24,7 @@ class Room < Entity
     has_many :sensors
 #    has_many :products
 
-    defstream :temperature do |room|
+    defstream :temperature, [:sensors] do |room|
         room.sensors.avg(:temp)
     end
 end
@@ -45,7 +45,7 @@ class Product < Entity
 #        | when enter(this.pid, rfid) -> rfid2room(rfid)
 #        | when leave(this.pid, _) -> null
 
-#    defstream :temperature do
+    #defstream :temperature do
     # o defstream cria uma stream que subscreve a stream @room.temperature
  #       @room.temperature
 #    end
@@ -63,6 +63,6 @@ $temperatures.add Tuple.new(Clock.instance.now, :sid => 2, :temp => 40, :room_id
 
 
 pp "----------"
-pp Room.all[:room_id => 1].sensors
+pp Room.all[:room_id => 1]
 
 #pp Sensor.all #.values.select { |s| s.room.room_id == 1 }
