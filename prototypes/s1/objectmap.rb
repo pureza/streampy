@@ -87,7 +87,6 @@ class HavingObjectMap < ObjectMap
         if @objects.empty?
             nil
         else
-            pp @objects
             @objects.values.map { |o| o.send(field).cur() }.inject(0) { |m, n| m += n } / @objects.length
         end
     end

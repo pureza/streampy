@@ -9,6 +9,7 @@ class Entity
             @@primary_key = []
             @@all = ObjectMap.new { |key| self.new(key) }
             @@attributes = []
+            @@has_many_assocs = []
 
             def self.primary_key
                 @@primary_key
@@ -25,6 +26,10 @@ class Entity
             def self.attributes
                 @@attributes
             end
+
+            def self.has_many_assocs
+                @@has_many_assocs
+            end
         }
 
 
@@ -32,14 +37,26 @@ class Entity
             keys.each_pair { |k, v| self.instance_variable_set("@#{k}", v) }
             @subscribers = []
 
+            # Initialize has_many relation attributes
+            self.class.has_many_assocs.each do |name|
+                klass = eval(ActiveSupport::Inflector.singularize(name).capitalize)
+                other_attr = self.class.to_s.downcase
+                self.instance_variable_set("@#{name}", klass.all.having { |v| v.send(other_attr).cur() == self })
+            end
+
+
             # Initialize all the attributes for this instance
             self.class.attributes.each do |attr|
-                p attr
-                attribute = Attribute.new(self, attr[:dependencies], attr[:block])
+                dependencies = attr[:dependencies].map { |d| d.to_s.split(".").inject(self) { |m, n| m = m.send(n) } }
+                attribute = Attribute.new(self, dependencies, &attr[:block])
                 self.instance_variable_set("@#{attr[:name]}", attribute)
                 attribute.on_update do
                     @subscribers.each { |s| s.object_updated(self) }
                 end
+            end
+
+            Clock.instance.on_advance do
+                @subscribers.each { |s| s.object_updated(self) }
             end
         end
 
@@ -60,26 +77,25 @@ class Entity
         self.primary_key = [self.primary_key] if not self.primary_key.is_a? Enumerable
 
         constants, streams = stream.schema.fields.partition { |k| self.primary_key.include? k }
-        class_eval do
-            define_method :initialize do |keys|
-                @values = stream.filter do |t|
-                    pk = self.class.primary_key
-                    pk.map { |k| t.send(k) } == pk.map { |k| keys[k] }
-                end
 
-                super(keys)
+        define_method :initialize do |keys|
+            @values = stream.filter do |t|
+                pk = self.class.primary_key
+                pk.map { |k| t.send(k) } == pk.map { |k| keys[k] }
             end
 
-            # Define the attributes for this class
-            streams.each do |s|
-                defstream s, [:values] do |this|
-                    this.values.last[s]
-                end
-            end
-
-            stream.schema.fields.each { |f| attr_reader f }
-            attr_reader :values
+            super(keys)
         end
+
+        # Define the attributes for this class
+        streams.each do |s|
+            attribute s, [:values] do |this|
+                this.values.last[s]
+            end
+        end
+
+        stream.schema.fields.each { |f| attr_reader f }
+        attr_reader :values
 
         stream.subscribe(self)
     end
@@ -89,10 +105,8 @@ class Entity
         klass = eval(entity.to_s.capitalize)
         entity_id = "#{entity}_id".to_sym
 
-        self.class_eval do
-            defstream entity, [entity_id] do |this|
-                klass.all[{ entity_id => this.send(entity_id).cur() }]
-            end
+        attribute entity, [entity_id] do |this|
+            klass.all[{ entity_id => this.send(entity_id).cur() }]
         end
     end
 
@@ -101,23 +115,14 @@ class Entity
         klass = eval(ActiveSupport::Inflector.singularize(entity).capitalize)
         other_attr = self.to_s.downcase
 
-        self.class_eval do
-            attr_reader entity
-            alias_method :old_init2, :initialize
-            define_method :initialize do |keys|
-                p "ola"
-                self.instance_variable_set("@#{entity}", klass.all.having { |v| v.send(other_attr).cur() == self })
-                old_init2(keys)
-            end
-        end
+        self.has_many_assocs << entity
+        attr_reader entity
     end
 
 
-    def self.defstream(name, dependencies, &block)
-        self.class_eval do
-            self.attributes << { :name => name, :dependencies => dependencies, :block => block }
-            attr_reader name
-        end
+    def self.attribute(name, dependencies, &block)
+        self.attributes << { :name => name, :dependencies => dependencies, :block => block }
+        attr_reader name
     end
 
 
@@ -131,10 +136,7 @@ class Entity
         @@all
     end
 
-
-    def to_s
-        attributes = self.methods - Entity.methods
-        str = attributes.map { |a| "  #{a} : #{self.send(a)}" }.join("\n")
-        str
+    def pretty_print_instance_variables
+        super - ["@subscribers", "@values"]
     end
 end

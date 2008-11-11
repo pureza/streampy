@@ -19,12 +19,14 @@ SimClock.new
 class Sensor < Entity
 end
 
+class Product < Entity
+end
 
 class Room < Entity
     has_many :sensors
-#    has_many :products
+    has_many :products
 
-    defstream :temperature, [:sensors] do |room|
+    attribute :temperature, [:sensors] do |room|
         room.sensors.avg(:temp)
     end
 end
@@ -36,33 +38,42 @@ class Sensor < Entity
 end
 
 
-
-
 class Product < Entity
     derive_from $enter, :unique_id => :pid
+    belongs_to :room
 
-#    Room room =
-#        | when enter(this.pid, rfid) -> rfid2room(rfid)
-#        | when leave(this.pid, _) -> null
-
-    #defstream :temperature do
-    # o defstream cria uma stream que subscreve a stream @room.temperature
- #       @room.temperature
-#    end
-
-#    stop when leave(p.pid, rfid) where rfid2room(rfid) = room3
+    attribute :temperature, [:room, "room.temperature"] do |product|
+        product.room.temperature
+    end
 end
+
+
+result = Product.all.having { |p| (p.temperature > 20).for_more_than?(50) }
 
 
 
 $temperatures.add Tuple.new(Clock.instance.now, :sid => 1, :temp => 20, :room_id => 1)
 Clock.instance.advance(5)
+$enter.add Tuple.new(Clock.instance.now, :pid => 1001, :room_id => 1)
+
+#blah = Product.all[:pid => 1001].temperature > 30
+
+Clock.instance.advance(5)
 $temperatures.add Tuple.new(Clock.instance.now, :sid => 1, :temp => 30, :room_id => 1)
 Clock.instance.advance(5)
-$temperatures.add Tuple.new(Clock.instance.now, :sid => 2, :temp => 40, :room_id => 1)
+$temperatures.add Tuple.new(Clock.instance.now, :sid => 2, :temp => 40, :room_id => 2)
+Clock.instance.advance(5)
+$enter.add Tuple.new(Clock.instance.now, :pid => 1001, :room_id => 2)
+Clock.instance.advance(60)
+#pp blah
 
+pp result
 
-pp "----------"
-pp Room.all[:room_id => 1]
+#pp "----------"
+#pp Room.all[:room_id => 1]
+
 
 #pp Sensor.all #.values.select { |s| s.room.room_id == 1 }
+
+
+
