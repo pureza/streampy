@@ -43,9 +43,10 @@ class Attribute
         if new_value != cur()
             @history.last[0] = ( interval(@history.last).begin .. now ) unless @history.empty?
             @history << [( now .. -1 ), new_value]
+            @update_actions.each { |action| action.call(new_value) }
         end
 
-        @update_actions.each { |action| action.call(new_value) }
+
     end
 
 
@@ -107,8 +108,8 @@ class BooleanAttribute < Attribute
     end
 
 
-    def during?(op, time, options)
-        Attribute.new("<during?>", self, [self]) do |bool_attr|
+    def during?(op, time, options={})
+        attr = Attribute.new("<during?>", self, [self]) do |bool_attr|
             last = bool_attr.history.last
             if value(last)
                 true_time = Clock.instance.now - interval(last).begin 
@@ -125,5 +126,8 @@ class BooleanAttribute < Attribute
                 true_time.send(op, time)
             end
         end
+        # The during? attribute needs to be reevaluated as time advances.
+        Clock.instance.on_advance { attr.reevaluate }
+        attr
     end
 end

@@ -61,10 +61,6 @@ class Entity
                     @subscribers.each { |s| s.object_updated(self) }
                 end
             end
-
-            Clock.instance.on_advance do
-                @subscribers.each { |s| s.object_updated(self) }
-            end
         end
 
 

@@ -48,7 +48,7 @@ class Product < Entity
 end
 
 
-result = Product.all.having { |p| (p.temperature >= 20).during?(:>=, 10, :consecutive => false) }
+result = Product.all.having { |p| (p.temperature >= 20).during?(:>=, 10) }
 
 
 $temperatures.add Tuple.new(Clock.instance.now, :sensor_id => 1, :temp => 20, :room_id => 1)
