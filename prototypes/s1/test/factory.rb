@@ -2,15 +2,15 @@ require 'entity.rb'
 require 'pp.rb'
 
 $temperatures = Stream.new do |schema|
-    schema.fields :sid, :temp, :room_id
+    schema.fields :sensor_id, :temp, :room_id
 end
 
 $enter = Stream.new do |schema|
-    schema.fields :pid, :room_id
+    schema.fields :product_id, :room_id
 end
 
 $leave = Stream.new do |schema|
-    schema.fields :pid, :room_id
+    schema.fields :product_id, :room_id
 end
 
 SimClock.new
@@ -33,13 +33,13 @@ end
 
 
 class Sensor < Entity
-    derive_from $temperatures, :unique_id => :sid
+    derive_from $temperatures, :unique_id => :sensor_id
     belongs_to :room
 end
 
 
 class Product < Entity
-    derive_from $enter, :unique_id => :pid
+    derive_from $enter, :unique_id => :product_id
     belongs_to :room
 
     attribute :temperature, [:room, "room.temperature"] do |product|
@@ -48,32 +48,26 @@ class Product < Entity
 end
 
 
-result = Product.all.having { |p| (p.temperature > 20).for_more_than?(50) }
+result = Product.all.having { |p| (p.temperature >= 20).during?(:>=, 10, :consecutive => false) }
 
 
-
-$temperatures.add Tuple.new(Clock.instance.now, :sid => 1, :temp => 20, :room_id => 1)
+$temperatures.add Tuple.new(Clock.instance.now, :sensor_id => 1, :temp => 20, :room_id => 1)
 Clock.instance.advance(5)
-$enter.add Tuple.new(Clock.instance.now, :pid => 1001, :room_id => 1)
 
-#blah = Product.all[:pid => 1001].temperature > 30
+$enter.add Tuple.new(Clock.instance.now, :product_id => 1001, :room_id => 1)
+Clock.instance.advance(5)
 
+$temperatures.add Tuple.new(Clock.instance.now, :sensor_id => 1, :temp => 30, :room_id => 1)
 Clock.instance.advance(5)
-$temperatures.add Tuple.new(Clock.instance.now, :sid => 1, :temp => 30, :room_id => 1)
+
+$temperatures.add Tuple.new(Clock.instance.now, :sensor_id => 2, :temp => 40, :room_id => 2)
 Clock.instance.advance(5)
-$temperatures.add Tuple.new(Clock.instance.now, :sid => 2, :temp => 40, :room_id => 2)
-Clock.instance.advance(5)
-$enter.add Tuple.new(Clock.instance.now, :pid => 1001, :room_id => 2)
-Clock.instance.advance(60)
-#pp blah
+
+$enter.add Tuple.new(Clock.instance.now, :product_id => 1001, :room_id => 2)
+#Clock.instance.advance(60)
+
 
 pp result
-
-#pp "----------"
-#pp Room.all[:room_id => 1]
-
-
-#pp Sensor.all #.values.select { |s| s.room.room_id == 1 }
 
 
 

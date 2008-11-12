@@ -25,6 +25,7 @@ class Stream
         @data.each { |t| stream.add(t) }
     end
 
+
     def add(tuple)
         data << tuple
         @children.dup.each { |child| child.add(tuple) }

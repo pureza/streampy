@@ -8,14 +8,25 @@ def value(pair)
 end
 
 
+# An Attribute is similar to a regular variable with one major difference:
+# attributes can remember its past values.
+#
+# Also, attributes know their dependencies and recompute themselves
+# automatically.
+#
+# The block that an attribute receives in the constructor is invoked to
+# calculate the new value, on demand.
 class Attribute
     attr_reader :history
 
-    def initialize(object, dependencies, &block)
+    def initialize(name, object, dependencies, &block)
+        @name = name
         @object = object
         @history = []
         @update_actions = []
         @block = block
+
+        # Recompute the value when any dependency changes.
         dependencies.each do |d|
             d.on_update { self.reevaluate }
         end
@@ -28,11 +39,13 @@ class Attribute
         new_value = @block.call(@object)
         new_value = new_value.cur if new_value.is_a? Attribute
 
+        # Add the new value to history, if it is different that the current one.
         if new_value != cur()
             @history.last[0] = ( interval(@history.last).begin .. now ) unless @history.empty?
             @history << [( now .. -1 ), new_value]
-            @update_actions.each { |action| action.call(new_value) }
         end
+
+        @update_actions.each { |action| action.call(new_value) }
     end
 
 
@@ -50,13 +63,18 @@ class Attribute
     end
 
 
+    # Dispatch unknown methods to the current object.
+    # Allows, for instance, defining product.temperature as
+    # product.room.temperature, with product.room being an attribute itself.
     def method_missing(name, *args)
          cur.send(name, *args)
     end
 
 
-    def >(other)
-        BooleanAttribute.new(self, other)
+    [:>, :>=, :==, "!=", :<=, :<].each do |op|
+        define_method op do |other|
+            BooleanAttribute.new(self, other, op)
+        end
     end
 
 
@@ -67,21 +85,45 @@ end
 
 
 class BooleanAttribute < Attribute
-    def initialize(parent, other)
-        @history = parent.history.map { |interval, value| [interval, value > other] }
+
+    def initialize(parent, other, operator)
+        super("<bool>", parent, [parent]) do |ignore|
+            parent.cur.send(operator, other)
+        end
     end
+
 
     def any?
-        @history.any? { |interval, value| value }
+        Attribute.new("<any?>", self, [self]) do |bool_attr|
+            bool_attr.history.any? { |i, v| v }
+        end
     end
+
 
     def always?
-        @history.all? { |interval, value| value }
+        Attribute.new("<always?>", self, [self]) do |bool_attr|
+            bool_attr.history.all? { |i, v| v }
+        end
     end
 
-    def for_more_than?(time)
-        true_time = @history[0..-2].select { |i, v| v }.map { |i, v| i }.inject(0) { |acc, i| acc += (i.count - 1) }
-        true_time += Clock.instance.now - @history.last[0].begin
-        true_time > time
+
+    def during?(op, time, options)
+        Attribute.new("<during?>", self, [self]) do |bool_attr|
+            last = bool_attr.history.last
+            if value(last)
+                true_time = Clock.instance.now - interval(last).begin 
+            else
+                true_time = 0
+            end
+
+            if (options[:consecutive])
+                p bool_attr.history
+                p "consecutive not implemented"
+            else
+                intervals = bool_attr.history[0..-2].select { |i, v| v }.map { |i, v| i }
+                true_time += intervals.inject(0) { |acc, i| acc += (i.count - 1) }
+                true_time.send(op, time)
+            end
+        end
     end
 end
