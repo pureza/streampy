@@ -1,0 +1,147 @@
+\documentclass[twoside]{report}
+
+\addtolength{\parskip}{\baselineskip}
+\usepackage{alltt}
+
+\begin{document}
+\title{StreamPy: A new language for Event Stream Processing}
+\author{Lu\'{\i}s Pureza}
+
+\maketitle
+
+\tableofcontents
+
+\chapter{Introduction}
+
+Technology developments and its widespread adoption over the last decades have significantly increased the demand for information processing systems. Not only do we now need to process larger amounts of information traveling around the globe, we must do it faster as well. For some companies, obtaining results a few milliseconds earlier may be a significant advantage over the competition. For others, however, reacting immediately is of critical importance, as it happens, for example, in the case of security breaches or nuclear power plant malfunctions.
+
+One particular class of applications, now referred to as Event Stream Processing (ESP) systems, has been the subject of much attention over the last few years due to the technical challenges it presents. ESP systems are characterized by dealing with a possible infinite amount of data constantly flowing in to be processed as fast as possible to continuously produce new and updated results that may themselves be used as knowledge to justify new decisions. As it happens, many applications fit naturally in this model: financial analysis, health-care monitoring, network intrusion detection, personnel and product tracking through RFID devices, business monitoring and many more.
+
+Due to the inability of current technology to satisfy the increasing demands from all these markets, computer scientists developed the first Data Stream Management Systems (DSMS). Coming mostly from the database community, these researchers intended to build a generic engine that abstracted away all the low level details of managing streams of data in high demanding scenarios, while retaining much of the querying capabilities of regular DBMSs, so that they could be easily adapted to a multitude of domains. It's no surprise then, that the first DSMSs inherited a SQL-like language with some new extensions. Aurora, with its boxes and arrows graphical queries was the exception, but the operators it provided still took inspiration from SQL. Later, when the first DSMS hit the market, some emphasis was put on end-user interaction and some systems began to support trigger-like rules that executed programmed actions when some conditions became true. At the same time, DSMS began to incorporate features from Complex Event Processing (CEP) systems, that allowed the user to detect complex patterns and correlations among the input streams of data. This required adding new constructs into the query language. Recently, some companies unhappy with declarative, SQL-like languages, began to support procedural languages, more familiar to C and Java programmers. Nowadays, each product includes its own flavor of a SQL-like language with its own unique and esoteric extensions, or a rule-based language, or a procedural language, or any combination of these three. And all have different semantics which disagree in fundamental ways. Besides the obvious issue created by the lack of a standard, all this variety demonstrates that DSMS applications have their own needs and a satisfactory end-user query language for them is yet to be found.
+
+The purpose of this internship is to design a new query language for ESP systems. This new language combines powerful constructs, with some innovative features that, we hope, should be a step in the right direction to create a language that developers find rich, expressible and coherent. The rest of this thesis is organized as follows:
+
+\begin{itemize}
+\item In chapter \ref{state-of-the-art}, we will expand on the previous paragraph to detail the state-of-the-art and to show that art is indeed very subjective;
+\item The goal of chapter \ref{problem-statement} is to show, through real-world examples, that even though some common queries are easily expressible in currently available systems, they all fail to scale when it comes to slightly more complex -- yet perfectly reasonable, scenarios. We will conclude this chapter by analyzing why all these systems fail and what fundamental constructs they're lacking;
+\item Our proposal will then be introduced in chapter \ref{streampy}, first through the analysis of a few examples followed by a thorough discussion of all its features;
+\item Further work and planning for the next semester will be the topic of chapter \ref{future-work};
+\item Finally, chapter \ref{conclusion} concludes this document.
+\end{itemize}
+
+By the end of this document, it should be clear that not only current technology will fail short of fulfilling the increasing needs of costumers, but also that our proposal contains some interesting characteristics that deserve further attention.
+
+\chapter{State-of-the-art}\label{state-of-the-art}
+
+This section will analyze query languages present in all major DSMSs - Coral8, StreamBase, Oracle CEP, Progress Apama and Aleri. Esper, an open-source engine will also be mentioned. Most, if not all, of these products are marketed as CEP engines but they're in fact DSMSs that include some CEP features pioneered by Stanford's Rapide project, which will also be discussed. Then, two alternative methods of creating queries visually, one through a boxes and arrows interface and the other through spreadsheet manipulation will also be discussed. Despite not involving programming languages, it's important to study these methods because, after all, they're trying to address the same problem. Finally, two languages that inspired this work. First comes LINQ -- a query language that integrates with .NET and brings the expressivity of SQL to procedural languages like C\#. Second, Yahoo's Pig, a language designed to create map-reduce jobs whose procedural nature makes it popular among developers.
+
+\section{SQL-based languages from Coral8, StreamBase and Esper}
+
+The most popular way of writing queries is through a declarative, SQL-based language. As explained in the introduction, this comes as a result of all the effort the database community has put into creating the first ESP engines. Currently there is no standard for a query language designed specifically for these applications which means each vendor has their own. Fortunately, they're all very similar. The simplest things can be done exactly as in regular SQL:
+
+\begin{verbatim}
+INSERT INTO PriceMicrosoft
+SELECT *
+FROM StockTrades
+WHERE symbol = 'MSFT'
+\end{verbatim}
+
+This query looks for tuples where the field \verb=symbol= equals ``MSFT'' arriving at the stream \verb=StockTrades= and adds them to the \verb=PriceMicrosoft= stream. It's just a simple filter.
+
+More complicated expressions involving aggregation still remain quite similar to SQL:
+
+\begin{verbatim}
+INSERT INTO AvgPrices
+SELECT symbol, avg(price)
+FROM StockTrades
+GROUP BY symbol
+HAVING avg(price) > 100
+\end{verbatim}
+
+The previous query will calculate the stock prices' average per company and will output the result to the \verb=AvgPrices= stream, but only for companies whose average price is bigger than 100 units.
+
+One feature that assumes particular importance in the context of ESP is the concept of window. Similar to SQL OLAP windows, ESP windows allow developers to consider only part of a stream and make computations over it. In particular, it becomes possible, for example, to calculate the average of Microsoft's stock prices over the last 5 minutes, or the most expensive order among the last million.
+
+For example, the following query is continuously calculating stock prices' average over the last 3 tuples, filtering out those not belonging to Microsoft:
+
+\begin{verbatim}
+INSERT INTO AvgPriceMicrosoft
+SELECT avg(price)
+FROM StockTrades KEEP 3 ROWS
+WHERE symbol = 'MSFT'
+\end{verbatim}
+
+It's possible to costumize the retain policy. For example, sometimes it's useful to keep tuples based on time, as in the following example where we retain stock updates from the last 3 hours:
+
+\begin{verbatim}
+INSERT INTO AvgPriceMicrosoft
+SELECT avg(price)
+FROM StockTrades KEEP 3 HOURS
+WHERE symbol = 'MSFT'
+\end{verbatim}
+
+Another variation involves keeping some number of tuples chosen based on their value. For example, to keep the 10 largest updates based on their price, one could write the following query:
+
+\begin{verbatim}
+INSERT INTO AvgPriceMicrosoft
+SELECT avg(price)
+FROM StockTrades KEEP 10 LARGEST DISTINCT BY price
+WHERE symbol = 'MSFT'
+\end{verbatim}
+
+Finally, the developer could just decide to retain everything with \verb=KEEP ALL=. Note that, by default, nothing is kept: when a tuple arrives, it is processed and then discarded, unless the system thinks that it may be necessary for future calculations.
+
+All the windows defined in the previous examples are \emph{sliding} windows. Sliding, in this context, refers to how and when the elements in the window expire. In these kinds of windows, old tuples are removed from the window as they become too old or new tuples arrive. An alternative is \emph{jumping} windows, where tuples are appended to the window and then, when the oldest element was supposed to be removed, all of them expire at the same time and the window becomes empty and the cycle begins all over again. This way, it's possible to find out the largest price attained by Microsoft stocks over the last hour, the hour before and so on. The following query illustrates this use-case:
+
+\begin{verbatim}
+INSERT INTO AvgPriceMicrosoft
+SELECT avg(price)
+FROM StockTrades KEEP EVERY 1 HOUR
+WHERE symbol = ’MSFT’
+\end{verbatim}
+
+Sometimes the developer may desire to keep not only the 10 latest tuples overall, but the 10 latest tuples per group. The following example keeps the largest price over the latest 10 tuples of each company:
+
+\begin{verbatim}
+INSERT INTO MaxPrices
+SELECT max(price)
+FROM StockTrades KEEP 10 ROWS
+GROUP BY symbol
+\end{verbatim}
+
+All the examples in this sections were written in Coral8 Continuous Computation Language (CCL). Nonetheless, all the other systems in this section provide similar features albeit with different syntax.
+
+One last feature that deserves mentioning is Esper's support for the \emph{RSTREAM} operator, that processes tuples not when they arrive at the system, but when they expire from some window. For example, the following example will output IBM tuples 10 seconds after they arrive (note that win:time() creates a sliding, time-based window):
+
+\begin{verbatim}
+SELECT RSTREAM *
+FROM StockTickEvent(symbol=’IBM’).win:time(10)
+\end{verbatim}
+
+
+
+\section{Building queries visually with StreamBase's EventFlow}
+
+\section{Oracle rules}
+
+\section{Apama's MonitorScript}
+
+\section{Aleri's SPLASH}
+
+\section{The Rapide way: event hierarchies}
+
+\section{Manipulating spreadsheets instead of code}
+
+\section{Microsoft's LINQ}
+
+\section{Yahoo's Pig}
+
+\chapter{Problem statement}\label{problem-statement}
+
+
+\chapter{The StreamPy query language}\label{streampy}
+
+\chapter{Future work}\label{future-work}
+
+\chapter{Conclusion}\label{conclusion}
+\end{document}
