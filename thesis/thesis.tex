@@ -17,7 +17,7 @@ Technology developments and its widespread adoption over the last decades have s
 
 One particular class of applications, now referred to as Event Stream Processing (ESP) systems, has been the subject of much attention over the last few years due to the technical challenges it presents. ESP systems are characterized by dealing with a possible infinite amount of data constantly flowing in to be processed as fast as possible to continuously produce new and updated results that may themselves be used as knowledge to justify new decisions. As it happens, many applications fit naturally in this model: financial analysis, health-care monitoring, network intrusion detection, personnel and product tracking through RFID devices, business monitoring and many more.
 
-Due to the inability of current technology to satisfy the increasing demands from all these markets, computer scientists developed the first Data Stream Management Systems (DSMS). Coming mostly from the database community, these researchers intended to build a generic engine that abstracted away all the low level details of managing streams of data in high demanding scenarios, while retaining much of the querying capabilities of regular DBMSs, so that they could be easily adapted to a multitude of domains. It's no surprise then, that the first DSMSs inherited a SQL-like language with some new extensions. Aurora, with its boxes and arrows graphical queries was the exception, but the operators it provided still took inspiration from SQL. Later, when the first DSMS hit the market, some emphasis was put on end-user interaction and some systems began to support trigger-like rules that executed programmed actions when some conditions became true. At the same time, DSMS began to incorporate features from Complex Event Processing (CEP) systems, that allowed the user to detect complex patterns and correlations among the input streams of data. This required adding new constructs into the query language. Recently, some companies unhappy with declarative, SQL-like languages, began to support procedural languages, more familiar to C and Java programmers. Nowadays, each product includes its own flavor of a SQL-like language with its own unique and esoteric extensions, or a rule-based language, or a procedural language, or any combination of these three. And all have different semantics which disagree in fundamental ways. Besides the obvious issue created by the lack of a standard, all this variety demonstrates that DSMS applications have their own needs and a satisfactory end-user query language for them is yet to be found.
+Due to the inability of current technology to satisfy the increasing demands from all these markets, computer scientists developed the first Data Stream Management Systems (DSMS). Coming mostly from the database community, these researchers intended to build a generic engine that abstracted away all the low level details of managing streams of data in high demanding scenarios, while retaining much of the querying capabilities of regular DBMSs, so that they could be easily adapted to a multitude of domains. It's no surprise then, that the first DSMSs inherited a SQL dialect with some new extensions. Aurora, with its boxes and arrows graphical queries was the exception, but the operators it provided still took inspiration from SQL. Later, when the first DSMS hit the market, some emphasis was put on end-user interaction and some systems began to support trigger-like rules that executed programmed actions when some conditions became true. At the same time, DSMS began to incorporate features from Complex Event Processing (CEP) systems, that allowed the user to detect complex patterns and correlations among the input streams of data. This required adding new constructs into the query language. Recently, some companies unhappy with declarative, SQL-like languages, began to support procedural languages, more familiar to C and Java programmers. Nowadays, each product includes its own flavor of a SQL-like language with its own unique and esoteric extensions, or a rule-based language, or a procedural language, or any combination of these three. And all have different semantics which disagree in fundamental ways. Besides the obvious issue created by the lack of a standard, all this variety demonstrates that DSMS applications have their own needs and a satisfactory end-user query language for them is yet to be found.
 
 The purpose of this internship is to design a new query language for ESP systems. This new language combines powerful constructs, with some innovative features that, we hope, should be a step in the right direction to create a language that developers find rich, expressible and coherent. The rest of this thesis is organized as follows:
 
@@ -118,9 +118,27 @@ SELECT RSTREAM *
 FROM StockTickEvent(symbol=’IBM’).win:time(10)
 \end{verbatim}
 
-
+\emph{TODO: Talk about talks about a standard language}
 
 \section{Building queries visually with StreamBase's EventFlow}
+
+StreamBase employs an alternative, more user-friendly, way of building queries. Instead of writing code, the user can design queries visually, by arranging boxes in a canvas and connecting them with arrows. Boxes represent operators that receive data coming from other operators or directly from the input streams, process the data according to its semantics and send the results to be handled by other operators, or to the world as the output of the whole operation.
+
+\emph{TODO Show picture}
+
+Some of the most important operators are:
+
+\begin{description}
+\item [Aggregate] Computes aggregate operations over windows of tuples. Supports the option to partition tuples into sets and them apply the aggregation over each individual set, much like a SQL GROUP BY statement;
+\item [Filter] Discards some tuples from the input stream based on a predicate. Performs the same function as a SQL WHERE statement;
+\item [Gather] Receives tuples from two or more streams and concatenates those with the same key. The resulting tuple values may be direct copies from the original tuples or the result of applying some expression to these;
+\item [Join] Similar to SQL joins, this operator pairs tuples coming from two streams that match a given condition and outputs a new tuple whose fields may be specified by the user. In general, joining two infinite streams may require keeping all tuples from both streams in memory. To avoid problems later on, the user must specify timing constraints regarding matching tuples saying, for example, that they must arrive withing 60 seconds of each other;
+\item [Map] Similar to the first part of a SELECT statement, this operator transforms a tuple -- possibly discarding or adding new fields along the way, and sends it downstream;
+\item [Pattern] Instructs the engine to look for complex events. This is a feature borrowed from Complex Event Processing and will be discussed below;
+\item [Union] Acts as a multiplexer, connecting many input streams to a single output stream, to where all tuples are sent. Similar to the SQL UNION statement.
+\end{description}
+
+It's clear that most of these operators have SQL conterparts. StreamBase acknowledges this and provides a small utility to convert EventFlow diagrams to StreamSQL queries, thus proving that everything that can be done with the former can be done with the later. Or almost everything. In fact, this converter has a few limitations outlined in [ref], but these don't really harm the veracity of the previous statement. It's then mostly a matter of taste -- not power, to choose between StreamSQL and EventFlow.
 
 \section{Oracle rules}
 
@@ -138,6 +156,14 @@ FROM StockTickEvent(symbol=’IBM’).win:time(10)
 
 \chapter{Problem statement}\label{problem-statement}
 
+Talk about:
+\begin{itemize}
+\item The declarative nature of SQL queries can be very expressive for simple things, but remain totally opaque for more complex scenarios;
+\item So, complex queries must be partitioned into smaller ones. To connect these new queries, temporary streams are created. But streams are not suitable replacements for ALL of the following: structures/classes, dictionaries, sets, linked lists or even arrays!
+\item In many scenarios, we use SQL to rebuild the state of the system. Wouldn't it be nicer to maintain the state explicitly and update it incrementally, just like in procedural programming languages?
+\item SQL queries don't compose;
+\item If we've been building Java applications to process data while demoting SQL as just a way to obtain it for ages, why resorting now to a SQL-only solution?
+\end{itemize}
 
 \chapter{The StreamPy query language}\label{streampy}
 
