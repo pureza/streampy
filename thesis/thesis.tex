@@ -1,6 +1,6 @@
-\documentclass[twoside]{report}
+\documentclass{report}
 
-\addtolength{\parskip}{\baselineskip}
+
 \usepackage{alltt}
 
 \begin{document}
@@ -11,6 +11,7 @@
 
 \tableofcontents
 
+\addtolength{\parskip}{\baselineskip}
 \chapter{Introduction}
 
 Technology developments and its widespread adoption over the last decades have significantly increased the demand for information processing systems. Not only do we now need to process larger amounts of information traveling around the globe, we must do it faster as well. For some companies, obtaining results a few milliseconds earlier may be a significant advantage over the competition. For others, however, reacting immediately is of critical importance, as it happens, for example, in the case of security breaches or nuclear power plant malfunctions.
@@ -48,30 +49,7 @@ WHERE symbol = 'MSFT'
 
 This query looks for tuples where the field \verb=symbol= equals ``MSFT'' arriving at the stream \verb=StockTrades= and adds them to the \verb=PriceMicrosoft= stream. It's just a simple filter.
 
-More complicated expressions involving aggregation still remain quite similar to SQL:
-
-\begin{verbatim}
-INSERT INTO AvgPrices
-SELECT symbol, avg(price)
-FROM StockTrades
-GROUP BY symbol
-HAVING avg(price) > 100
-\end{verbatim}
-
-The previous query will calculate the stock prices' average per company and will output the result to the \verb=AvgPrices= stream, but only for companies whose average price is bigger than 100 units.
-
-One feature that assumes particular importance in the context of ESP is the concept of window. Similar to SQL OLAP windows, ESP windows allow developers to consider only part of a stream and make computations over it. In particular, it becomes possible, for example, to calculate the average of Microsoft's stock prices over the last 5 minutes, or the most expensive order among the last million.
-
-For example, the following query is continuously calculating stock prices' average over the last 3 tuples, filtering out those not belonging to Microsoft:
-
-\begin{verbatim}
-INSERT INTO AvgPriceMicrosoft
-SELECT avg(price)
-FROM StockTrades KEEP 3 ROWS
-WHERE symbol = 'MSFT'
-\end{verbatim}
-
-It's possible to costumize the retain policy. For example, sometimes it's useful to keep tuples based on time, as in the following example where we retain stock updates from the last 3 hours:
+One feature that assumes particular importance in the context of ESP is the concept of window. Similar to SQL OLAP windows, ESP windows allow developers to consider only part of a stream and make computations over it. In particular, it becomes possible, for example, to calculate the most expensive order among the last million, or the average of Microsoft's stock prices over the last 3 hours, as the following example shows:
 
 \begin{verbatim}
 INSERT INTO AvgPriceMicrosoft
@@ -80,45 +58,35 @@ FROM StockTrades KEEP 3 HOURS
 WHERE symbol = 'MSFT'
 \end{verbatim}
 
-Another variation involves keeping some number of tuples chosen based on their value. For example, to keep the 10 largest updates based on their price, one could write the following query:
+It's possible to customize the retain policy and keep, for example, the 10 largest updates based on their price, the 10 last updates per company or simply to keep everything.
+
+The window defined in the previous example is a \emph{sliding} window. Sliding, in this context, refers to how and when the elements in the window expire. In these kinds of windows, tuples are removed from the window as they become too old or new tuples arrive. An alternative is \emph{jumping} windows, where tuples are appended to the window and then, when the oldest element was supposed to be removed, all of them expire at the same time, the window becomes empty and the cycle begins all over again. This way, it's possible to find out the largest price attained by Microsoft stocks over the last hour, the hour before and so on.
+
+All the examples in this section were written in Coral8 Continuous Computation Language (CCL). Nonetheless, all the other systems in this section provide similar features albeit with different syntax. In fact, there've been talks about creating a standard language lately, an ideia that was met with some skepticism by some vendors and users that don't like SQL anyway and opted for other approaches.
+
+SQL based solutions come with a few problems, however. First, experience tells that SQL queries easily become overly complex and hard to understand. Second, SQL's declarative nature doesn't always map well with the way programmers think. Sometimes, things that are simple to do in C or Java become ugly hacks when translated to SQL, because SQL, despite being Turing complete, just wasn't made to compete with those languages. In chapter \ref{problem-statement} we will develop these arguments and show that DSMS systems need a better option.
 
 \begin{verbatim}
-INSERT INTO AvgPriceMicrosoft
-SELECT avg(price)
-FROM StockTrades KEEP 10 LARGEST DISTINCT BY price
-WHERE symbol = 'MSFT'
+CurrentPrice: 
+    Select    P.itemID, Max(P.price) as price
+    From      ((Select itemID, bid_price as price 
+                From   Bid) Union All
+               (Select itemID, start_price as price 
+                From OpenAuction)) P
+    Group By  P.itemID
+
+ClosingPriceStream:
+    Select   Rstream(T.id as catID, P.price as price)
+    From     ClosedAuction [Now] C, CurrentPrice P, 
+             Item I, Category T    
+    Where    C.itemID = P.itemID and C.itemID = I.id and I.categoryID = T.id 
 \end{verbatim}
 
-Finally, the developer could just decide to retain everything with \verb=KEEP ALL=. Note that, by default, nothing is kept: when a tuple arrives, it is processed and then discarded, unless the system thinks that it may be necessary for future calculations.
+What's wrong with these queries? First of all, notice that besides the \verb=ClosingPriceStream= -- the desired result, two other temporary streams had to be created. Sure, they are not strictly necessary and their code could be direcly inserted in the \verb=FROM= clause of the \verb=ClosingPriceStream=, but that wouldn't be a wise choice, would it? To avoid creating big and complex queries, developers partitionate them into smaller ones that write their results to temporary streams that are then used by other queries. Thus, streams end up being used as variables, to store the intermediate results of computations. But streams aren't a suitable replacement for all kinds of variables in a procedural programming language. There, programmers can choose among primitive variables (int, float, string, \dots), arrays, dictionaries, lists and sets among others, to manage information. And let's not forget about classes and objects, fundamental not only to keep information in an organized way, but also because the way they let developers think in terms of the real world and model objects and the relations between them. Certainly, streams and tables alone could be used to simulate all these kinds of constructs, but they're just not the right tool for \emph{every} job.
 
-All the windows defined in the previous examples are \emph{sliding} windows. Sliding, in this context, refers to how and when the elements in the window expire. In these kinds of windows, old tuples are removed from the window as they become too old or new tuples arrive. An alternative is \emph{jumping} windows, where tuples are appended to the window and then, when the oldest element was supposed to be removed, all of them expire at the same time and the window becomes empty and the cycle begins all over again. This way, it's possible to find out the largest price attained by Microsoft stocks over the last hour, the hour before and so on. The following query illustrates this use-case:
+Second, notice the query for the \verb=CurrentPrice= stream. To find the current price, it first finds the starting price, then all the prices from later bids and finally it chooses the largest, which is also the latest. Notice how the query builds, implicitly, the current state of each product. This is necessary because the DSMS doesn't know what a product really is. All it sees are tuples arriving. In between events, it's like a product doesn't have a price -- that's why it is necessary to tell it to go back and get the price from the latest event. Wouldn't it be nicer to have \verb=Product= objects with properties like \verb=current_price= to hold the state of the product, just like in an OOP language? Furthermore, wouldn't it be nicer if the system knew how to automatically modify these properties as new events arrived? And finally, wouldn't it be nicer if those instances could, themselves, be used in queries just like regular tuples?
 
-\begin{verbatim}
-INSERT INTO AvgPriceMicrosoft
-SELECT avg(price)
-FROM StockTrades KEEP EVERY 1 HOUR
-WHERE symbol = ’MSFT’
-\end{verbatim}
-
-Sometimes the developer may desire to keep not only the 10 latest tuples overall, but the 10 latest tuples per group. The following example keeps the largest price over the latest 10 tuples of each company:
-
-\begin{verbatim}
-INSERT INTO MaxPrices
-SELECT max(price)
-FROM StockTrades KEEP 10 ROWS
-GROUP BY symbol
-\end{verbatim}
-
-All the examples in this sections were written in Coral8 Continuous Computation Language (CCL). Nonetheless, all the other systems in this section provide similar features albeit with different syntax.
-
-One last feature that deserves mentioning is Esper's support for the \emph{RSTREAM} operator, that processes tuples not when they arrive at the system, but when they expire from some window. For example, the following example will output IBM tuples 10 seconds after they arrive (note that win:time() creates a sliding, time-based window):
-
-\begin{verbatim}
-SELECT RSTREAM *
-FROM StockTickEvent(symbol=’IBM’).win:time(10)
-\end{verbatim}
-
-\emph{TODO: Talk about talks about a standard language}
+Third, notice the \verb=WHERE= predicate in the last query. What could possibly be wrong with it? It's just a harmless join! The problem is, this join hides an important fact about the system being modelled: objects have relations! Actions have one product and products have zero or more bids. Relations are not new to the database community: DBMSs have embraced and supported them for years. But database relations are still considered too low-level by most programmers, who are used to think in terms of objects instead of meaningless identifiers. This is one reason why Object-Relational Mapping (O/RM) has flourished in the last few years. Again, wouldn't it be nicer if the developer could, somehow, instruct the system about these relations and then the objects mentioned in the previous paragraph would be enriched with pointers to the related objects, all of this managed by the system behind the scenes?
 
 \section{Building queries visually with StreamBase's EventFlow}
 
@@ -129,7 +97,7 @@ StreamBase employs an alternative, more user-friendly, way of building queries. 
 Some of the most important operators are:
 
 \begin{description}
-\item [Aggregate] Computes aggregate operations over windows of tuples. Supports the option to partition tuples into sets and them apply the aggregation over each individual set, much like a SQL GROUP BY statement;
+\item [Aggregate] Computes aggregate operations over windows of tuples. Supports the option to partition tuples into sets and then apply the aggregation over each individual set, much like a SQL GROUP BY statement;
 \item [Filter] Discards some tuples from the input stream based on a predicate. Performs the same function as a SQL WHERE statement;
 \item [Gather] Receives tuples from two or more streams and concatenates those with the same key. The resulting tuple values may be direct copies from the original tuples or the result of applying some expression to these;
 \item [Join] Similar to SQL joins, this operator pairs tuples coming from two streams that match a given condition and outputs a new tuple whose fields may be specified by the user. In general, joining two infinite streams may require keeping all tuples from both streams in memory. To avoid problems later on, the user must specify timing constraints regarding matching tuples saying, for example, that they must arrive withing 60 seconds of each other;
@@ -142,17 +110,52 @@ It's clear that most of these operators have SQL conterparts. StreamBase acknowl
 
 \section{Oracle rules}
 
+Oracle Rules Manager (ORM) embraces a completely different paradigm. Instead of writing queries, the user creates rules that are made of three parts. The first -- the event type, instructs the system to trigger the rule only when an event of that type occurs. The second, the condition, is a predicate that is compared against the event. If they match, the third part, the action, is executed.
+
+Conceptually, a rule has the following format:
+
+\begin{verbatim}
+ON   <event>
+IF   <condition>
+THEN <action>
+\end{verbatim}
+
+The following example shows a simple rule:
+
+\begin{verbatim}
+ON   StockTick(symbol, price, volume)
+IF   symbol = 'MSFT' and price > 100
+THEN buyStocks(symbol)
+\end{verbatim}
+
+The event shown above represents a stock update received from some external source. These are the simplest kind of events, also called \emph{primitive} events. ORM also supports \emph{composite} events that are defined as combinations of other events. For example, it is possible to define a composite event that occurs when Microsoft shares drop by 10\% and, less than 5 minutes later, IBM shares gain 2\%. To be more specific, the following types of combinations are supported:
+\begin{description}
+\item [Sequencing] Specifies the order between events, i.e., event A must occur before event B;
+\item [Negation] Checks for the non-occurence of some event. Useful to raise exceptions when business rules are violated;
+\item [Set semantics] Allows combining events with the AND operator to specify that all of them must occur for the composite event to occur as well;
+\item [Any N] Checks for the occurence of at least N children events;
+\item [Collection] Combines a set of primitive events based on some common properties. Could be used, for example, to detect all costumers who withdrew more than \$1000 from their bank accounts during the past 24h.
+\end{description}
+
+ORM comes with a GUI utility to simplify the rules creation process. This is necessary because creating a rule the hard way is a daunting task that involves writing SQL queries containing XML blocks containing SQL snippets inside. Still, there are situations when one needs to avoid these utilities and work with real code, situations where a simpler configuration process would be desirable.
+
+How does the rules-based paradigm fares against other alternatives? In our opinion, it all comes down to how well does it map to the real-world scenarious being modelled and how hard it is for the user to wrap his brain around this new way of doing things. This will be the topic of section [ref] where we will provide some concrete examples and analyze their resolution using a rules-based language.
+
 \section{Apama's MonitorScript}
 
-\section{Aleri's SPLASH}
+When ESP solutions left the academia to meet the real world, many users argued that SQL was ill-suited for many information processing tasks. MonitorScript (MS) is Apama's response to these complains.
+
+Deriving from the procedural family of programming languages, MS programs look a lot like Java programs. However, the most important and unique feature it includes was borrowed from Erlang: the process model based on having many little \emph{processes} that execute in parallel and communicate with each other through messages. In MS, these entities are called \emph{monitors}. A monitor is an event processing agent that basically sets up an arbitrary number of \emph{listeners} that await for the occurence of events. When one matching event arrives, monitors processes it. Monitors can also send events to each other, through the \emph{route} statement.
+
+Last but not least, monitors can have state. This means that instead of writing a SQL query to capture the state of the system, MS updates the state incrementally as the computation moves forward. The downside is that, for simple things, SQL queries will definitely be easier to understand, because a SQL query \emph{is} its intention while, in a procedural program, the big picture is not always that clear.
+
+\emph{TODO show and discuss sample program}
+
+MS and SQL are at opposite ends of the programming language spectrum. While is simplifies a lot of tasks that don't naturally fit into SQL, MS also looses all the querying capabilities that made SQL and its derivatives popular for data processing. Wouldn't it be nicer to combine these two languages, much like Microsoft has done with LINQ?
 
 \section{The Rapide way: event hierarchies}
 
-\section{Manipulating spreadsheets instead of code}
-
 \section{Microsoft's LINQ}
-
-\section{Yahoo's Pig}
 
 \chapter{Problem statement}\label{problem-statement}
 
