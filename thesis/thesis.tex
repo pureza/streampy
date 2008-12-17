@@ -49,21 +49,22 @@ dialect with some new extensions. Aurora [ref], with its boxes and
 arrows graphical queries was the exception, but the operators it
 provided still took inspiration from SQL. Later, when the first DSMS
 hit the market, some emphasis was put on end-user interaction and some
-applications began to include rule-based systems to react to events
-and process the data contained in them, an idea already tried in the
-context of active databases [ref]. At the same time, DSMS began to
-incorporate features from Complex Event Processing (CEP) systems, that
-allowed the user to detect complex patterns and correlations among the
-input streams of data. This required adding new constructs into the
-query language. Recently, some companies unhappy with declarative,
-SQL-like languages, began to support procedural languages, more
-familiar to C and Java programmers. Nowadays, each product includes
-its own flavor of a SQL-like language with its own unique and esoteric
-extensions, or a rule-based language, or a procedural language, or any
-combination of these three. Besides the obvious issue created by the
-lack of a standard, all this variety demonstrates that DSMS
-applications have their own needs and a satisfactory end-user query
-language for them is yet to be found.
+applications began to include rule-based systems that allow the
+developer to specify how he wants to react to events using Event
+Condition Action (ECA) rules, a concept developed in the context of
+active databases [ref]. At the same time, DSMS began to incorporate
+features from Complex Event Processing (CEP) systems, that allowed the
+user to detect complex patterns and correlations among the input
+streams of data. This required adding new constructs into the query
+language. Recently, some companies unhappy with declarative, SQL-like
+languages, began to support procedural languages, more familiar to C
+and Java programmers. Nowadays, each product includes its own flavor
+of a SQL-like language with its own unique and esoteric extensions, or
+a rule-based language, or a procedural language, or any combination of
+these three. Besides the obvious issue created by the lack of a
+standard, all this variety demonstrates that DSMS applications have
+their own needs and a satisfactory end-user query language for them is
+yet to be found.
 
 To make matters worse, the semantics on many of these products
 disagree in fundamental ways. In [ref], researchers analyzed how two
@@ -71,9 +72,14 @@ of the most prominent products from Oracle and StreamBase reacted in
 the presence of simultaneous events. Surprisingly, they found that in
 some scenarios, they are both wrong! Furthermore, they concluded that
 this disparity may be blamed on the semantics employed by each
-product. Through this work, these researchers unveiled a foundational
-issue whose fix involves rethinking in problems thought to be solved
-years ago.
+product. It also happens that many products consistently implement
+inappropriate semantics. For example, as we will see in section
+\ref{state-of-the-art}, DSMS typically provide ways of analyzing data
+newer than some threshold -- 3 minutes, 5 hours, 10 days,
+etc. However, naively applying these constructs to answer a simple
+question such as ``Was the temperature above 20 $^{\circ}$C during any
+moment of the last 5 minutes?'' will give wrong results. Will see why
+in chapter \ref{motivation}.
 
 Despite these limitations, more and more organizations are adopting
 DSMS and relying on them to process data coming from everywhere --
@@ -97,9 +103,10 @@ and coherent. The rest of this thesis is organized as follows:
 \begin{itemize}
 \item In chapter \ref{state-of-the-art}, we will expand on the
   previous paragraphs to detail the state-of-the-art and to show that
-  art is indeed very subjective and multifaceted. This chapter also
-  discusses some limitations crippling currently available engines and
-  provides some hints as to how they could be fixed;
+  art is indeed very subjective and multifaceted;
+\item Chapter \ref{motivation} discusses some limitations crippling
+  currently available engines and provides some hints as to how they
+  could be fixed;
 \item Our proposal will then be introduced in chapter \ref{streampy},
   first through the analysis of a few examples followed by a thorough
   discussion of all its features;
@@ -192,7 +199,7 @@ hard to understand. Second, SQL's declarative nature doesn't always
 map well with the way programmers think. Sometimes, things that are
 simple to do in C or Java become ugly hacks when translated to SQL,
 because SQL, despite being Turing-complete, just wasn't made to
-compete with those languages. Let's develop these arguments while
+compete with those languages. We will develop these arguments while
 exploring a simple example (adapted from [ref]).
 
 Robay, a fictional online auction company, is experimenting with a
@@ -334,30 +341,17 @@ answer would be negative. If the system knew that, in between
 notifications, stock actions keep their previous prices, it would
 easily give the right answer. But it doesn't and so, solutions for
 this simple problem involve managing the state explicitly, which is
-certainly much more trouble than a simple window.
+certainly much more trouble than a simple window. Note that this is
+analogous to the ``temperature above 20 $^{\circ}$C'' problem
+mentioned in the Introduction.
 
-One last class of problems that are reasonable in the context of ESP
-systems but are difficult to solve by current systems are those where
-the developer needs to know for how long was a certain condition true
-(or false). For example, imagine the following scenario. A factory has
-three rooms, every room has at least one humidity sensor and one
-temperature sensor. Furthermore, products contain a RFID tag that is
-read by RFID sensors placed at the entrance and exit of each room. All
-these sensors send their readings to a DSMS that needs to answer the
-following question: ``Which products stayed more than 10 minutes
-(overall, not consecutive) at more than 20 ºC and 80\% of
-humidity?''. These products are spoiled and mustn't be sold. It's
-certainly possible to solve this in SQL, but how difficult does it
-need to be?
-
-To conclude this section in a positive mood, it should be said that
-there are a few good things about SQL. For simple things, its
-declarative nature makes it very expressible. After all, queries
-represent, almost in English, the intention of the developer. Also,
-SQL querying capabilities are very powerful and excel in many data
-processing tasks. It is understandable then, that an alternative
-language should take some inspiration from SQL and borrow some
-features to provide equally powerful constructs.
+To conclude this section, it should be said SQL has some benefits. For
+simple things, its declarative nature makes it very expressible. After
+all, queries represent, almost in English, the intention of the
+developer. Also, SQL querying capabilities are very powerful and excel
+in many data processing tasks. It is understandable then, that an
+alternative language should take some inspiration from SQL and borrow
+some features to provide equally powerful constructs.
 
 \section{Building queries visually with StreamBase's EventFlow}
 
@@ -402,14 +396,11 @@ Some of the most important operators are:
   SQL UNION statement.
 \end{description}
 
-It's clear that most of these operators have SQL
-counterparts. StreamBase acknowledges this and provides a small
-utility to convert EventFlow diagrams to StreamSQL queries, thus
-proving that everything that can be done with the former can be done
-with the later. Or almost everything. In fact, this converter has a
-few limitations outlined in [ref], but these don't really harm the
-veracity of the previous statement. It's then mostly a matter of taste
--- not power, to choose between StreamSQL and EventFlow.
+It's clear that most of these operators have SQL counterparts. There
+are a few things that can be done in EventFlow but not in StreamSQL
+[ref], but they're just small details, nothing that changes the
+developer's way of thinking. It's then mostly a matter of taste -- not
+power, to choose between StreamSQL and EventFlow.
 
 \section{Oracle rules}
 
@@ -560,9 +551,10 @@ details by itself.
 MS and SQL are at opposite ends of the programming language
 spectrum. While is simplifies a lot of tasks that don't naturally fit
 into SQL, MS also looses all the querying capabilities that made SQL
-and its derivatives popular for data processing. Wouldn't it be nicer
-to combine these two languages, much like Microsoft has done with
-LINQ?
+and its derivatives popular for data processing.
+
+\chapter{I want to call this ``A tale of two companies'' but I can't}
+\label{motivation}
 
 \chapter{The StreamPy query language}\label{streampy}
 
