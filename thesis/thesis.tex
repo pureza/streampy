@@ -2,6 +2,9 @@
 
 
 \usepackage{alltt}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage[small,bf]{caption}
 
 \begin{document}
 \title{StreamPy: A new language for Event Stream Processing}
@@ -13,6 +16,7 @@
 
 \addtolength{\parskip}{\baselineskip}
 \chapter{Introduction}
+\label{chap:introduction}
 
 Technology developments and its widespread adoption over the last
 decades have significantly increased the demand for information
@@ -74,12 +78,12 @@ some scenarios, they are both wrong! Furthermore, they concluded that
 this disparity may be blamed on the semantics employed by each
 product. It also happens that many products consistently implement
 inappropriate semantics. For example, as we will see in section
-\ref{state-of-the-art}, DSMS typically provide ways of analyzing data
-newer than some threshold -- 3 minutes, 5 hours, 10 days,
-etc. However, naively applying these constructs to answer a simple
-question such as ``Was the temperature above 20 $^{\circ}$C during any
-moment of the last 5 minutes?'' will give wrong results. Will see why
-in chapter \ref{motivation}.
+\ref{chap:soa}, DSMS typically provide ways of analyzing data newer
+than some threshold -- 3 minutes, 5 hours, 10 days, etc. However,
+naively applying these constructs to answer a simple question such as
+``Was the temperature above 20 $^{\circ}$C during any moment of the
+last 5 minutes?'' will give wrong results. Will see why in chapter
+\ref{chap:motivation}.
 
 Despite these limitations, more and more organizations are adopting
 DSMS and relying on them to process data coming from everywhere --
@@ -88,7 +92,7 @@ tend to grow and become more complex. However, it is our opinion that
 languages available in currently existing products are not prepared to
 support such large applications. It's just not the problem with the
 semantics. Simply put, they were not designed for that. In chapter
-\ref{state-of-the-art} we will highlight many pitfalls of existing
+\ref{chap:motivation} we will highlight many pitfalls of existing
 solutions and even show a couple of perfectly reasonable queries in
 the context of ESP applications, expressible in one sentence of
 English, which are very difficult to implement. If they fail in those
@@ -101,18 +105,18 @@ direction to create a language that developers find rich, expressible
 and coherent. The rest of this thesis is organized as follows:
 
 \begin{itemize}
-\item In chapter \ref{state-of-the-art}, we will expand on the
-  previous paragraphs to detail the state-of-the-art and to show that
-  art is indeed very subjective and multifaceted;
-\item Chapter \ref{motivation} discusses some limitations crippling
-  currently available engines and provides some hints as to how they
-  could be fixed;
-\item Our proposal will then be introduced in chapter \ref{streampy},
-  first through the analysis of a few examples followed by a thorough
-  discussion of all its features;
+\item In chapter \ref{chap:soa}, we will expand on the previous
+  paragraphs to detail the chap:soa and to show that art is indeed
+  very subjective and multifaceted;
+\item Chapter \ref{chap:motivation} discusses some limitations
+  crippling currently available engines and provides some hints as to
+  how they could be fixed;
+\item Our proposal will then be introduced in chapter
+  \ref{chap:streampy}, first through the analysis of a few examples
+  followed by a thorough discussion of all its features;
 \item Further work and planning for the next semester will be the
-  topic of chapter \ref{future-work};
-\item Finally, chapter \ref{conclusion} concludes this document.
+  topic of chapter \ref{chap:future-work};
+\item Finally, chapter \ref{chap:conclusion} concludes this document.
 \end{itemize}
 
 By the end of this document, it should be clear that not only current
@@ -121,7 +125,7 @@ costumers, but also that our proposal contains some interesting
 characteristics that deserve further attention.
 
 \chapter{State-of-the-art}
-\label{state-of-the-art}
+\label{chap:soa}
 
 This section will analyze SQL dialects present in some industry
 products for event processing - Coral8, StreamBase and Esper. Then,
@@ -135,6 +139,7 @@ MonitorScript, a procedural language developed by Progress Apama to
 overcome the limitations imposed by SQL.
 
 \section{SQL-based languages}
+\label{sec:sql}
 
 The most popular way of writing queries is through a declarative,
 SQL-based language. Products adopting this solution include Coral8
@@ -191,169 +196,17 @@ Computation Language (CCL). Nonetheless, all the other systems in this
 section provide similar features albeit with different syntax. In
 fact, there have been talks about creating a standard language lately,
 an idea that was met with some skepticism by some vendors and users
-that don't like SQL anyway and opted for other approaches.
+that don't like SQL anyway and opted for other approaches [ref].
 
-SQL based solutions come with a few problems, however. First,
-experience tells that SQL queries easily become overly complex and
-hard to understand. Second, SQL's declarative nature doesn't always
-map well with the way programmers think. Sometimes, things that are
-simple to do in C or Java become ugly hacks when translated to SQL,
-because SQL, despite being Turing-complete, just wasn't made to
-compete with those languages. We will develop these arguments while
-exploring a simple example (adapted from [ref]).
-
-Robay, a fictional online auction company, is experimenting with a
-DSMS to manage auctions. In their setup, they have two relations --
-\verb=Item(id, name, categoryId)= and
-\verb=Category(id, name, description)= and three streams --
-\verb=OpenAuction(itemId, start_price)=, \verb=ClosedAuction(itemId)=
-and \verb=Bid(itemId, bid_price)=. Information on sellers and buyers
-has been omitted because it won't be necessary to illustrate our
-point. One of the first queries Robay developers wrote returns, for
-each closed auction, its item and category ids, along with the price
-offered in the winner bid:
-
-\begin{verbatim}
-TODO: Implement this in Coral8 CCL
-
--- Unite Bid with OpenAuction
-ItemPrices:
-    Select itemID, bid_price as price 
-    From   Bid 
-    Union All
-    Select itemID, start_price as price 
-    From OpenAuction
-
--- Get the current price for each product
-CurrentPrice: 
-    Select    P.itemID, Max(P.price) as price
-    From      ItemPrices P
-    Group By  P.itemID
-
--- Get the product, category and final price for each closing auction
-ClosingPriceStream:
-    Select   Rstream(T.id as catID, P.price as price)
-    From     ClosedAuction [Now] C, CurrentPrice P, 
-             Item I, Category T    
-    Where    C.itemID = P.itemID and C.itemID = I.id and I.categoryID = T.id 
-\end{verbatim}
-
-This solution uses regular SQL extended with windowing constructs and
-should be pretty easy to understand. Despite being so straightforward,
-there are a few issues with it that could be improved. First of all,
-notice that besides the \verb=ClosingPriceStream= -- the desired
-result, two other temporary streams had to be created. They are not
-strictly necessary and their code could be directly inserted in the
-\verb=FROM= clause of the \verb=ClosingPriceStream=, but that would
-quickly result in unreadable code. To avoid creating big and complex
-queries, developers partition them into smaller ones connected by
-temporary streams. Thus, streams end up being used as variables to
-store the intermediate results of computations. But streams aren't a
-suitable replacement for all kinds of variables. In procedural
-programming languages, programmers can choose among primitive
-variables (int, float, string, \dots), arrays, dictionaries, lists and
-sets among others, to manage information. Furthermore, Object-Oriented
-Programming brought classes and objects to the table, important not
-only to keep information in an organized way, but also because they
-allow developers think in terms of the real world and model objects
-and the relations between them. Certainly, streams and tables alone
-could be used to simulate all these kinds of constructs, but they're
-just not the right tool for \emph{every} job.
-
-Second, notice the query for the \verb=CurrentPrice= stream. To find
-the current price, it first finds the starting price, then all the
-prices from later bids and finally it chooses the largest, which is
-also the latest. Notice how the query builds, implicitly, the current
-state of each item. This is necessary because the DSMS doesn't know
-what an item really is and doesn't understand the relation between two
-updates for the same item. That's why it is necessary, in order to
-find the current price, to instruct the system to go back and get the
-price from the latest event. From an OOP point-of-view, this query
-would be greatly simplified if there was some way to define
-\verb=Item= objects with properties like \verb=current_price= to hold
-the state of each item and use these objects in queries, just like
-regular tuples. Moreover, these objects and their properties could be
-automatically managed by the system, thus relieving the programmer
-from lower-level tasks.
-
-Third, notice the \verb=WHERE= predicate in the last query. This
-predicate embodies three inner joins and should also be pretty clear
-for any SQL programmer. The problem is that this join hides an
-important fact about the system being modeled: objects have
-relations. Auctions have one item and items have zero or more
-bids. Relations are not new to the database community: DBMSs have
-embraced and supported them for years. But database relations are
-still considered too low-level by most programmers, who are used to
-think in terms of objects instead of meaningless identifiers. This is
-one reason why Object-Relational Mapping (O/RM) has flourished in the
-last few years. If the developer could, somehow, model these
-relations, the system would be able to enrich the objects mentioned in
-the previous paragraph with pointers to the related objects and manage
-these pointers automatically. With these changes, the last query would
-become much more explicit and read something along the lines of ``For
-every closed auction, get the current price, category and id of its
-item''.
-
-It may seem that these issues aren't as bad as we're making
-them. After all, the queries above are still easy to understand. Note
-however, that the example is also very short. As explained in the
-introduction, more and more code like this is being written like this
-every day by organizations that rely on DSMS to manage their business
-processes. As the code base grows, this mismatch between what
-developers want and what the systems have to offer becomes more
-evident to the point where, eventually, code becomes unmaintainable
-and needs to be abandoned.
-
-There are a few other issues besides those outlined above. We've seen
-before that ESP systems provide many windowing facilities on top of
-regular SQL -- sliding windows, jumping windows, windows per groups,
-etc. Unfortunately, sometimes this is not enough, as is illustrated in
-the following scenario. The Financial Association for Investments and
-Little Experiments with DSMS is monitoring Robay stock actions. For
-some contrived reason, they want to know the answer to the following
-question: ``During the last period in which Robay actions stayed above
-\$70, what was the average of their value?''. This would be easily
-answered if we could create a window between the time stock actions
-went above \$70 and the time they went below (or the current time, if
-they're still above that mark). Notice that the endpoints for this
-window would then be dictated by regular events, instead of being
-fixed in time or size. These types of windows are called
-\emph{semantic} windows [ref]. Unfortunately, currently available ESP
-systems fail to provide support for semantic windows, making this kind
-of queries difficult to solve.
-
-Halted by this obstacle and unable to make progress, the association
-decided to work on a easier question first: ``Were Robay actions above
-\$70 during any moment of the last 5 minutes?''. This seems to be a
-great use-case for temporal sliding windows. Unfortunately, the
-semantics of these windows are not appropriate here, making the
-solution overwhelmingly difficult. The problem lies, again, with the
-lack of state. Suppose that, at 10:54, the system receives a
-notification reporting that Robay's actions were worth \$71 and, 2
-minutes later, it receives another event informing that the price
-decreased to \$69. Suppose further that no other events arrived until
-the question is posed, at 11:00 (of the same day). We, humans, know
-that the answer is an obvious ``yes'' because Robay's actions were
-valued at \$71 between 10:54 and 10:56. However, the system only cares
-about events and the first notification lies outside the 5 minutes
-window. Thus, this window will only include the second event and the
-answer would be negative. If the system knew that, in between
-notifications, stock actions keep their previous prices, it would
-easily give the right answer. But it doesn't and so, solutions for
-this simple problem involve managing the state explicitly, which is
-certainly much more trouble than a simple window. Note that this is
-analogous to the ``temperature above 20 $^{\circ}$C'' problem
-mentioned in the Introduction.
-
-To conclude this section, it should be said SQL has some benefits. For
-simple things, its declarative nature makes it very expressible. After
-all, queries represent, almost in English, the intention of the
-developer. Also, SQL querying capabilities are very powerful and excel
-in many data processing tasks. It is understandable then, that an
-alternative language should take some inspiration from SQL and borrow
-some features to provide equally powerful constructs.
+With the undeniable increasing relevance of ESP and the predominance
+of SQL-based languages in currently-available products, it is
+important to analyze the limitations of these languages. After all, it
+doesn't make sense to build yet another programming language if the
+existing ones are good enough. This will be the topic of the next
+chapter.
 
 \section{Building queries visually with StreamBase's EventFlow}
+\label{sec:eventflow}
 
 StreamBase employs an alternative, more user-friendly, way of building
 queries. Instead of writing code, the user can design queries
@@ -361,9 +214,18 @@ visually, by arranging boxes in a canvas and connecting them with
 arrows. Boxes represent operators that receive data coming from other
 operators or directly from the input streams, process the data
 according to its semantics and send the results to be handled by other
-operators, or to the world as the output of the whole operation.
+operators, or to the world as the output of the whole operation. An
+example is shown in figure \ref{fig:eventflow-sample}.
 
-\emph{TODO Show picture}
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{eventflow.png}
+  \caption{This diagram represents a simple query where two streams
+    are joined, non IBM tuples are filtered-out, and then the average
+    of IBM stock prices over the last 5 minutes is sent to the
+    output.}
+  \label{fig:eventflow-sample}
+\end{figure}
 
 Some of the most important operators are:
 
@@ -403,6 +265,7 @@ developer's way of thinking. It's then mostly a matter of taste -- not
 power, to choose between StreamSQL and EventFlow.
 
 \section{Oracle rules}
+\label{sec:orm}
 
 Oracle Rules Manager (ORM) embraces a completely different
 paradigm. Instead of writing queries, the user creates rules that are
@@ -553,12 +416,212 @@ spectrum. While is simplifies a lot of tasks that don't naturally fit
 into SQL, MS also looses all the querying capabilities that made SQL
 and its derivatives popular for data processing.
 
-\chapter{I want to call this ``A tale of two companies'' but I can't}
-\label{motivation}
+\chapter{A tale of two companies (working title)}
+\label{chap:motivation}
 
-\chapter{The StreamPy query language}\label{streampy}
+SQL and its derivatives have been successfuly employed in databases
+for over 30 years and their decline is unlikely to happen any time
+soon. It may thus seem imprudent to claim that SQL is not well-suited
+for ESP and such a statement must be accompanied with valid
+arguments. Fortunately, it is quite easy to understand, intuitively,
+the problems with this approach. First, experience tells that SQL
+queries easily become overly complex and hard to understand --
+especially when they begin to include subqueries or perform analytical
+operations now part of the SQL standard. Second, SQL's declarative
+nature doesn't always map well with the way programmers
+think. Sometimes, things that are simple to do in C or Java become
+ugly hacks when translated to SQL, because SQL, despite being
+Turing-complete, just wasn't made to compete with those languages. We
+will develop these arguments while exploring a simple example (adapted
+from [ref]).
 
-\chapter{Future work}\label{future-work}
+Robay, a fictional online auction company, is experimenting with a
+DSMS to manage auctions. In their setup, they have two relations and
+three streams:
 
-\chapter{Conclusion}\label{conclusion}
+\begin{itemize}
+\item Relations:
+  \begin{itemize}
+  \item \verb=Item(id, name, categoryId)=: Describes auctioned items;
+  \item \verb=Category(id, name, description)=: Represent product categories;
+  \end{itemize}
+\item Streams:
+  \begin{itemize}
+  \item \verb=OpenAuction(itemId, start_price)=: New tuples arriving
+    on this stream signal the beginning of a new auction;
+  \item \verb=ClosedAuction(itemId)=: Signals the end of an auction;
+  \item \verb=Bid(itemId, bid_price)=: Updated when there is a new bid
+    for an ongoing auction.
+  \end{itemize}
+\end{itemize}
+
+Information on sellers and buyers has been omitted because it won't be
+necessary to illustrate our point. One of the first queries Robay
+developers wrote returns, for each closed auction, its item and
+category ids, along with the price offered in the winner bid:
+
+\begin{verbatim}
+TODO: Implement this in Coral8 CCL
+
+-- Unite Bid with OpenAuction
+ItemPrices:
+    Select itemID, bid_price as price 
+    From   Bid 
+    Union All
+    Select itemID, start_price as price 
+    From OpenAuction
+
+-- Get the current price for each product
+CurrentPrice: 
+    Select    P.itemID, Max(P.price) as price
+    From      ItemPrices P
+    Group By  P.itemID
+
+-- Get the product, category and final price for each closing auction
+ClosingPriceStream:
+    Select   Rstream(P.itemID as itemId, T.id as catID, P.price as price)
+    From     ClosedAuction [Now] C, CurrentPrice P, 
+             Item I, Category T    
+    Where    C.itemID = P.itemID and C.itemID = I.id and I.categoryID = T.id 
+\end{verbatim}
+
+This solution uses regular SQL extended with windowing constructs and
+should be pretty easy to understand. Despite being so straightforward,
+there are a few issues with it that could be improved. First of all,
+notice that besides the \verb=ClosingPriceStream= -- the desired
+result, two other temporary streams had to be created. They are not
+strictly necessary and their code could be directly inserted in the
+\verb=FROM= clause of the \verb=ClosingPriceStream=, but that would
+quickly result in unreadable code. To avoid creating big and complex
+queries, developers partition them into smaller ones connected by
+temporary streams. Thus, streams end up being used as variables to
+store the intermediate results of computations. But streams aren't a
+suitable replacement for all kinds of variables. In procedural
+programming languages, programmers can choose among primitive
+variables (int, float, string, \dots), arrays, dictionaries, lists and
+sets among others, to manage information. Furthermore, Object-Oriented
+Programming brought classes and objects to the table, important not
+only to keep information in an organized way, but also because they
+allow developers think in terms of the real world and model objects
+and the relations between them. Certainly, streams and tables alone
+could be used to simulate all these kinds of constructs, but they're
+just not the right tool for \emph{every} job.
+
+Second, notice the query for the \verb=CurrentPrice= stream. To find
+the current price, it first finds the starting price, then all the
+prices from later bids and finally it chooses the largest, which is
+also the latest. Notice how the query builds, implicitly, the current
+state of each item. This is necessary because the DSMS doesn't know
+what an item really is and doesn't understand the relation between two
+updates for the same item. That's why it is necessary, in order to
+find the current price, to instruct the system to go back and get the
+price from the latest event. From an OOP point-of-view, this query
+would be greatly simplified if there was some way to define
+\verb=Item= objects with properties like \verb=current_price= to hold
+the state of each item and use these objects in queries, just like
+regular tuples. Moreover, these objects and their properties could be
+automatically managed by the system, thus relieving the programmer
+from lower-level tasks.
+
+Third, notice the \verb=WHERE= predicate in the last query. This
+predicate embodies three inner joins and should also be pretty clear
+for any SQL programmer. The problem is that this join hides an
+important fact about the system being modeled: objects have
+relations. Auctions have one item and items have zero or more
+bids. Relations are not new to the database community: DBMSs have
+embraced and supported them for years. But database relations are
+still considered too low-level by most programmers, who are used to
+think in terms of objects instead of meaningless identifiers. This is
+one reason why Object-Relational Mapping (O/RM) has flourished in the
+last few years. If the developer could, somehow, model these
+relations, the system would be able to enrich the objects mentioned in
+the previous paragraph with pointers to the related objects and manage
+these pointers automatically. With these changes, the last query would
+become much more explicit and read something along the lines of ``For
+every closed auction, get the current price, category and id of its
+item''.
+
+It may seem that these issues aren't as bad as we're making
+them. After all, the queries above are still easy to understand. Note
+however, that the example is also very short. As explained in the
+introduction, more and more code like this is being written like this
+every day by organizations that rely on DSMS to manage their business
+processes. As the code base grows, this mismatch between what
+developers want and what the systems have to offer becomes more
+evident to the point where, eventually, code becomes unmaintainable
+and needs to be abandoned.
+
+There are a few other issues besides those outlined above. We've seen
+before that ESP systems provide many windowing facilities on top of
+regular SQL -- sliding windows, jumping windows, windows per groups,
+etc. Unfortunately, sometimes this is not enough, as is illustrated in
+the following scenario. The Financial Association for Investments and
+Little Experiments with DSMS is monitoring Robay stock actions. For
+some contrived reason, they want to know the answer to the following
+question: ``During the last period in which Robay actions stayed above
+\$70, what was the average of their value?''. This would be easily
+answered if we could create a window between the time stock actions
+went above \$70 and the time they went below (or the current time, if
+they're still above that mark). Notice that the endpoints for this
+window would then be dictated by regular events, instead of being
+fixed in time or size. These types of windows are called
+\emph{semantic} windows [ref]. Unfortunately, currently available ESP
+systems fail to provide support for semantic windows, making this kind
+of queries difficult to solve.
+
+Halted by this obstacle and unable to make progress, the association
+decided to work on a easier question first: ``Were Robay actions above
+\$70 during any moment of the last 5 minutes?''. This seems to be a
+great use-case for temporal sliding windows. Unfortunately, the
+semantics of these windows are not appropriate here, making the
+solution overwhelmingly difficult. The problem lies, again, with the
+lack of state. Suppose that, at 10:54, the system receives a
+notification reporting that Robay's actions were worth \$71 and, 2
+minutes later, it receives another event informing that the price
+decreased to \$69. Suppose further that no other events arrived until
+the question is posed, at 11:00 (of the same day). We, humans, know
+that the answer is an obvious ``yes'' because Robay's actions were
+valued at \$71 between 10:54 and 10:56. However, the system only cares
+about events and the first notification lies outside the 5 minutes
+window, as figure \ref{fig:outside-window} shows. Thus, this window
+will only include the second event and the answer would be
+negative. If the system knew that, in between notifications, stock
+actions keep their previous prices, it would easily give the right
+answer. But it doesn't and so, solutions for this simple problem
+involve managing the state explicitly, which is certainly much more
+trouble than a simple window. Note that this is analogous to the
+``temperature above 20 $^{\circ}$C'' problem mentioned in the
+Introduction.
+
+\begin{figure}[htbp]
+  \includegraphics[width=\textwidth]{outside-window.png}
+  \caption{Evolution of Robay stock prices in the scenario described
+    in the text. Values in blue boxes represent the two events
+    received at 10:54 and 10:56. As you can see, the first event lies
+    outside the 5 minutes window and thus, will be ignored by the
+    system. The dotted blue lines illustrate the fact that the prices
+    remain constant until the next update, an assumption made by
+    humans that the system is unaware of.}
+  \label{fig:outside-window}
+\end{figure}
+
+To conclude this chapter, it should be said SQL has some benefits. For
+simple things, its declarative nature makes it very expressible. After
+all, queries represent, almost in English, the intention of the
+developer. Also, SQL querying capabilities are very powerful and excel
+in many data processing tasks. It is understandable then, that an
+alternative language should take some inspiration from SQL and borrow
+some features to provide equally powerful constructs.
+
+
+\chapter{The StreamPy query language}
+\label{chap:streampy}
+
+\chapter{Future work}
+\label{chap:future-work}
+
+\chapter{Conclusion}
+\label{chap:conclusion}
+
+
 \end{document}
