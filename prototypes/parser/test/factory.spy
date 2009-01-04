@@ -1,0 +1,25 @@
+temperatures = new Stream(sensorId, temp, roomId)
+enter = new Stream(productId, roomId)
+leave = new Stream(productId, roomId)
+
+
+entity Sensor < temperatures(sensorId)
+    belongsTo :room
+
+
+entity Product < enter(productId)
+    belongsTo :room
+
+    temperature = self.room.temperature
+
+
+entity Room
+    hasMany :sensors
+    hasMany :products
+
+    temperature = self.sensors.avg(:temp)
+
+
+from p in Products
+where (p.temperature >= 20).during? (>=) 10
+select p |> print

@@ -1,0 +1,48 @@
+{
+#light
+
+open System
+open EzqlParser
+open Lexing
+
+let ids = Map.of_list [("class", CLASS);
+                       ("if",    IF);
+                       ("then",  THEN);
+                       ("else",  ELSE);
+                       ("fun",   FUN)]
+
+let tokenize text =
+  if ids.ContainsKey text
+      then ids.[text]
+      else ID text
+
+let indentationStack = [0]
+
+}
+
+let num        = ['0'-'9']+
+let alpha      = ['a'-'z' 'A'-'Z']
+let identifier = alpha+ (alpha | ['_'])*
+let integer    = '-'? num
+let whitespace = ' ' | '\t'
+let newline    = '\n' | '\r' '\n'
+
+rule token = parse
+    | whitespace { token lexbuf }
+    | newline    { (lexbuf: lexbuf).EndPos <- lexbuf.EndPos.NextLine; manageIndentation lexbuf; token lexbuf }
+    | "("        { LPAREN }
+    | ")"        { RPAREN }
+    | "+"        { PLUS }
+    | "-"        { MINUS }
+    | "*"        { TIMES }
+    | "="        { EQUALS }
+    | identifier { tokenize (lexeme lexbuf) }
+    | integer    { INT (Int32.Parse(lexeme lexbuf)) }
+    | eof        { EOF }
+
+and manageIndentation = parse
+    | whitespace* {
+      let length = (lexeme lexbuf).Length
+	  
+}
+

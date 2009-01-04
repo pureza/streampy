@@ -1,0 +1,45 @@
+%{
+open EzqlAst
+%}
+
+%start start
+
+%token <string> ID COMPARE_OP
+%token <int> INT
+%token CLASS NEW IF THEN ELSE MATCH WITH FUN
+%token LPAREN RPAREN DOT COLON ARROW PLUS MINUS TIMES EQUALS
+%token EOF
+
+%type <prog> start
+
+%%
+
+start: prog                        { $1 }
+
+prog: classes                      { Prog ($1) }
+
+classes:
+    | classDecl                    { [$1] }
+    | classes classDecl            { $1 @ [$2] }
+
+classDecl:
+    | CLASS ID methods             { Class ($2, $3) }
+
+methods:
+    | methodDecl                   { [$1] }
+    | methods methodDecl           { $1 @ [$2] }
+
+methodDecl:
+    | ID args EQUALS exprs         { Method ($1, $2, $4) }
+
+args:
+    |                              { [] }
+    | args ID                      { $1 @ [Identifier $2] }
+
+exprs:
+    | expr                         { [$1] }
+    | exprs expr                   { $1 @ [$2] }
+
+expr:
+    | INT                          { Const $1 }
+    | ID EQUALS expr               { Assign ($1, $3) }
