@@ -1,0 +1,924 @@
+\documentclass{report}
+
+\usepackage{framed}
+\usepackage{alltt}
+
+\newcommand{\tuple}[1]{$(#1)$}
+
+\newenvironment{evaluation}
+{
+  \framed
+  \begin{alltt}
+}
+{
+  \end{alltt}
+  \endframed
+}
+
+\begin{document}
+\title{Programming in EzQL: a tutorial}
+\author{Lu\'{\i}s Pureza}
+
+\maketitle
+
+\tableofcontents
+
+\addtolength{\parskip}{\baselineskip}
+\chapter{Introduction}
+\label{chap:introduction}
+EzQL is a new programming language targeted at event stream processing
+(ESP) applications. As explained in some detail in [ref], currently
+available ESP languages lack expressiveness, making the task of writing
+simple and reasonable queries rather cumbersome. We believe one of the
+main reasons this happens is because the semantics of constructs
+provided are weaker than the semantics that would be necessary to
+answer those queries. That is, there is an impedance mismatch between
+what the existing languages provide and what the developers really
+need. EzQL is our proposal to overcome these limitations and enrich
+ESP query languages with a new set of constructs that promises to
+fulfill the needs of developers.
+
+The main features of EzQL are:
+
+\begin{itemize}
+\item Combines the \emph{imperative} (C, Java) and the
+  \emph{declarative} (SQL) paradigms allowing the developer to query
+  data with a SQL-like language or by writing an algorithm, specified
+  as a sequence of small steps, for those cases where SQL is not
+  appropriate;
+\item Includes a simple \emph{object-model} where real-world entities
+  can be modeled as objects with properties --- temperature, price,
+  speed, \ldots ---, whose values depend on the values of events. For
+  instance, this object-model allows the creation of many Room objects
+  each with their own temperature attribute which is automatically
+  updated as new sensor readings arrive. Furthermore, these objects
+  and the values of their properties define the state of the
+  application and this state can be queried just like regular events;
+\item The object model supports \emph{relations} between objects,
+  inspired by O/RM (Object-Relational Mapping) tools for
+  databases. Thus, it is possible to say, for instance, that a Room
+  has many Products and, correspondingly, that a Product belongs to
+  one Room. Again, these relations may change as new events arrive,
+  i.e., a Product may leave one Room and enter another. Naturally,
+  these relations can also be queried --- one can ask, for example,
+  which is the cheapest Product inside Room E54. This type of queries
+  can already be written in currently available systems, but we will
+  see that they become much simpler in EzQL;
+\item EzQL provides extensive support for \emph{temporal queries}, a
+  common class of queries in ESP applications that current products
+  don't handle so well, as discussed in [ref]. This support integrates
+  with the object-model so that one can easily ask, for example, for
+  how long was the temperature in some room above 20$^{\circ}$C during
+  the last 10 minutes;
+\end{itemize}
+
+The purpose of this document is to describe EzQL in detail, so that
+developers can understand its syntax and semantics and start using it
+right away to solve new problems.
+
+The rest of this chapter discusses the rationale behind the design of
+EzQL and some of problems that are still unsolved. Then, the document
+proceeds with chapter \ref{chap:streams-events} that explains what
+exactly are streams and events and what can you do with them,
+including how to query them. Chapter \ref{chap:object-model} describes
+how to model real-world entities as objects in EzQL and how to query
+their state and finally, the topic of chapter \ref{chap:udfs} is how
+to extend the core set of operations provided by the EzQL environment
+by writing your own functions and aggregators.
+
+\section{Design goals}
+\label{sec:design-goals}
+
+Any new programming language such as EzQL must be designed with a set
+of goals in mind. Some of these are quite general --- ``Be useful!'',
+while others are chosen carefully by the designers to set the new
+language apart from any other, like Python's ``There should be one ---
+and preferably only one --- obvious way to do it''. These principles
+become a major influence in the resulting language and even define
+what developers sometimes call the philosophy of the language. It is
+important that the language adheres to these principles. Otherwise, it
+just won't make sense.
+
+These are the goals that drove the design of the EzQL language:
+
+\begin{description}
+\item[Be powerful] The set of operations allowed in a query should be
+  large enough to accommodate all reasonable things users might want
+  to do with their data. Basically, frequent operations should be
+  simple and rare operations should be possible;
+\item[Be extensible] ESP is a novel area with unique requirements that
+  are still being discovered. No one really knows the boundary between
+  what is ESP and what is not, but everyday ESP systems are applied to
+  new problems with their own characteristics. It is mandatory that
+  the language be extensible enough to accommodate this evolution,
+  much as general purpose languages adapt to new domains through the
+  development of new libraries;
+\item[Be expressive] EzQL queries should be straightforward to read,
+  write and understand by the developer. In particular, it should be
+  possible to partition big queries into smaller ones in a
+  step-by-step fashion --- like a procedural programming language,
+  where each statement specifies a new operation acting on the result
+  of the previous statement. Also, common operations should be
+  expressible directly by what they mean and not as an opaque set of
+  SQL-like constructs that hide their real meaning;
+\item[Be coherent] In Smalltalk, everything is an object and even the
+  addition of two numbers is seen as messages flowing between
+  them. Lisp programs are just data and any Lisp fan will happily
+  explain why that has so many advantages. Java, on the other hand,
+  distinguishes between built-in types like integers and user-defined
+  types and this distinction frequently bothers developers. Coherency
+  makes the language easier to understand because you have less rules
+  and exceptions. But it's far more than that: a coherent language
+  shows how well-thought it was. This kind of elegance cannot be
+  ignored.
+\end{description}
+
+% One major source of inspiration during the design of EzQL was
+% Microsoft's LINQ [ref]. LINQ --- Language INtegrated Query ---, is a
+% library for the .NET platform that provides a SQL-like language to
+% query not only databases, but also in-memory collections like lists or
+% dictionaries, XML files and even online services like Amazon
+% store. LINQ for databases includes an O/RM module that creates objects
+% from database entities and manages their properties and
+% relationships. These objects may, of course, be used in normal LINQ
+% queries just like raw entities, something we want EzQL be able to do
+% as well. Furthermore, note that LINQ comes with its own SQL-like query
+% language, but this language is expected to be used in conjunction with
+% other .NET languages, like C# or VB.NET. This way, the developer may
+% choose to use LINQ for all his data processing tasks or he may opt to
+% use LINQ for some tasks and rely on good old imperative constructs to
+% implement more complex operations, which is also one of the main
+% characteristics of EzQL. In fact, the similarities between LINQ and
+% EzQL are so many that it could be said that EzQL is in essence a LINQ
+% for ESP.
+
+%http://msdn.microsoft.com/en-us/library/bb425822.aspx#linqtosql_topic5
+% [Table(Name="Orders")]
+% public class Order
+% {
+%    [Column(Id=true)]
+%    public int OrderID;
+%    [Column]
+%    public string CustomerID;
+%    private EntityRef<Customer> _Customer;    
+%    [Association(Storage="_Customer", ThisKey="CustomerID")]
+%    public Customer Customer {
+%       get { return this._Customer.Entity; }
+%       set { this._Customer.Entity = value; }
+%    }
+% }
+
+% var q =
+%    from c in db.Customers
+%    from o in c.Orders
+%    where c.City == "London"
+%    select new { c, o };
+
+
+
+By the end of this document, EzQL should just make sense. Every
+feature or construct should have a well-defined purpose and be
+generally applicable to a wide-range of ESP problems.
+
+\section{Unsolved problems}
+\label{sec:unsolved-problems}
+
+These are some of the current limitations of EzQL:
+
+\begin{itemize}
+\item No pattern matching to detect complex patterns of events. In the
+  future, one will probably integrate a pattern language such as SASE+
+  [ref] directly into EzQL, much like regular expression libraries
+  provide one mini-language inside another;
+\item It doesn't integrate with databases. This is a serious drawback
+  because not all information is available in events. For instance,
+  when a costumer places an order, an event may be generated for the
+  system to process. But what if the application needs to know the
+  name of the costumer? Should it be part of the event? What about the
+  address? What about the previous orders the costumer placed?
+  Clearly, this information should already be available in the
+  database and thus it is undesirable to enlarge the events with
+  redundant information. Nonetheless, currently EzQL does not address
+  this issue;
+\item Out-of-order events: still an ongoing research topic.
+\end{itemize}
+
+\chapter{Streams and events}
+\label{chap:streams-events}
+
+An event signals that something happened. Exactly what happened is
+encoded in the event itself as a list of field names packed together
+with their corresponding values. Moreover, all events have an implicit
+timestamp for when the event occurred. For example, an event signaling
+that Apple stocks were priced at \$50 at 10:59:59 am today, may be
+represented with the following encoding:
+
+\begin{verbatim}
+  { :symbol => "AAPL", :price => 50 } at 01/11/2009 10:59:59 am
+\end{verbatim}
+
+This event includes two fields: \verb=:symbol= with value ``AAPL'' and
+\verb=:price=, with value ``50''. Field names are always prefixed with
+a colon. From now own we will assume all events happened today and
+will omit the date from their timestamp when we print them.
+
+To access an event's field one uses the . (dot) operator:
+
+\begin{evaluation}
+  ezql> event = \{ :symbol => "AAPL", :price => 50 \}
+  ezql> event.symbol
+  "AAPL"
+  ezql> event.price
+  50
+  ezql> event.timestamp
+  <the date and time the event was created in the first line>
+\end{evaluation}
+
+As can be seen in the example, the timestamp is available as if it
+were a normal field.
+
+A stream is an abstract data type that collects events. Informally, a
+stream could be seen as a list of events ordered by their timestamp,
+i.e., older events at one end, newer events at the other end. However,
+this is not entirely accurate because streams are active entities and
+possibly infinite. For instance, a stream that collects events from
+financial markets may receive thousands of new events every second
+and, what's more important, this flow of events may never terminate.
+
+\section{Query operations}
+\label{sec:query-operations}
+The query operations include all the SQL-like constructs that can be
+used to manipulate data.
+
+The result of each operation will be illustrated with examples of
+applications over a stream with stock data where each tuple contains
+two fields, \verb=:symbol= and :price. It is assumed that this stream,
+\verb=stocks=, contains the following tuples:
+
+\begin{verbatim}
+ [{ :symbol => "AAPL", :price => 50 } at 10:59:59 am,
+  { :symbol => "AAPL", :price => 52 } at 11:00:02 am,
+  { :symbol => "MSFT", :price => 70 } at 11:00:03 am,
+  { :symbol => "MSFT", :price => 75 } at 11:00:06 am,
+  { :symbol => "AAPL", :price => 50 } at 11:00:07 am]
+\end{verbatim}
+
+Naturally, these values are only for illustration purposes and are not
+representative of the real market.
+
+\subsection{Projections}
+\label{sec:projections}
+A projection applies a function to all tuples in a stream and returns
+a new stream with the results. For instance, if \emph{stocks} is a
+stream with tuples of the form \tuple{symbol, price} representing the
+price of stock actions, one could double the \emph{price} with:
+
+\begin{verbatim}
+  price2x = stocks
+              .select (\t -> { :symbol => t.symbol,
+                               :price => t.price * 2 })
+\end{verbatim}
+
+The first thing to clarify about this example is that the piece of
+code inside parenthesis, \verb!\t -> { ... }! is actually an anonymous
+or lambda function that receives one argument, \verb=t= and produces a
+new tuple with fields \verb=:symbol=, copied from \verb=t=, and
+\verb=:price= which is equal to twice the price of the
+argument. \verb=select= receives this anonymous function, calls it for
+every tuple inside the \verb=stocks= stream and saves the results in a
+new stream, which it then returns. \verb=select= is really just a
+continuous version of LISP's \verb=mapcar= or Python's \verb=map=.
+
+The result of the previous expression is:
+
+\begin{evaluation}
+  ezql> price2x
+  [\{ :symbol => "AAPL", :price => 100 \} at 10:59:59 am,
+   \{ :symbol => "AAPL", :price => 104 \} at 11:00:02 am,
+   \{ :symbol => "MSFT", :price => 140 \} at 11:00:03 am,
+   \{ :symbol => "MSFT", :price => 150 \} at 11:00:06 am,
+   \{ :symbol => "AAPL", :price => 100 \} at 11:00:07 am]
+\end{evaluation}
+
+One can perform further operations on this stream, like
+converting the price from euros to dollars:
+
+\begin{verbatim}
+  price2x_dol = price2x
+                  .select (\t -> { :symbol => t.symbol,
+                                   :price => eur2dol(t.price) })
+\end{verbatim}
+
+Note that in the previous examples you're just copying \verb=:symbol=
+around. This is OK for one field, but could get boring pretty quickly
+if the number of fields increases. An alternative syntax might come in
+handy for these situations:
+
+\begin{verbatim}
+  price2x_dol = price2x
+                  .select (\t -> { t with
+                                     :price => eur2dol(t.price) })
+\end{verbatim}
+
+This should read as ``Copy all the fields from \verb=t= except
+\verb=:price=, which should be calculated as follows''.
+
+\subsection{Filters}
+\label{sec:filters}
+
+One can also filter tuples in a stream based on a predicate. The
+resulting stream will include only those tuples that pass the
+predicate. For example, to obtain only the Apple tuples one could
+write:
+
+\begin{verbatim}
+  apple_stocks = stocks
+                   .where (\t -> t.symbol == "AAPL")
+\end{verbatim}
+
+Note that the predicate is a function that receives an event and
+returns a boolean. Like \verb=select=, \verb=where= calls the
+predicate for every tuple but adds to the resulting stream only those
+tuples where the predicate returns true.
+
+Evaluating the stream \verb=apple_stocks= results in:
+
+\begin{evaluation}
+  ezql> apple_stocks
+  [\{ :symbol => "AAPL", :price => 50 \} at 10:59:59 am,
+   \{ :symbol => "AAPL", :price => 52 \} at 11:00:02 am,
+   \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
+\end{evaluation}
+
+At this point, it is convenient to pause and reflect a little about
+the execution model of EzQL programs. Imagine the following query,
+that doubles the price of Apple events:
+
+\begin{verbatim}
+  apple_stocks_2x =
+    stocks
+      .where  (\t -> t.symbol == "AAPL")
+      .select (\t -> { t with :price => t.price * 2 }
+\end{verbatim}
+
+Unlike regular programming languages, EzQL statements like the
+previous one are not executed sequentially. This query should not read
+as ``Take all events in the \verb=stocks= stream, then filter out
+those that do not belong to Apple and finally double the price of the
+remaining stocks''. This is because, as described in the beginning of
+the chapter, streams receive new events constantly. So you can never
+say ``Take all events in \verb=stocks= stream'', because this stream
+will never be complete. Instead, we must operate on events as they
+arrive. Thus, what the previous query really means is: ``As new events
+arrive in the \verb=stocks= stream, ignore those not related to Apple,
+double the price of the others and put them in the
+\verb=apple_stocks_2x= stream''. The difference is subtle but
+important. Essentially, it means the previous query is always
+running. To see this, imagine you evaluate \verb=apple_stocks= at
+10:59:00 am:
+
+\begin{evaluation}
+  ezql> apple_stocks_2x
+  []
+\end{evaluation}
+
+As expected, the stream is empty. But if you evaluate it again 5
+minutes later, at 11:04:00 am, the stream won't be empty anymore:
+
+\begin{evaluation}
+  ezql> apple_stocks_2x
+  [\{ :symbol => "AAPL", :price => 100 \} at 10:59:59 am,
+   \{ :symbol => "AAPL", :price => 104 \} at 11:00:02 am,
+   \{ :symbol => "AAPL", :price => 100 \} at 11:00:07 am]
+\end{evaluation}
+
+Note that you didn't have to recompute the entire
+\verb=stocks.where=\ldots expression.
+
+\subsection{Aggregators}
+\label{sec:aggregators}
+
+Aggregators are functions that are applied to streams and return a
+single value. Example aggregators include \verb=min()=, \verb=max()=,
+\verb=sum()= or \verb=avg()=.
+
+For example, the average price attained by Apple stocks can be
+found out with:
+
+\begin{verbatim}
+  avg_apple = apple_stocks.avg(:price)
+\end{verbatim}
+
+In this example, \verb=avg_apple= is not a standard numeric
+value. Instead, it is a \emph{continuous} value that will change over
+time, as new tuples arrive. Thus, if at any time you need to print the
+average of Apple's stock prices, you need only to print
+\verb=avg_apple= and not the entire expression on the right side.
+
+The fact that the value of the aggregator changes, suggests that it
+may be seen as stream with all its previous values. But new averages
+are not really new events and the analogy breaks easily. For example,
+if the average of Apple stocks was a stream, one could filter this
+stream to obtain the averages greater than a given threshold:
+
+\begin{verbatim}
+  avg_apple
+    .where (\avg -> avg.value > THRESHOLD)
+\end{verbatim}
+
+But what if the developer needs to find out for how long was the
+average greater than the given threshold? Unfortunately, this cannot
+be easily answered if we treat new averages as events, because events
+``happen'' at a well-defined time, but provide no information
+regarding their duration. Without the lower averages, we lose
+continuity and can't know for sure for how long was a given average
+valid, because the one that followed it may not be in the stream
+anymore. Thus, treating aggregators as streams is a weak analogy.
+
+What we would really like to have is a two dimensional plot of the
+evolution of the aggregator's value over time. This way, answering the
+question would be a simple matter of cutting the plot in two by the
+threshold and sum the lengths of the time intervals where the value
+was above the cut. This plot is a \emph{continuous value}, a new kind
+of data abstraction for values that are truly continuous, i.e., their
+value is defined even in the absence of events. Continuous values and
+their operations will be discussed in section [something], but for
+now, here's how we could find out for how long was the average greater
+than the threshold:
+
+\begin{verbatim}
+  (avg_apple > THRESHOLD).sumIntervals()
+\end{verbatim}
+
+\subsection{Sorting}
+\label{sec:sorting}
+
+TODO
+
+Sorting may only be applied to Windows, not streams.
+
+\subsection{Group by}
+\label{sec:group-by}
+
+In its simplest form, \emph{group by} acts as demultiplexer
+partitioning a single stream into many smaller streams. Events are
+sent to one of these streams where an aggregator computes some value
+per stream.
+
+For example, to find the maximum stock price for each company one
+could write:
+
+\begin{verbatim}
+  max_by_company = stocks
+                     .groupby(:symbol,
+                             (\group -> group.max(:price)))
+\end{verbatim}
+
+The second parameter received by \emph{group by} is, once again, a
+higher-order function that receives a group and specifies what to do
+with that group.
+
+The result of this particular \emph{group by} is a dictionary that
+maps symbols to maximums:
+
+\begin{tabular}{ |l|c| }
+  \hline
+  :symbol & Maximum price \\
+  \hline
+  ``AAPL'' & 52 \\
+  ``MSFT'' & 75 \\
+  \hline
+\end{tabular}
+
+The maximum price achieved by Apple could be discovered writing
+simply:
+
+\begin{evaluation}
+  ezql> max_by_company["AAPL"]
+  52
+\end{evaluation}
+
+Once again, please note that this maximum is actually a continuous
+value that may change as new events arrive.
+
+The \emph{group by} operator also allows partitioning by more than one
+field at a time:
+
+\begin{verbatim}
+  price_count_per_company = stocks
+                              .groupby({ :symbol, :price }
+                                      (\group -> group.count()))
+\end{verbatim}
+
+Which results in:
+
+\begin{tabular}{ |l|r|c| }
+  \hline
+  :symbol & :price & count() \\
+  \hline
+  ``AAPL'' & 50 & 2 \\
+  ``AAPL'' & 52 & 1 \\
+  ``MSFT'' & 70 & 1 \\
+  ``MSFT'' & 75 & 1 \\
+  \hline
+\end{tabular}
+
+The following query accesses this dictionary to find out how many
+times Apple stocks were priced at exactly \$50:
+
+\begin{evaluation}
+  ezql> price_count_per_company[\{ :symbol => "AAPL",
+                                  :price => 50 \}]
+  2
+\end{evaluation}
+
+Finally, one can also specify arbitrary partitions:
+
+\begin{verbatim}
+  daily_price_per_company =
+    stocks
+      .groupby(\t -> { :symbol, :hour => t.timestamp.hour() },
+              (\group -> group.max()))
+\end{verbatim}
+
+The previous example calculates the maximum price per hour. The first
+parameter is a function that, when given an event, chooses the group
+in which it is going to put the event. This results in:
+
+\begin{tabular}{ |l|r|c| }
+  \hline
+  :symbol & :hour & max() \\
+  \hline
+  ``AAPL'' & 10 & 50 \\
+  ``AAPL'' & 11 & 52 \\
+  ``MSFT'' & 11 & 75 \\
+  \hline
+\end{tabular}
+
+Once again, accessing the results is pretty straightforward:
+
+\begin{evaluation}
+  ezql> daily_price_per_company[\{ :symbol => "MSFT",
+                                  :hour   => 11 \}]
+  75
+\end{evaluation}
+
+Despite not being exactly a stream, some stream operations may be
+applied onto the result of a \emph{group by}. In particular,
+\verb=where= returns a new dictionary with only the groups that pass a
+given predicate. For example, the following query returns a dictionary
+containing only the companies whose maximum price is above \$70:
+
+\begin{verbatim}
+  max_by_company.where (\k, v -> v > 70)
+\end{verbatim}
+
+In this example the predicate is a function that receives two
+parameters, \verb=k= and \verb=v=, which stand for the groups' key and
+value in the \verb=max_by_companies= dictionary. Note that
+\verb=where= when applied to the result of a \emph{group by} acts just
+like the \verb=HAVING= operator in SQL.
+
+This following dictionary is the result of the operation:
+
+\begin{tabular}{ |l|c| }
+  \hline
+  :symbol & Maximum price \\
+  \hline
+  ``MSFT'' & 75 \\
+  \hline
+\end{tabular}
+
+
+TODO: Currently there must be an aggregator at the end of the line. Is
+this reasonable? What if we want to return, I don't know, the latest 3
+events per group? It should be perfectly acceptable to do so.
+
+\subsection{Joining multiple streams}
+\label{sec:join}
+
+TODO - not really that important with the objects model.
+
+Types of joins:
+\begin{itemize}
+\item equi-join
+\item Cross join
+\item Left and right outer joins
+\item Full outer join
+\end{itemize}
+
+\subsection{Merge}
+\label{sec:merge}
+
+To vary a little, assume now that we have two different streams,
+\verb=temperatures= and \verb=humidity=, that contain temperature and
+humidity readings for rooms in a building. \verb=temperature= contains:
+
+\begin{verbatim}
+ [{ :room_id => "E54", :temp => 20 } at 11:00:00 am,
+  { :room_id => "G43", :temp => 21 } at 11:01:00 am,
+  { :room_id => "E54", :temp => 23 } at 11:02:00 am,
+  { :room_id => "G43", :temp => 22 } at 11:03:00 am]
+\end{verbatim}
+
+\verb=humidity=, on the other hand, contains:
+
+\begin{verbatim}
+ [{ :room_id => "G43", :hum => 60 } at 11:00:30 am,
+  { :room_id => "E54", :hum => 62 } at 11:01:30 am,
+  { :room_id => "E54", :hum => 61 } at 11:02:30 am,
+  { :room_id => "G43", :hum => 59 } at 11:03:00 am]
+\end{verbatim}
+
+In some scenarios it may make sense to merge both streams sorted by
+timestamp. For example, if we need to correlate temperatures with
+humidities, it helps to have both fields in the same stream. With the
+\emph{merge} operator we can do so:
+
+\begin{verbatim}
+  temp_and_hum = temperature
+                   .merge(humidity)
+\end{verbatim}
+
+This results in:
+
+\begin{evaluation}
+ezql> temp_and_hum
+[\{ :room_id => "E54", :temp =>  20, :hum => nil \} at 11:00:00,
+ \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:01:30,
+ \{ :room_id => "G43", :temp =>  21, :hum => nil \} at 11:01:00,
+ \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:01:30,
+ \{ :room_id => "E54", :temp =>  23, :hum => nil \} at 11:02:00,
+ \{ :room_id => "E54", :temp => nil, :hum =>  61 \} at 11:02:30,
+ \{ :room_id => "G43", :temp =>  22, :hum =>  59 \} at 11:03:00]
+\end{evaluation}
+
+Note that some values are ``nil''. This is because there were no
+events at that time with new values to those fields. For instance,
+since there was no temperature reading for room ``E54'' at 11:01:30
+am, the \verb=:temp= value of that event is ``nil''.
+
+The fact that some values may be ``nil'' influences the results of
+correlations between these fields, a fact that restricts the
+usefulness of this operator. For instance, if we try to find out
+``what was the maximum temperature while the humidity was above
+60\%?'' with the above events, the answer would be ``nil'' because, as
+far as the engine knows, everytime the humidity was above 60\%, the
+temperature was ``nil''. We will learn how to overcome this problem in
+chapter \ref{chap:objects}.
+
+\subsection{Sliding windows}
+\label{sec:sliding-windows}
+
+Windows allow the developer to specify which parts of the stream he is
+interested in. There are two types of sliding windows in EzQL:
+temporal and fixed. Temporal windows select only the tuples within a
+given timestamp. For example, to obtain the Apple tuples received in
+the last 5 minutes, one could do:
+
+\begin{verbatim}
+  recent_apple = apple_stocks[5 min .. now]
+\end{verbatim}
+
+If this statement is evaluated at 11:05:00 am, \verb=recent_apple=
+will contain:
+
+\begin{evaluation}
+  ezql> recent_apple
+  [\{ :symbol => "AAPL", :price => 52 \} at 11:00:02 am,
+   \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
+\end{evaluation}
+
+Fixed windows, on the other hand, select tuples based on their
+position. The following code selects the last 3 elements received in
+the original \verb=stocks= stream:
+
+\begin{verbatim}
+  last_3 = stocks[0 .. 2]
+\end{verbatim}
+
+Note that streams are 0-based. The previous example will result in:
+
+\begin{evaluation}
+  ezql> last_3
+  [\{ :symbol => "MSFT", :price => 70 \} at 11:00:03 am,
+   \{ :symbol => "MSFT", :price => 75 \} at 11:00:06 am,
+   \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
+\end{evaluation}
+
+Just like aggregators, windows automatically update themselves as time
+passes or new events arrive.
+
+In the future, it should also be possible to support more complex
+definitions of windows. For instance, ``all events from the past
+week'', ``all events from Monday up to yesterday'', ``the fifty latest
+events from the last 10 minutes'', etc.
+
+Windows are just special kinds of streams where events ``expire'' and
+are removed. Thus, most stream operations are also available on
+windows. One could, for instance, count the number of events received
+per company over the last 5 seconds with:
+
+\begin{verbatim}
+  count_per_company =
+    stocks[5 sec].groupby(:symbol,
+                          \group -> group.count())
+\end{verbatim}
+
+If this statement is evaluated at 11:00:08 am, it will result in the
+following dictionary:
+
+\begin{tabular}{ |l|c| }
+  \hline
+  :symbol & count() \\
+  \hline
+  ``AAPL'' & 1 \\
+  ``MSFT'' & 2 \\
+  \hline
+\end{tabular}
+
+Note also that the statement is equivalent to:
+
+\begin{verbatim}
+  count_per_company =
+    stocks.groupby(:symbol,
+                   \group -> group[5 sec].count())
+\end{verbatim}
+
+That is, applying the window before or after the \emph{group by}
+returns the same result.
+
+\subsection{The flux operator}
+\label{sec:flux}
+
+The flux (\verb=|>=) operator is basically just a replacement for the
+. (dot) operator that suggests the idea of a pipeline where tuples
+flow from operator to operator. For example, to filter all Apple
+tuples and convert the \verb=:price= from dollars to euros and then
+obtain the average, one could write:
+
+\begin{verbatim}
+  stocks
+    .where  (\t -> t.symbol == "AAPL")
+    .select (\t -> { t with :price => dol2eur(t.price) })
+    .avg    (:price)
+\end{verbatim}
+
+With the flux operator, the same query could be written as:
+
+\begin{verbatim}
+  stocks
+    |> where  (\t -> t.symbol == "AAPL")
+    |> select (\t -> { t with :price => dol2eur(t.price) })
+    |> avg    (:price)
+\end{verbatim}
+
+\subsection{Light syntax}
+\label{sec:light-syntax}
+
+Up until now we have been using the operators explicitly, as they
+really are: functions that receive arguments --- which may themselves
+be other functions ---, and that act on streams to generate other
+streams, dictionaries, windows or continuous values.
+
+EzQL supports an alternative syntax resembling SQL, henceforth called
+\emph{light syntax}. A query that filters all Apple tuples and
+converts the ``price'' from dollars to euros looks like this written
+in the light syntax:
+
+\begin{verbatim}
+  from   t in stocks
+  where  t.symbol == "AAPL"
+  select { t with :price => dol2eur(t.price) }
+\end{verbatim}
+
+This ``light'' syntax is really just syntactic sugar: the compiler
+translates code from the light to raw syntax before processing.
+
+From now on we will use light syntax in all our examples.
+
+\chapter{Modeling entities with objects}
+\label{chap:objects}
+
+\section{Motivation}
+
+In section \ref{sec:merge}, we were given two streams ---
+\verb=temperatures= and \verb=humidity= ---, containing temperature
+and humidity readings from a set of rooms in a building. We then
+failed to provide an answer to an apparently simple question: ``what
+was the maximum temperature while the humidity was above
+60\%?''. Using \verb=merge= seemed like the right thing to do, but
+this approach failed as some fields in the resulting stream were
+``nil''.
+
+However, in this scenario, we are dealing with physical quantities
+measured frequently. It wouldn't be completely off the line to assume
+that temperatures and humidities retain their previous values until
+new updates arrive. This approach would work but, in general, we can't
+make these kind of assumptions. Sometimes the inexistence of an event
+really means that nothing has happened (orders not placed, earthquakes
+that didn't happen, \ldots) so it's wrong to assume the previous value
+remains the same in the general case.
+
+Using \verb=merge= has a few other weaknesses:
+
+\begin{itemize}
+\item In this example we only had to deal with temperatures and
+  humidity readings. But imagine we need to take other kinds of
+  sensors into acount: atmospheric pressure, noise level, \ldots. To
+  use all these different readings in a query, we would have to merge
+  them all. Furthemore, to perform calculations over each room
+  independetly, we need an additional \emph{group by};
+\item What if the question is posed at 11:07:30 am (and no other
+  events were received)? The 5 minutes window will include only the
+  last reading, at 11:03:00 am, where the humidity is below 60\%. So
+  the answer would be ``nil''. However, if we assume the temperature
+  and humidity remain constant until new readings arrive, at 11:02:30
+  am the temperature would still be 23 degrees and the humidity
+  61\%. But this is the moment the 5 minutes window starts, so
+  shouldn't these values be taken into consideration? Shouldn't the
+  answer be ``23''?
+\end{itemize}
+
+There are two problems here. First, we have an entity --- the room
+---, whose properties --- temperature and humidity ---, are scattered
+around multiple streams and need to be merged together for further
+processing. Having multiple rooms aggravates the issue, because the
+properties of multiple entities become all mixed up. Second, events
+aren't supposed to carry stateful information. Events represent
+isolated occurrences. A temperature reading of 20 degrees means that
+the temperature at that time was 20 degrees, but it doesn't say
+anything about the evolution of temperature in the time that goes from
+this event to the next. We can't just ``fill the gaps'' and we can't
+assume ``one size fits all'' because, as said above, sometimes it
+makes sense to assume some value remains constant between updates,
+sometimes it doesn't.
+
+What we really need to solve both problems is some way to gather all
+the related information together and to explicitly manage stateful
+attributes and how they evolve over time. What we really need is to be
+able to model the scenario using objects.
+
+\section{Simple objects}
+
+From an OOP perspective, it is clear that our scenario could be
+modeled with many Room objects (one per each physical room) with
+temperature and humidity attributes.
+
+In EzQL, this could be accomplished with:
+
+\begin{verbatim}
+@entity
+@createFrom(temperatures.merge(humidity),
+            onNew = room_id)
+class Room
+end
+\end{verbatim}
+
+This code declares a new class, \verb=Room=, but leaves the
+declaration empty. However, is also tags the class with two
+annotations, \verb=@entity= and \verb=@createFrom=. The first is
+really just documentation and could be omitted. It is used to mean
+that Rooms are entities. The real meat comes from the second
+annotation. \verb=@createFrom= signals the ESP engine to automatically
+create new \verb=Room= instances when previously unseen
+\verb=room_ids= show up in the stream
+
+\begin{verbatim}
+  temperatures.merge(humidity)
+\end{verbatim}
+
+In addition, this annotation automatically adds the stream fields to
+the class. So, every Room instance has three attributes:
+\verb=room_id=, \verb=temp= and \verb=hum=. These attributes are
+automatically filled and updated by the system as new events
+arrive. Naturally, the values of these attributes are independent from
+object to object. That is, an event with \verb=room_id= = 2 will only
+affect the Room object with \verb=room_id= = 2 and not the others.
+
+% Talk about how merges are still necesary, but only once
+% Give examples of queries with objects
+
+\section{Relations}
+
+\chapter{Continuous values}
+
+\chapter{User defined functions and aggregators}
+\begin{itemize}
+\item Explain the need for new aggregates (forMoreThan())
+\item Explain the differences between continuous and batch mode
+\item Explain the aggregates
+\item schedule?!
+\end{itemize}
+\chapter{Reference}
+
+\section{Stream}
+
+\section{Window}
+
+\section{Dictionary}
+
+\section{Continuous values}
+
+\chapter{Bibliography}
+\end{document}
