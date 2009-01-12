@@ -2,6 +2,7 @@
 #light
 
 open System
+open System.Collections
 open EzqlParser
 open Lexing
 
@@ -12,12 +13,9 @@ let ids = Map.of_list [("class", CLASS);
                        ("fun",   FUN)]
 
 let tokenize text =
-  if ids.ContainsKey text
+  if ids.ContainsKey(text)
       then ids.[text]
       else ID text
-
-let indentationStack = [0]
-
 }
 
 let num        = ['0'-'9']+
@@ -25,24 +23,27 @@ let alpha      = ['a'-'z' 'A'-'Z']
 let identifier = alpha+ (alpha | ['_'])*
 let integer    = '-'? num
 let whitespace = ' ' | '\t'
-let newline    = '\n' | '\r' '\n'
+let newline    = '\n'
 
 rule token = parse
     | whitespace { token lexbuf }
-    | newline    { (lexbuf: lexbuf).EndPos <- lexbuf.EndPos.NextLine; manageIndentation lexbuf; token lexbuf }
+    | newline    { (lexbuf: lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
+    | "{"        { BEGIN }
+    | "}"        { END }
     | "("        { LPAREN }
     | ")"        { RPAREN }
     | "+"        { PLUS }
     | "-"        { MINUS }
     | "*"        { TIMES }
     | "="        { EQUALS }
+    | ","        { COMMA }
+    | "."        { DOT }
+    | ":"        { COLON }
+    | "\\"       { LAMBDA }
+    | "->"       { ARROW }
     | identifier { tokenize (lexeme lexbuf) }
-    | integer    { INT (Int32.Parse(lexeme lexbuf)) }
+    | integer    { INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
     | eof        { EOF }
 
-and manageIndentation = parse
-    | whitespace* {
-      let length = (lexeme lexbuf).Length
-	  
-}
+
 
