@@ -535,7 +535,7 @@ times Apple stocks were priced at exactly \$50:
 Finally, one can also specify arbitrary partitions:
 
 \begin{verbatim}
-  daily_price_per_company =
+  hourly_price_per_company =
     stocks
       .groupby(\t -> { :symbol, :hour => t.timestamp.hour() },
               (\group -> group.max()))
@@ -558,8 +558,8 @@ in which it is going to put the event. This results in:
 Once again, accessing the results is pretty straightforward:
 
 \begin{evaluation}
-  ezql> daily_price_per_company[\{ :symbol => "MSFT",
-                                  :hour   => 11 \}]
+  ezql> hourly_price_per_company[\{ :symbol => "MSFT",
+                                    :hour   => 11 \}]
   75
 \end{evaluation}
 
@@ -645,7 +645,7 @@ This results in:
 \begin{evaluation}
 ezql> temp_and_hum
 [\{ :room_id => "E54", :temp =>  20, :hum => nil \} at 11:00:00,
- \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:01:30,
+ \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:00:30,
  \{ :room_id => "G43", :temp =>  21, :hum => nil \} at 11:01:00,
  \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:01:30,
  \{ :room_id => "E54", :temp =>  23, :hum => nil \} at 11:02:00,
@@ -873,6 +873,21 @@ In EzQL, this could be accomplished with:
             onNew = room_id)
 class Room
 end
+
+@entity
+@createFrom (temperatures, :room_id), (humidity, :room_id)
+class Room
+
+  @field(from t in temperatures
+         select temp)
+  temperature
+
+
+  @field(from t in humidity
+         select hum)
+  humidity
+
+end
 \end{verbatim}
 
 This code declares a new class, \verb=Room=, but leaves the
@@ -896,8 +911,9 @@ arrive. Naturally, the values of these attributes are independent from
 object to object. That is, an event with \verb=room_id= = 2 will only
 affect the Room object with \verb=room_id= = 2 and not the others.
 
-% Talk about how merges are still necesary, but only once
+% Talk about how merges are still necesary, but only once 
 % Give examples of queries with objects
+% Mention that the default convention over configuration settings may be easily overriden.
 
 \section{Relations}
 
