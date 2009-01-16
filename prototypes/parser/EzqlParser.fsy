@@ -4,11 +4,22 @@ open EzqlAst
 
 %start start
 
-%token <string> ID COMPARE_OP
+%token <string> ID
 %token <int> INTEGER_LITERAL
-%token CLASS NEW IF THEN ELSE MATCH WITH FUN
-%token LPAREN RPAREN DOT COLON ARROW PLUS MINUS TIMES EQUALS COMMA LAMBDA
+%token CLASS NEW IF THEN ELSE MATCH WITH LET IN
+%token LPAREN RPAREN LBRACE RBRACE
+%token DOT COLON ARROW PLUS MINUS TIMES COMMA LAMBDA
+%token GT GTE EQ DIFF LTE LT AND OR NOT
 %token BEGIN END EOF
+
+%nonassoc IF THEN ELSE
+%nonassoc IN
+%nonassoc ARROW
+%nonassoc LPAREN RPAREN LBRACE RBRACE
+%left AND OR
+%left GT GTE EQ DIFF LTE LT
+%nonassoc NOT
+%left DOT
 
 %type <prog> start
 
@@ -30,19 +41,38 @@ methods:
     | methods methodDecl                                 { $1 @ [$2] }
 
 methodDecl:
-    | ID LPAREN parameters RPAREN BEGIN exprs END        { Method ($1, $3, $6) }
-
-exprs:
-    | expr                                               { [$1] }
-    | exprs expr                                         { $1 @ [$2] }
+    | ID LPAREN parameters RPAREN BEGIN expr END         { Method ($1, $3, $6) }
 
 expr:
-    | expr DOT ID LPAREN args RPAREN                     { MethodCall($1, Identifier $3, $5) }
-    | LAMBDA parameters ARROW BEGIN exprs END            { Lambda($2, $5) }
+    | LET ID EQ expr IN expr                             { Binding (Identifier $2, $4, $6) }
+    | NEW ID LPAREN args RPAREN                          { New (Identifier $2, $4) }
+    | expr DOT ID LPAREN args RPAREN                     { MethodCall ($1, Identifier $3, $5) }
+    | expr LPAREN args RPAREN                            { Call ($1, $3) }
+    | LAMBDA parameters ARROW expr                       { Lambda ($2, $4) }
     | LPAREN expr RPAREN                                 { $2 }
+    | conditional                                        { $1 }
+    | booleanExpr                                        { $1 }
+    | expr LBRACE expr RBRACE                            { Index ($1, $3) }
+    | tuple                                              { $1 }
     | ID                                                 { Id (Identifier $1) }
     | INTEGER_LITERAL                                    { Integer $1 }
     | COLON ID                                           { Symbol $2 }
+
+conditional:
+    | IF expr THEN BEGIN expr END ELSE BEGIN expr END    { IfThenElse ($2, $5, Some $9) }
+    | IF expr THEN BEGIN expr END                        { IfThenElse ($2, $5, None) }
+
+booleanExpr:
+    | expr GT   expr                                     { BooleanExpr (OpGt, $1, $3) }
+    | expr GTE  expr                                     { BooleanExpr (OpGte, $1, $3) }
+    | expr EQ   expr                                     { BooleanExpr (OpEq, $1, $3) }
+    | expr DIFF expr                                     { BooleanExpr (OpDiff, $1, $3) }
+    | expr LTE  expr                                     { BooleanExpr (OpLte, $1, $3) }
+    | expr LT   expr                                     { BooleanExpr (OpLt, $1, $3) }
+    | expr AND  expr                                     { BooleanExpr (OpAnd, $1, $3) }
+    | expr OR   expr                                     { BooleanExpr (OpOr, $1, $3) }
+    | NOT expr                                           { Not $2 }
+
 
 // Zero or more, comma-separated parameters
 parameters:
@@ -62,3 +92,18 @@ args:
 more_args:
     |                                                    { [] }
     | COMMA expr more_args                               { $2::$3 }
+
+/*
+ * Tuples
+ */
+
+tuple:
+    | LPAREN tupleArgs RPAREN                            { Tuple $2 }
+
+// Two or more, comma-separated expressions
+tupleArgs:
+    | expr COMMA expr tupleMoreArgs                      { $1::$3::$4 }
+
+tupleMoreArgs:
+    |                                                    { [] }
+    | COMMA expr tupleMoreArgs                           { $2::$3 }

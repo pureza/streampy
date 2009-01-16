@@ -10,7 +10,11 @@ let ids = Map.of_list [("class", CLASS);
                        ("if",    IF);
                        ("then",  THEN);
                        ("else",  ELSE);
-                       ("fun",   FUN)]
+                       ("new",   NEW);
+                       ("let",   LET);
+                       ("in",    IN);
+                       ("and",   AND);
+                       ("or",    OR)];
 
 let tokenize text =
   if ids.ContainsKey(text)
@@ -27,15 +31,23 @@ let newline    = '\n'
 
 rule token = parse
     | whitespace { token lexbuf }
-    | newline    { (lexbuf: lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
+    | newline    { (lexbuf:lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
     | "{"        { BEGIN }
     | "}"        { END }
     | "("        { LPAREN }
     | ")"        { RPAREN }
+    | "["        { LBRACE }
+    | "]"        { RBRACE }
     | "+"        { PLUS }
     | "-"        { MINUS }
     | "*"        { TIMES }
-    | "="        { EQUALS }
+    | ">"        { GT }
+    | ">="       { GTE }
+    | "="        { EQ }
+    | "!="       { DIFF }
+    | "<="       { LTE }
+    | "<"        { LT }
+    | "!"        { NOT }
     | ","        { COMMA }
     | "."        { DOT }
     | ":"        { COLON }

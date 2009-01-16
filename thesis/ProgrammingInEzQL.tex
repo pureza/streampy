@@ -54,16 +54,16 @@ The main features of EzQL are:
   updated as new sensor readings arrive. Furthermore, these objects
   and the values of their properties define the state of the
   application and this state can be queried just like regular events;
-\item The object model supports \emph{relations} between objects,
+\item The object model supports \emph{associations} between objects,
   inspired by O/RM (Object-Relational Mapping) tools for
   databases. Thus, it is possible to say, for instance, that a Room
   has many Products and, correspondingly, that a Product belongs to
-  one Room. Again, these relations may change as new events arrive,
+  one Room. Again, these associations may change as new events arrive,
   i.e., a Product may leave one Room and enter another. Naturally,
-  these relations can also be queried --- one can ask, for example,
-  which is the cheapest Product inside Room E54. This type of queries
-  can already be written in currently available systems, but we will
-  see that they become much simpler in EzQL;
+  these relationships can also be queried --- one can ask, for
+  example, which is the cheapest Product inside Room A. This type of
+  queries can already be written in currently available systems, but
+  we will see that they become much simpler in EzQL;
 \item EzQL provides extensive support for \emph{temporal queries}, a
   common class of queries in ESP applications that current products
   don't handle so well, as discussed in [ref]. This support integrates
@@ -590,6 +590,7 @@ This following dictionary is the result of the operation:
 \end{tabular}
 
 
+
 TODO: Currently there must be an aggregator at the end of the line. Is
 this reasonable? What if we want to return, I don't know, the latest 3
 events per group? It should be perfectly acceptable to do so.
@@ -607,65 +608,80 @@ Types of joins:
 \item Full outer join
 \end{itemize}
 
-\subsection{Merge}
-\label{sec:merge}
+\subsubsection{Joining with timestamps}
+\label{sec:timestamp-join}
+
+There is a situation where you may join two streams without using
+windows: when the timestamp is part of the join predicate. Let's see a
+simple example to understand how these kinds of joins work.
 
 To vary a little, assume now that we have two different streams,
 \verb=temperatures= and \verb=humidity=, that contain temperature and
 humidity readings for rooms in a building. \verb=temperature= contains:
 
 \begin{verbatim}
- [{ :room_id => "E54", :temp => 20 } at 11:00:00 am,
-  { :room_id => "G43", :temp => 21 } at 11:01:00 am,
-  { :room_id => "E54", :temp => 23 } at 11:02:00 am,
-  { :room_id => "G43", :temp => 22 } at 11:03:00 am]
+ [{ :room_id => "A", :temp => 20 } at 11:00:00 am,
+  { :room_id => "B", :temp => 21 } at 11:01:00 am,
+  { :room_id => "A", :temp => 23 } at 11:02:00 am,
+  { :room_id => "B", :temp => 22 } at 11:03:00 am]
 \end{verbatim}
 
 \verb=humidity=, on the other hand, contains:
 
 \begin{verbatim}
- [{ :room_id => "G43", :hum => 60 } at 11:00:30 am,
-  { :room_id => "E54", :hum => 62 } at 11:01:30 am,
-  { :room_id => "E54", :hum => 61 } at 11:02:30 am,
-  { :room_id => "G43", :hum => 59 } at 11:03:00 am]
+ [{ :room_id => "B", :hum => 60 } at 11:00:30 am,
+  { :room_id => "A", :hum => 62 } at 11:01:30 am,
+  { :room_id => "A", :hum => 61 } at 11:02:30 am,
+  { :room_id => "B", :hum => 59 } at 11:03:00 am]
 \end{verbatim}
 
-In some scenarios it may make sense to merge both streams sorted by
-timestamp. For example, if we need to correlate temperatures with
-humidities, it helps to have both fields in the same stream. With the
-\emph{merge} operator we can do so:
+Now imagine you need to correlate temperatures and humidities. For
+instance, you may need to answer the following question: ``what was
+the maximum temperature while the humidity was above 60\%?''. To do
+this, it might come in handy to ``merge'' both streams to obtain a new
+stream with three fields --- \verb=:room_id=, \verb=:temp= and
+\verb=:hum=. The events in this new stream are taken from both
+streams and are sorted by timestamp. You can do this with:
 
 \begin{verbatim}
-  temp_and_hum = temperature
-                   .merge(humidity)
+  temps_and_hums = temperature
+                     .outerJoin(humidity,
+                                [:room_id, :room_id], :timestamp)
 \end{verbatim}
 
 This results in:
 
 \begin{evaluation}
-ezql> temp_and_hum
-[\{ :room_id => "E54", :temp =>  20, :hum => nil \} at 11:00:00,
- \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:00:30,
- \{ :room_id => "G43", :temp =>  21, :hum => nil \} at 11:01:00,
- \{ :room_id => "E54", :temp => nil, :hum =>  62 \} at 11:01:30,
- \{ :room_id => "E54", :temp =>  23, :hum => nil \} at 11:02:00,
- \{ :room_id => "E54", :temp => nil, :hum =>  61 \} at 11:02:30,
- \{ :room_id => "G43", :temp =>  22, :hum =>  59 \} at 11:03:00]
+ezql> temps_and_hums
+[\{ :room_id => "A", :temp =>  20, :hum =>     \} at 11:00:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:00:30,
+ \{ :room_id => "B", :temp =>  21, :hum =>     \} at 11:01:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:01:30,
+ \{ :room_id => "A", :temp =>  23, :hum =>     \} at 11:02:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  61 \} at 11:02:30,
+ \{ :room_id => "B", :temp =>  22, :hum =>  59 \} at 11:03:00]
 \end{evaluation}
 
-Note that some values are ``nil''. This is because there were no
-events at that time with new values to those fields. For instance,
-since there was no temperature reading for room ``E54'' at 11:01:30
-am, the \verb=:temp= value of that event is ``nil''.
+Note that some fields don't have a value, they're empty or
+blank. Empty fields mean there was no information for the field at
+that moment. Empty fields are distinct from null values: null may be a
+valid value in some situations. For example, suppose the humidity
+sensor malfunctions and starts to emit null values. How would you
+distinguish real null values like these from ``dummy'' nulls inserted
+by the outer join? This is exactly what empty fields are for.
 
-The fact that some values may be ``nil'' influences the results of
-correlations between these fields, a fact that restricts the
-usefulness of this operator. For instance, if we try to find out
-``what was the maximum temperature while the humidity was above
-60\%?'' with the above events, the answer would be ``nil'' because, as
-far as the engine knows, everytime the humidity was above 60\%, the
-temperature was ``nil''. We will learn how to overcome this problem in
-chapter \ref{chap:objects}.
+Unfortunately, the fact that some values may be blank influences the
+results of correlations between these fields, a fact that restricts
+the usefulness of this operator. For instance, if we try to answer our
+original question, ``what was the maximum temperature while the
+humidity was above 60\%?'' with the events above, the answer would be
+``null'' because, as far as the engine knows, everytime the humidity
+was above 60\%, there was no information for the temperature. The
+skeptic reader may question the usefulness of having empty fields. It
+may seem they were created to solve a problem and failed. Still, they
+get us halfway there. In chapter \ref{chap:objects} we will see how to
+correcly answer the previous question and where does the solution make
+good use of empty fields.
 
 \subsection{Sliding windows}
 \label{sec:sliding-windows}
@@ -802,14 +818,14 @@ From now on we will use light syntax in all our examples.
 
 \section{Motivation}
 
-In section \ref{sec:merge}, we were given two streams ---
+In section \ref{sec:timestamp-join}, we were given two streams ---
 \verb=temperatures= and \verb=humidity= ---, containing temperature
 and humidity readings from a set of rooms in a building. We then
 failed to provide an answer to an apparently simple question: ``what
 was the maximum temperature while the humidity was above
-60\%?''. Using \verb=merge= seemed like the right thing to do, but
-this approach failed as some fields in the resulting stream were
-``nil''.
+60\%?''. Using a timestamped outer join seemed like the right thing to
+do, but this approach failed as some fields in the resulting stream
+were blank.
 
 However, in this scenario, we are dealing with physical quantities
 measured frequently. It wouldn't be completely off the line to assume
@@ -820,25 +836,16 @@ really means that nothing has happened (orders not placed, earthquakes
 that didn't happen, \ldots) so it's wrong to assume the previous value
 remains the same in the general case.
 
-Using \verb=merge= has a few other weaknesses:
-
-\begin{itemize}
-\item In this example we only had to deal with temperatures and
-  humidity readings. But imagine we need to take other kinds of
-  sensors into acount: atmospheric pressure, noise level, \ldots. To
-  use all these different readings in a query, we would have to merge
-  them all. Furthemore, to perform calculations over each room
-  independetly, we need an additional \emph{group by};
-\item What if the question is posed at 11:07:30 am (and no other
-  events were received)? The 5 minutes window will include only the
-  last reading, at 11:03:00 am, where the humidity is below 60\%. So
-  the answer would be ``nil''. However, if we assume the temperature
-  and humidity remain constant until new readings arrive, at 11:02:30
-  am the temperature would still be 23 degrees and the humidity
-  61\%. But this is the moment the 5 minutes window starts, so
-  shouldn't these values be taken into consideration? Shouldn't the
-  answer be ``23''?
-\end{itemize}
+Joining streams has another weakness. In this example we only had to
+deal with temperatures and humidity readings. But imagine we need to
+take other kinds of sensors into account: atmospheric pressure, noise
+level, \ldots. To use all these different readings in a query, we
+would have to join them all. Furthemore, to perform calculations over
+each room independently, we need an additional \emph{group by}. All
+these \emph{join}s and \emph{group by}s difficult the understanding of
+queries and hide their real intention, i.e., that there are rooms with
+temperatures and humidity levels and we want to compute results for
+each room individually based on those values.
 
 There are two problems here. First, we have an entity --- the room
 ---, whose properties --- temperature and humidity ---, are scattered
@@ -860,6 +867,7 @@ attributes and how they evolve over time. What we really need is to be
 able to model the scenario using objects.
 
 \section{Simple objects}
+\label{sec:simple-objects}
 
 From an OOP perspective, it is clear that our scenario could be
 modeled with many Room objects (one per each physical room) with
@@ -868,56 +876,479 @@ temperature and humidity attributes.
 In EzQL, this could be accomplished with:
 
 \begin{verbatim}
-@entity
-@createFrom(temperatures.merge(humidity),
-            onNew = room_id)
+
+temps_and_hums = temperature
+                   .outerJoin(humidity,
+                              [:room_id, :room_id], :timestamp)
+
+@createFrom(temps_and_hums, onNew = :room_id)
 class Room
-end
-
-@entity
-@createFrom (temperatures, :room_id), (humidity, :room_id)
-class Room
-
-  @field(from t in temperatures
-         select temp)
-  temperature
-
-
-  @field(from t in humidity
-         select hum)
-  humidity
-
 end
 \end{verbatim}
 
 This code declares a new class, \verb=Room=, but leaves the
-declaration empty. However, is also tags the class with two
-annotations, \verb=@entity= and \verb=@createFrom=. The first is
-really just documentation and could be omitted. It is used to mean
-that Rooms are entities. The real meat comes from the second
-annotation. \verb=@createFrom= signals the ESP engine to automatically
-create new \verb=Room= instances when previously unseen
-\verb=room_ids= show up in the stream
-
-\begin{verbatim}
-  temperatures.merge(humidity)
-\end{verbatim}
+declaration empty. However, is also tags the class with one
+annotation, \verb=@createFrom=. This signals the ESP engine to
+automatically create new \verb=Room= instances when previously unseen
+\verb=room_ids= show up in the stream \verb=temps_and_hums=.
 
 In addition, this annotation automatically adds the stream fields to
-the class. So, every Room instance has three attributes:
+the class. So, every Room instance ends up with three attributes:
 \verb=room_id=, \verb=temp= and \verb=hum=. These attributes are
 automatically filled and updated by the system as new events
 arrive. Naturally, the values of these attributes are independent from
-object to object. That is, an event with \verb=room_id= = 2 will only
-affect the Room object with \verb=room_id= = 2 and not the others.
+object to object. That is, an event with \verb=room_id= equal to 2
+will only affect the Room object with \verb=room_id= equal to 2 and
+not the others.
 
-% Talk about how merges are still necesary, but only once 
-% Give examples of queries with objects
-% Mention that the default convention over configuration settings may be easily overriden.
+Having set up this apparatus, we can now run the simulation and see
+the objects being created for us automatically. All the \verb=Room=
+instances are accessible using \verb=Room.all=. In essence, this is a
+dictionary that maps object id's (taken from the \verb=:room_id= field
+in this case) to the objects themselves. If the stream \verb=temps_and_hums= equals:
 
-\section{Relations}
+\begin{evaluation}
+ezql> temps_and_hums
+[\{ :room_id => "A", :temp =>  20, :hum =>     \} at 11:00:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:00:30,
+ \{ :room_id => "B", :temp =>  21, :hum =>     \} at 11:01:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:01:30,
+ \{ :room_id => "A", :temp =>  23, :hum =>     \} at 11:02:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  61 \} at 11:02:30,
+ \{ :room_id => "B", :temp =>  22, :hum =>  59 \} at 11:03:00]
+\end{evaluation}
+
+then \verb=Room.all= will return:
+
+\begin{tabular}{ |l|l| }
+  \hline
+  id & object \\
+  \hline
+  ``A'' & Room with room\_id = ``A'', temp = 23, hum = 61 \\
+  ``B'' & Room with room\_id = ``B'', temp = 22, hum = 59 \\
+  \hline
+\end{tabular}
+
+Note that the temperature inside the room ``A'' is 23 degrees even
+though the last event for this room contained an empty \verb=:temp=
+field. If you recall, in section \ref{sec:timestamp-join} empty fields
+were introduced to represent the absence of information. In this
+example, an empty field means the temperature sensor didn't emit
+anything at 11:03:00 am. So, it's safe to ignore these fields (after
+all they were created by the \emph{outer join}, anyway) and assume the
+temperature remains the same 23 degrees as in the previous
+report. It's like in a regular OOP programming language: if an
+attribute isn't modified, it retains the previous value. This is not a
+case-specific rule, it's global: objects always ignore empty fields
+(but they don't ignore null values).
+
+Naturally, we can query these objects as if they were normal streams:
+
+\begin{verbatim}
+  from   room in Room.all
+  where  room.hum > 60
+  select room.room_id
+\end{verbatim}
+
+This would result in a subset of \verb=Room.all= containing only one
+room:
+
+\begin{tabular}{ |l|l| }
+  \hline
+  id & object \\
+  \hline
+  ``A'' & Room with room\_id = ``A'', temp = 23, hum = 61 \\
+  \hline
+\end{tabular}
+
+Previously, we said that all \verb=Room= instances automatically get
+three fields from the stream \verb=temps_and_hums=. This is the
+default behavior, as it will most likely be the intention of the
+developer. But this behavior may be overriden if desired. Furthermore,
+one may create new fields whose values are taken from an arbitrary
+stream. For example, to create all the fields manually one could do:
+
+\begin{verbatim}
+@createFrom(temps_and_hums, onNew = :room_id, autoCreate = false)
+class Room
+  @field(from t in temps_and_hums select t.room_id)
+  roomId
+
+  @field(from t in temps_and_hums select t.temp)
+  currentTemperature
+
+  @field(from t in temps_and_hums select t.hum)
+  currentHumidity
+end
+\end{verbatim}
+
+Note how you can specify from which stream to get the attribute values
+using the \verb=@field= annotation.
+
+\section{Associations}
+\label{sec:associations}
+
+Suppose now that you are trying to model a scenario where there is a
+factory with many rooms. Products follow a predetermined path along
+the pipeline and may switch rooms frequently. Every product has a
+RFID tag and every room's entry has RFID readers which emit events to
+the \verb=entries= stream declared with:
+
+\begin{verbatim}
+ entries = new Stream of { :room_id, :product_id }
+\end{verbatim}
+
+The question you need to answer is simply ``What is the temperature at
+the room where product X is?''.
+
+This is not so difficult using regular stream operations:
+
+\begin{verbatim}
+product_to_room = entries
+                    .groupby(:product_id,
+                             \group -> group.last)
+
+Room.all[product_to_room["X"]].temp
+
+TODO: Explain last. Returns the latest event in a stream
+\end{verbatim}
+
+But if you need to know the number of products in each room, you'd
+have to create the opposite relationship, \verb=room_to_product=:
+
+\begin{verbatim}
+room_to_product = product_to_room
+                    .flatten
+                    .groupby(:room_id,
+                    \group -> group.count())
+
+TODO: explain flatten. Basically, it turns a dictionary produced
+by group by into a regular window:
+
+if product_to_room =
+
+product_id -> room_id
+"X"        -> "G53"
+"Y"        -> "A"
+"Z"        -> "A"
+
+product_to_room.flatten =
+
+[{ :product_id => "X", :room_id => "G53" },
+ { :product_id => "Y", :room_id => "A" },
+ { :product_id => "Z", :room_id => "A" }]
+
+But is it a regular window? I mean, can you do .flatten[5 min] ?
+
+\end{verbatim}
+
+Clearly, this works, but it would be much easier if our objects could
+be enriched with associations to each other. In this case, we'd like
+to add a list of \verb=Product=s to every \verb=Room= and a reference
+to a \verb=Room= to every product. This can be done in EzQL as
+follows:
+
+\begin{verbatim}
+@createFrom(temps_and_hums, onNew = :room_id)
+@hasMany(:products)
+class Room
+end
+
+@createFrom(entries, onNew = :product_id)
+@belongsTo(:room)
+class Product
+end
+\end{verbatim}
+
+The \verb=@hasMany= annotation means that each room may contain an
+unbounded number of products. This annotation also adds a list of
+\verb=Product= instances the every \verb=Room=. So, if you want to get
+the list of products in room ``A'' you can do so with:
+
+\begin{verbatim}
+Room.all["A"].products
+\end{verbatim}
+
+The \verb=@belongsTo= annotation adds the reverse association, i.e.,
+it means that every product is inside one room. Moreover, this
+annotation also adds an attribute \verb=room= to every
+\verb=Product=. Thus, to know in which room is product ``X'' one could
+write:
+
+\begin{verbatim}
+Products.all["X"].room
+# or ...
+Products.all["X"].room.room_id  # ... to get just the ID
+\end{verbatim}
+
+And you can find the number of products per room using:
+
+\begin{verbatim}
+from   room in Room.all
+select room.room_id, room.products.length
+\end{verbatim}
+
+Certainly an improvement. Not only is the query more concise, it is
+also much simpler to understand.
+
+All these attributes created automatically are managed by the engine
+without any additional effort required from the programmer. All of
+this may seem like a bit of hidden magic, but it's really just a
+simple convention:
+
+\begin{enumerate}
+\item The \verb=:products= parameter to the \verb=@hasMany= annotation
+  instructs the engine to create a list of \verb=Product= instances
+  (it's simply the class whose name is the singular of
+  ``products''). Furthermore, this list will be named ``products'';
+\item On the other hand, the \verb=:room= parameter to the
+  \verb=belongsTo= annotation tells the engine to create a field named
+  ``room'' in every product. This field will hold an instance of the
+  \verb=Room= class (once again, it finds the class name through the
+  parameter);
+\item How does the engine fill the \verb=room= attribute of every
+  \verb=Product=? Easy, it checks the \verb=room_id= field. Remember,
+  this field was created automatically by the \verb=@createFrom=
+  annotation. Given the identifier of the room, the engine can easily
+  lookup the corresponding \verb=Room= instance using the
+  \verb=Room.all= dictionary;
+\item Finally, after knowing where each product is, it is
+  straightforward to invert the association to find out which products
+  are in which rooms.
+\end{enumerate}
+
+Naturally, this convention may be overriden.
+
+% TODO: give examples
+% Which other relation types are supported? Give examples.
 
 \chapter{Continuous values}
+Just as you may query windows containing old events, you may reference
+old attribute values in your queries. For example, you can calculate
+the maximum temperature of room ``A'' over the last 5 minutes using
+the \verb=temp= attribute from the \verb=Room= class as follows:
+
+\begin{verbatim}
+Room.all["A"].temp[5 min].max()
+\end{verbatim}
+
+You could have solved this using standard stream operators presented
+in chapter \ref{chap:streams-events}:
+
+\begin{verbatim}
+from   ev in temperature
+where  ev.room_id = "A"
+select max(ev.temp)
+\end{verbatim}
+
+Surprisingly though, the results would have been different. To
+understand why, imagine the \verb=temperature= stream contains the
+following events:
+
+\begin{verbatim}
+ [{ :room_id => "A", :temp => 25.0 } at 10:54:00 am,
+  { :room_id => "A", :temp => 24.9 } at 10:57:00 am]
+\end{verbatim}
+
+Also, assume that between events the temperature remains constant. In
+the real-world there are always small oscillations, but imagine the
+sensor is prepared to ignore these and emit new results only when they
+differ from the previous one by a given amount (0.1 degrees in this
+case).
+
+Now, suppose the question is posed at 11h am and no further updates
+were received. What was the maximum temperature over the last 5
+minutes? Intuitively, you would answer 25 degrees, because that was
+the temperature 5 minutes before. However, the event that contains
+that temperature is, as of 11h am, outside the window. So, using just
+regular sliding windows on streams will return 24.9 --- the wrong
+result.
+
+Objects, on the other hand, behave differently. As mentioned in
+section \ref{sec:simple-objects}, an object's attribute retains its
+value until a new event changes it. One could plot the evolution of an
+attribute over time as a step function that changes when new events
+arrive. Figure [something] illustrates this for the
+\verb=Room.all["A"].temp= attribute. As the plot shows, the
+temperature at 10:54:00 am became 25 degrees and remained there until
+10:57:00 am, well inside the 5 minutes window. Thus, querying the
+attribute for its maximum value over the last 5 minutes would return
+25.
+
+[TODO Picture]
+
+This is surprising because objects were introduced with the intention
+of simplifying queries. But objects also introduce state and this
+seemingly innocuous change has profound implications. In essence,
+events are discrete while attributes are continuous --- i.e., their
+value is always defined. With objects, writing many state related
+queries --- like the one in this example --- becomes easier than using
+only regular stream operations.
+
+Attributes belong to a broader class of expressions called
+\emph{continuous values}, which we may define as expressions whose
+past history is well known. This past history includes not only the
+past values the expressions evaluated to, but also the time interval
+in which they did. Continuous values provide an elegant way to solve
+many time related queries, as we will see next.
+
+\section{Aggregators over continuous values}
+
+The fact that continuous values retain their previous values allows
+one to compute aggregations over those values as we saw in the
+previous section. However, continuous values hold two dimensions of
+information: their previous values and the time intervals those values
+hold. The traditional aggregations we are used to --- \verb=max=,
+\verb=avg=, \verb=sum=, \ldots ---, only care for the previous
+values. But we can exploit the time intervals information to create
+and experiment with new kinds of aggregators. For example, imagine you
+want to know for how long was the temperature equal to 25 degrees. We
+could create a \verb=sumIntervalsWhereValueIs= aggregator that checks
+the past history of the temperature and sums the intervals where it
+was equal to some parameter. Then, answering the question would be as
+simple as:
+
+\begin{verbatim}
+Room.all["A"].temp.sumIntervalsWhereValueIs(25)
+\end{verbatim}
+
+Or you could find the biggest interval where the temperature was 25
+degrees using another aggregator,
+\verb=lengthOfMaxIntervalWhereValueIs=:
+
+\begin{verbatim}
+Room.all["A"].temp.lengthOfMaxIntervalWhereValueIs(25)
+\end{verbatim}
+
+These aggregators have rather lenghty names and they have a few
+limitations. For instance, they only consider intervals with the same
+value. What if you need to know for how many minutes was the
+temperature above or below a certain threshold?
+
+\section{Continuous queries produce continuous values}
+
+Suppose you need to know if the current temperature is above or equal
+to 25 degrees:
+
+\begin{verbatim}
+Room.all["A"].temp >= 25
+\end{verbatim}
+
+This expression it will return either \verb=true= or \verb=false=. But
+what happens if the expression is used as part of a continuous query?
+If you remember from section [something], a continuous query is always
+running and producing results. Hence, the query should produce
+\verb=true= when the temperature reaches 25 degrees and \verb=false=
+when it decreases below 25. That is, in the continuous context, the
+entire expression has a value everytime the continuous attribute,
+\verb=Room.all["A"].temp=, is defined. The following table shows this
+correspondence:
+
+\begin{tabular}{ |l|r|r| }
+  \hline
+  Time interval & \verb=Room.all["A"].temp= & \verb!Room.all["A"].temp >= 25! \\
+  \hline
+  $[$10:50; 10:53) & 25.0 & \verb=true=  \\
+  $[$10:53; 10:55) & 24.9 & \verb=false= \\
+  $[$10:55; 10:56) & 24.8 & \verb=false= \\
+  $[$10:57; 10:59) & 24.9 & \verb=false= \\
+  $[$10:59; 11:00) & 25.0 & \verb=true=  \\
+  \hline
+\end{tabular}
+
+The boolean expression has a current value as well as a collection of
+previous values. By definiton then, the boolean expression is, itself,
+a continuous value. So we can just use new aggregators like the ones
+defined in the previous section to perform arbitrary computations on
+these values. For example, to sum the time intervals where the
+temperature was equal or above 25 degrees, you could use the
+\verb=sumIntervals= aggregator, which sums up the intervals where the
+value is \verb=true=:
+
+\begin{verbatim}
+(Room.all["A"].temp >= 25).sumIntervals()
+\end{verbatim}
+
+Note that to find out for how long was the temperature equal to 25
+degrees, you could now write:
+
+\begin{verbatim}
+(Room.all["A"].temp == 25).sumIntervals()
+\end{verbatim}
+
+% TODO mention that this is done incrementaly, unlike temporal databases which are ad-hoc
+
+This is certainly more understandable than the
+\verb=sumIntervalsWhereValueIs= aggregator defined in the previous
+section.
+
+\section{Composite attributes}
+
+Let's go back to the ``products inside rooms'' example of section
+\ref{sec:associations}. Suppose we have the following sequence of
+events arriving into the \verb=entries= stream:
+
+\begin{verbatim}
+[{ :product_id => "X", :room_id => "A" } at 10:00 am,
+ { :product_id => "X", :room_id => "B" } at 10:10 am
+ { :product_id => "X", :room_id => "C" } at 10:17 am]
+\end{verbatim}
+
+That is, the product ``X'' enters room ``A'' at 10 am, 10 minutes
+later it enters room ``B'' and finally, at 10:17 am it enters room
+``C''. After all these events are received, the attribute
+\verb=Product.all["X"].room_id= will be a continuous value with the
+following history:
+
+\begin{tabular}{ |l|r| }
+  \hline
+  Time interval & \verb=Product.all["X"].room_id= \\
+  \hline
+  $[$10:00; 10:10) & ``A'' \\
+  $[$10:10; 10:17) & ``B'' \\
+  $[$10:17;   now) & ``C'' \\
+  \hline
+\end{tabular}
+
+Suppose we enrich our \verb=Room= instances with a temperature
+attribute which gets its value from the temperature of the room the
+product is in:
+
+\begin{verbatim}
+@createFrom(entries, onNew = :product_id)
+@belongsTo(:room)
+class Product
+    temperature = this.room.temp
+end
+\end{verbatim}
+
+Finally, assume the following temperature readings are received in the
+\verb=temperatures= stream:
+
+\begin{verbatim}
+ [{ :room_id => "A", :temp => 10 } at 09:50:00 am,
+  { :room_id => "B", :temp => 15 } at 10:09:00 am,
+  { :room_id => "C", :temp => 20 } at 10:16:00 am]
+\end{verbatim}
+
+If we correlate both streams, we see that the temperature in room
+``A'' was 10 degrees while the product ``X'' was there, the
+temperature in room ``B'' was 15 degrees while the product was there
+and finally, the temperature in room ``C'' was 20 degrees while the
+product was there. Since the temperature of a product was defined as
+the temperature of the room the product is in, the \verb=temperature=
+attribute for product ``X'' will contain the following history:
+
+\begin{tabular}{ |l|r|r| }
+  \hline
+ Time interval & \verb=Product.all["X"].room_id= & \verb=Product.all["X"].temperature= \\
+  \hline
+  $[$10:00; 10:10) & ``A'' & 10 \\
+  $[$10:10; 10:17) & ``B'' & 15 \\
+  $[$10:17;   now) & ``C'' & 20 \\
+  \hline
+\end{tabular}
+
 
 \chapter{User defined functions and aggregators}
 \begin{itemize}
