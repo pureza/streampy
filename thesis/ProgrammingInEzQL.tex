@@ -97,7 +97,7 @@ language apart from any other, like Python's ``There should be one ---
 and preferably only one --- obvious way to do it''. These principles
 become a major influence in the resulting language and even define
 what developers sometimes call the philosophy of the language. It is
-important that the language adheres to these principles. Otherwise, it
+important that the language adheres to its principles. Otherwise, it
 just won't make sense.
 
 These are the goals that drove the design of the EzQL language:
@@ -109,9 +109,9 @@ These are the goals that drove the design of the EzQL language:
   simple and rare operations should be possible;
 \item[Be extensible] ESP is a novel area with unique requirements that
   are still being discovered. No one really knows the boundary between
-  what is ESP and what is not, but everyday ESP systems are applied to
-  new problems with their own characteristics. It is mandatory that
-  the language be extensible enough to accommodate this evolution,
+  what is ESP and what is not, but every day ESP systems are applied
+  to new problems with their own characteristics. It is mandatory that
+  the language is extensible enough to accommodate this evolution,
   much as general purpose languages adapt to new domains through the
   development of new libraries;
 \item[Be expressive] EzQL queries should be straightforward to read,
@@ -177,12 +177,14 @@ These are the goals that drove the design of the EzQL language:
 
 
 
-By the end of this document, EzQL should just make sense. Every
-feature or construct should have a well-defined purpose and be
-generally applicable to a wide-range of ESP problems.
+By the end of this document, EzQL should just make sense, i.e., all
+its features should fit together and complement each other to create a
+language that achieves the goals listed above. Every feature or
+construct should have a well-defined purpose and be generally
+applicable to a wide-range of ESP problems.
 
 \section{Current limitations}
-\label{sec:unsolved-problems}
+\label{sec:current-limitations}
 
 These are some of the current limitations of EzQL:
 
@@ -213,7 +215,7 @@ These are some of the current limitations of EzQL:
 An event (also called a tuple) signals that something
 happened. Exactly what happened is encoded in the event itself as a
 list of field names packed together with their corresponding
-values. Moreover, all events have an implicit timestamp for when the
+values. Moreover, all events have an implicit times\-tamp for when the
 event occurred. For example, an event signaling that Apple stocks were
 priced at \$50 at 10:59:59 am today, may be represented with the
 following encoding:
@@ -222,10 +224,11 @@ following encoding:
 { :symbol => "AAPL", :price => 50 } at 01/11/2009 10:59:59 am
 \end{verbatim}
 
-This event includes two fields: \verb=:symbol= with value ``AAPL'' and
-\verb=:price=, with value ``50''. Field names are always prefixed with
-a colon. From now own we will assume all events happened today and
-will omit the date from their timestamp when we print them.
+This event includes two fields: \verb=:symbol= with value
+\verb="AAPL"= and \verb=:price=, with value \verb=50=. Field names are
+always prefixed with a colon. From now on we will assume all events
+happened today and will omit the date from their timestamp when we
+print them.
 
 To access an event's field one uses the . (dot) operator:
 
@@ -335,10 +338,10 @@ price2x_dol = price2x
                                  :price => eur2dol(t.price) })
 \end{verbatim}
 
-Note that in the previous examples you're just copying \verb=:symbol=
-around. This is OK for one field, but could get boring pretty quickly
-if the number of fields increases. An alternative syntax might come in
-handy for these situations:
+Note that in the previous examples you were just copying
+\verb=:symbol= around. This is OK for one field, but could get
+tiresome if the number of fields increases. An alternative syntax
+might come in handy for these situations:
 
 \begin{verbatim}
 price2x_dol = price2x
@@ -574,7 +577,7 @@ in which it is going to put the event. This results in:
   \hline
 \end{tabular}
 
-Once again, accessing the results is pretty straightforward:
+Once again, accessing the results is straightforward:
 
 \begin{evaluation}
 ezql> hourly_price_per_company[\{ :symbol => "MSFT",
@@ -681,7 +684,7 @@ ezql> temps_and_hums
  \{ :room_id => "B", :temp =>  22, :hum =>  59 \} at 11:03:00]
 \end{evaluation}
 
-Note that some fields don't have a value, they're empty or
+Note that some fields don't have a value, they are empty or
 blank. Empty fields mean there was no information for the field at
 that moment. Empty fields are distinct from \verb=null= values:
 \verb=null= may be a valid value in some situations. For example,
@@ -695,12 +698,12 @@ results of correlations between these fields, a fact that restricts
 the usefulness of this operator. For instance, if we try to answer our
 original question, ``what was the maximum temperature while the
 humidity was above 60\%?'' with the events above, the answer would be
-\verb=null= because, as far as the engine knows, everytime the
+\verb=null= because, as far as the engine knows, every time the
 humidity was above 60\%, there was no information for the
 temperature. The skeptic reader may question the usefulness of having
 empty fields. It may seem they were created to solve a problem and
 failed. Still, they get us halfway there. In chapter
-\ref{chap:continuous-values} we will see how to correcly answer the
+\ref{chap:continuous-values} we will see how to correctly answer the
 previous question using empty fields as part of the solution.
 
 \subsection{Sliding windows}
@@ -812,15 +815,15 @@ returns the same result.
 \section{Light syntax}
 \label{sec:light-syntax}
 
-Up until now we have been using the operators explicitly, as they
-really are: functions that receive arguments --- which may themselves
-be other functions ---, and that act on streams to generate other
-streams, dictionaries, windows or continuous values.
+Up until now we have been using the operators as functions that
+receive arguments --- which may themselves be other functions ---, and
+that act on streams to generate other streams, dictionaries, windows
+or continuous values.
 
 EzQL supports an alternative syntax resembling SQL, henceforth called
 \emph{light syntax}. A query that filters all Apple tuples and
-converts the ``price'' from dollars to euros looks like this written
-in the light syntax:
+converts the \verb=:price= from dollars to euros looks like this
+written in the light syntax:
 
 \begin{verbatim}
 from   t in stocks
@@ -836,19 +839,19 @@ like code-completion or IntelliSense. For instance, the development
 environment could provide the developer with a list of event fields
 when he types in ``\verb=t.='' in the previous example.
 
-This ``light'' syntax is really just syntactic sugar: the compiler
-translates code from the light to ``raw'' syntax before
-processing. Why support both syntaxes if they're equivalent? First of
-all, the point of raw syntax is to show that SQL-like operators can be
-supported using simple procedures --- and remember, EzQL is a
-procedural language by nature. More importantly than that, however, is
-that we would like if, in the future, the developer could implement
-his own operators, that is, his own version \verb=select=,
-\verb=where=, \ldots or any new operator he needs that EzQL doesn't
-provide. That's part of the ``be extensible'' goal defined in section
-\ref{sec:design-goals}. With ``light'' syntax, one needs to modify the
-parser to accomodate these new operators, while with ``raw'' syntax
-one just needs to implement the operator as a function and may use it
+This light syntax is really just syntactic sugar: the compiler
+translates code from the light to raw syntax before processing. Why
+support both syntaxes if they are equivalent? First of all, the point
+of raw syntax is to show that SQL-like operators can be supported
+using simple procedures --- and remember, EzQL is a procedural
+language by nature. More importantly than that, however, is that we
+would like if, in the future, the developer could implement his own
+operators, that is, his own version \verb=select=, \verb=where=,
+\ldots or any new operator he needs that EzQL doesn't provide. That's
+part of the \emph{be extensible} goal defined in section
+\ref{sec:design-goals}. With light syntax, one needs to modify the
+parser to accommodate these new operators, while with raw syntax one
+just needs to implement the operator as a function and may use it
 right away.
 
 From now on we will use light syntax in all our examples.
@@ -969,18 +972,18 @@ then \verb=Room.all= will return:
   \hline
 \end{tabular}
 
-Note that the temperature inside the room ``A'' is 23 degrees even
-though the last event for this room contained an empty \verb=:temp=
-field. If you recall, in section \ref{sec:timestamp-join} empty fields
-were introduced to represent the absence of information. In this
-example, an empty field means the temperature sensor didn't emit
-anything at 11:03:00 am. So, it's safe to ignore these fields (after
-all they were created by the \emph{outer join}, anyway) and assume the
-temperature remains the same 23 degrees as in the previous
-report. It's like in a regular OOP programming language: if an
-attribute isn't modified, it retains the previous value. This is not a
-case-specific rule, it's global: objects always ignore empty fields
-(but they don't ignore \verb=null= values).
+Note that the temperature inside the room A is 23 degrees even though
+the last event for this room contained an empty \verb=:temp= field. If
+you recall, in section \ref{sec:timestamp-join} empty fields were
+introduced to represent the absence of information. In this example,
+an empty field means the temperature sensor didn't emit anything at
+11:03:00 am. So, it's safe to ignore these fields (after all they were
+created by the \emph{outer join}, anyway) and assume the temperature
+remains the same 23 degrees as in the previous report. It's like in a
+regular OOP programming language: if an attribute isn't modified, it
+retains the previous value. This is not a case-specific rule, it's
+global: objects always ignore empty fields (but they don't ignore
+\verb=null= values).
 
 Naturally, we can query these objects as if they were normal streams:
 
@@ -1004,9 +1007,10 @@ room:
 Previously, we said that all \verb=Room= instances automatically get
 three fields from the stream \verb=temps_and_hums=. This is the
 default behavior, as it will most likely be the intention of the
-developer. But this behavior may be overriden if desired. Furthermore,
-one may create new fields whose values are taken from an arbitrary
-stream. For example, to create all the fields manually one could do:
+developer. But this behavior may be overridden if
+desired. Furthermore, one may create new fields whose values are taken
+from an arbitrary stream. For example, to create all the fields
+manually one could do:
 
 \begin{verbatim}
 @createFrom(temps_and_hums, onNew = :room_id, autoCreate = false)
@@ -1103,7 +1107,7 @@ end
 The \verb=@hasMany= annotation means that each room may contain an
 unbounded number of products. This annotation also adds a list of
 \verb=Product= instances to every \verb=Room=. So, if you want to get
-the list of products in room ``A'' you can do so with:
+the list of products in room A you can do so with:
 
 \begin{verbatim}
 Room.all["A"].products
@@ -1112,7 +1116,7 @@ Room.all["A"].products
 The \verb=@belongsTo= annotation adds the reverse association, i.e.,
 it means that every product is inside one room. Moreover, this
 annotation also adds an attribute \verb=room= to every
-\verb=Product=. Thus, to know in which room is product ``X'' one could
+\verb=Product=. Thus, to know in which room is product X one could
 write:
 
 \begin{verbatim}
@@ -1157,7 +1161,7 @@ simple convention:
   are in which rooms.
 \end{enumerate}
 
-Naturally, this convention may be overriden.
+Naturally, this convention may be overridden.
 
 % TODO: give examples
 % Which other relation types are supported? Give examples.
@@ -1171,11 +1175,11 @@ Naturally, this convention may be overriden.
 
 Just as you may query windows containing old events, you may reference
 old attribute values in your queries. For example, you can calculate
-the maximum temperature of room ``A'' over the last 5 minutes using
-the \verb=temp= attribute from the \verb=Room= class as follows:
+the maximum temperature of room A over the last 5 minutes using the
+\verb=temp= attribute from the \verb=Room= class as follows:
 
 \begin{verbatim}
-Room.all["A"].temp[5 min].max()
+Room.all["A"].temp[5 min .. now].max()
 \end{verbatim}
 
 You could have solved this using standard stream operators presented
@@ -1271,7 +1275,7 @@ degrees using another aggregator,
 Room.all["A"].temp.lengthOfMaxIntervalWhereValueIs(25)
 \end{verbatim}
 
-These aggregators have rather lenghty names and they have a few
+These aggregators have rather lengthy names and they have a few
 limitations. For instance, they only consider intervals with the same
 value. What if you need to know for how many minutes was the
 temperature above or below a certain threshold?
@@ -1291,7 +1295,7 @@ If you remember from section [something], a continuous query is always
 running and producing results. Hence, the query should produce
 \verb=true= when the temperature reaches 25 degrees and \verb=false=
 when it decreases below 25. That is, in the continuous context, the
-entire expression has a value everytime the continuous attribute,
+entire expression has a value every time the continuous attribute,
 \verb=Room.all["A"].temp=, is defined. The following table shows this
 correspondence:
 
@@ -1308,11 +1312,11 @@ correspondence:
 \end{tabular}
 
 The boolean expression has a current value as well as a collection of
-previous values. By definiton then, the boolean expression is, itself,
-a continuous value. So we can just use new aggregators like the ones
-defined in the previous section to perform arbitrary computations on
-these values. For example, to sum the time intervals where the
-temperature was equal or above 25 degrees, you could use the
+previous values. By definition then, the boolean expression is,
+itself, a continuous value. So we can just use new aggregators like
+the ones defined in the previous section to perform arbitrary
+computations on these values. For example, to sum the time intervals
+where the temperature was equal or above 25 degrees, you could use the
 \verb=sumIntervals= aggregator, which sums up the intervals where the
 value is \verb=true=:
 
@@ -1327,7 +1331,8 @@ degrees, you could now write:
 (Room.all["A"].temp == 25).sumIntervals()
 \end{verbatim}
 
-% TODO mention that this is done incrementaly, unlike temporal databases which are ad-hoc
+% TODO mention that this is done incrementally, unlike temporal
+% databases which are ad-hoc
 
 This is certainly more understandable than the
 \verb=sumIntervalsWhereValueIs= aggregator defined in the previous
@@ -1345,9 +1350,9 @@ events arriving into the \verb=entries= stream:
  { :product_id => "X", :room_id => "C" } at 10:17 am]
 \end{verbatim}
 
-That is, the product ``X'' enters room ``A'' at 10 am, 10 minutes
-later it enters room ``B'' and finally, at 10:17 am it enters room
-``C''. After all these events are received, the attribute
+That is, the product X enters room A at 10 am, 10 minutes later it
+enters room B and finally, at 10:17 am it enters room C. After all
+these events are received, the attribute
 \verb=Product.all["X"].room_id= will be a continuous value with the
 following history:
 
@@ -1386,13 +1391,12 @@ Finally, assume the following events are received in the
 \end{verbatim}
 
 If we correlate \verb=entries= and \verb=temp_readings=, we see that
-the temperature in room ``A'' was 10 degrees while the product ``X''
-was there, the temperature in room ``B'' was 15 degrees while the
-product was there and finally, the temperature in room ``C'' was 20
-degrees while the product was there. Since the temperature of a
-product was defined as the temperature of the room the product is in,
-the \verb=temperature= attribute for product ``X'' will contain the
-following history:
+the temperature in room A was 10 degrees while the product X was
+there, the temperature in room B was 15 degrees while the product was
+there and finally, the temperature in room C was 20 degrees while the
+product was there. Since the temperature of a product was defined as
+the temperature of the room the product is in, the \verb=temperature=
+attribute for product X will contain the following history:
 
 \begin{tabular}{ |l|r|r| }
   \hline
@@ -1414,7 +1418,7 @@ product's temperature was below 15 degrees with:
 Even though the current temperature of the product equals the current
 temperature of its room, the history of temperatures of the product
 does not equal the history of temperatures of its \emph{current}
-room. The engine knows that the product swicthes rooms and is smart
+room. The engine knows that the product switches rooms and is smart
 enough to obtain the temperatures from the correct places. Note that
 this behavior is embodied in the semantics of the \verb=.= (dot)
 operator used in the definition of the \verb=temp_readings=
@@ -1492,6 +1496,86 @@ spoiled_products =
            .sumIntervals() >= 10 min
   select prod
 \end{verbatim}
+
+\chapter{Batch mode}
+
+Up until now we have been developing continuous queries, whose results
+are updated as soon as new events arrive. However, sometimes it is
+undesirable to compute all results incrementally due to efficiency
+concerns. For example, calculating a standard deviation eagerly, as
+new events arrive, is extremelly inefficient because every time a new
+event arrives, the average may change and the standard deviation will
+have to be recomputed again from the beginning. Yet, in other
+scenarios it might even be impossible to calculate results
+continuously because the events themselves decide the parameters of
+the computation. An example may be the determination of the average
+price of the last N stock events, where N is a variable given by
+another event. Only after this event is received do you know which
+events to consider in the operation.
+
+EzQL supports a different mode of operation where results are computed
+on demand. This mode is called \emph{batch mode}. You may enter batch
+mode using the \verb=when= construct. The following example shows how
+to calculate the standard deviation of the last 5 minutes of Apple
+stocks when an event is received on the \verb=ReqStdDev= stream:
+
+\begin{verbatim}
+when ReqStdDev()
+  apple_stocks[5 min .. now].stddev(:price)
+\end{verbatim}
+
+Suppose now you want to generalize the previous example to support any
+company, not just Apple. You could insert the symbol of the company in
+a field of the \verb=ReqStdDev= event and use it as follows:
+
+\begin{verbatim}
+when ReqStdDev(?symbol):
+  from  ev in stocks[5 min .. now]
+  where ev.symbol == ?symbol
+  select stddev(price)
+\end{verbatim}
+
+In this example, the name of the company in the request is assigned to
+the \verb=?symbol= variable that is then used to obtain the correct
+events from the stream.
+
+\verb=when= also supports guards that you may use to refine your
+selection. For example, to consider only those companies whose symbol
+begins with an 'A', you could write:
+
+\begin{verbatim}
+when ReqStdDev(?symbol)
+  if ?symbol.startsWith("A")
+    from  ev in stocks[5 min .. now]
+    where ev.symbol == ?symbol
+    select stddev(price)
+\end{verbatim}
+
+Finally, suppose the request also includes a parameter N with the
+number of events to use in the computation. N could be anything
+between 0 (consider only the last event) to 99 (consider the last 100
+events). It is necessary to restrict the range of values of N,
+otherwise an infinite amount of space may be required to keep the
+entire stream in memory. The solution in EzQL is transcribed below:
+
+\begin{verbatim}
+when ReqStdDev(?symbol, ?count)
+  if ?symbol.startsWith("A") and ?count < 100
+    from  ev in stocks[0 .. ?count]
+    where ev.symbol == ?symbol
+    select stddev(price)
+\end{verbatim}
+
+
+TODO
+
+Some things are forbidden inside the batch mode, because the compiler
+is unable to decide which data is relevant and which is not:
+
+\begin{itemize}
+\item Streams without windows (what about aggregators like avg or count?)
+\item Semantic windows? Maybe not...
+\end{itemize}
 
 \chapter{User defined functions and aggregators}
 \label{chap:udfs}
