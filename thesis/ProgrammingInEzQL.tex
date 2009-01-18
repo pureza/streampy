@@ -27,16 +27,15 @@
 \chapter{Introduction}
 \label{chap:introduction}
 EzQL is a new programming language targeted at event stream processing
-(ESP) applications. As explained in some detail in [ref], currently
-available ESP languages lack expressiveness, making the task of writing
-simple and reasonable queries rather cumbersome. We believe one of the
-main reasons this happens is because the semantics of constructs
-provided are weaker than the semantics that would be necessary to
-answer those queries. That is, there is an impedance mismatch between
-what the existing languages provide and what the developers really
-need. EzQL is our proposal to overcome these limitations and enrich
-ESP query languages with a new set of constructs that promises to
-fulfill the needs of developers.
+(ESP) applications. As explained in some detail in the main report
+that accompanies this tutorial, currently available ESP languages lack
+expressiveness, making the task of writing simple and reasonable
+queries rather cumbersome. We believe one of the main reasons this
+happens is because the semantics of constructs provided are weaker
+than the semantics that would be necessary to answer those
+queries. That is, there is an impedance mismatch between what the
+existing languages provide and what the developers really need. EzQL
+is our proposal to narrow the gap.
 
 The main features of EzQL are:
 
@@ -55,7 +54,7 @@ The main features of EzQL are:
   and the values of their properties define the state of the
   application and this state can be queried just like regular events;
 \item The object model supports \emph{associations} between objects,
-  inspired by O/RM (Object-Relational Mapping) tools for
+  inspired by Object-Relational Mapping (O/RM) tools for
   databases. Thus, it is possible to say, for instance, that a Room
   has many Products and, correspondingly, that a Product belongs to
   one Room. Again, these associations may change as new events arrive,
@@ -66,10 +65,10 @@ The main features of EzQL are:
   we will see that they become much simpler in EzQL;
 \item EzQL provides extensive support for \emph{temporal queries}, a
   common class of queries in ESP applications that current products
-  don't handle so well, as discussed in [ref]. This support integrates
-  with the object-model so that one can easily ask, for example, for
-  how long was the temperature in some room above 20$^{\circ}$C during
-  the last 10 minutes;
+  don't handle so well, as discussed in the main report. This support
+  integrates with the object-model so that one can easily ask, for
+  example, for how long was the temperature in some room above
+  20$^{\circ}$C during the last 10 minutes;
 \end{itemize}
 
 The purpose of this document is to describe EzQL in detail, so that
@@ -77,14 +76,16 @@ developers can understand its syntax and semantics and start using it
 right away to solve new problems.
 
 The rest of this chapter discusses the rationale behind the design of
-EzQL and some of problems that are still unsolved. Then, the document
-proceeds with chapter \ref{chap:streams-events} that explains what
-exactly are streams and events and what can you do with them,
-including how to query them. Chapter \ref{chap:object-model} describes
-how to model real-world entities as objects in EzQL and how to query
-their state and finally, the topic of chapter \ref{chap:udfs} is how
-to extend the core set of operations provided by the EzQL environment
-by writing your own functions and aggregators.
+EzQL and some of its current limitations. Then, the document proceeds
+with chapter \ref{chap:streams-events} that explains what exactly are
+streams and events and what can you do with them, including how to
+query them. Chapter \ref{chap:objects} describes how to model
+real-world entities as objects in EzQL and how to query their
+state. Chapter \ref{chap:continuous-values} discusses \emph{Continuous
+  values}, a new kind of data abstraction that allows one to query the
+past state of the application. Finally, the topic of chapter
+\ref{chap:udfs} is how to extend the core set of operations provided
+by the EzQL environment by writing your own functions and aggregators.
 
 \section{Design goals}
 \label{sec:design-goals}
@@ -180,7 +181,7 @@ By the end of this document, EzQL should just make sense. Every
 feature or construct should have a well-defined purpose and be
 generally applicable to a wide-range of ESP problems.
 
-\section{Unsolved problems}
+\section{Current limitations}
 \label{sec:unsolved-problems}
 
 These are some of the current limitations of EzQL:
@@ -200,21 +201,25 @@ These are some of the current limitations of EzQL:
   database and thus it is undesirable to enlarge the events with
   redundant information. Nonetheless, currently EzQL does not address
   this issue;
-\item Out-of-order events: still an ongoing research topic.
+\item Out-of-order events: still an ongoing research topic. EzQL
+  assumes all events are received in order.
 \end{itemize}
 
 \chapter{Streams and events}
 \label{chap:streams-events}
 
-An event signals that something happened. Exactly what happened is
-encoded in the event itself as a list of field names packed together
-with their corresponding values. Moreover, all events have an implicit
-timestamp for when the event occurred. For example, an event signaling
-that Apple stocks were priced at \$50 at 10:59:59 am today, may be
-represented with the following encoding:
+\section{Preliminaries}
+
+An event (also called a tuple) signals that something
+happened. Exactly what happened is encoded in the event itself as a
+list of field names packed together with their corresponding
+values. Moreover, all events have an implicit timestamp for when the
+event occurred. For example, an event signaling that Apple stocks were
+priced at \$50 at 10:59:59 am today, may be represented with the
+following encoding:
 
 \begin{verbatim}
-  { :symbol => "AAPL", :price => 50 } at 01/11/2009 10:59:59 am
+{ :symbol => "AAPL", :price => 50 } at 01/11/2009 10:59:59 am
 \end{verbatim}
 
 This event includes two fields: \verb=:symbol= with value ``AAPL'' and
@@ -225,13 +230,13 @@ will omit the date from their timestamp when we print them.
 To access an event's field one uses the . (dot) operator:
 
 \begin{evaluation}
-  ezql> event = \{ :symbol => "AAPL", :price => 50 \}
-  ezql> event.symbol
-  "AAPL"
-  ezql> event.price
-  50
-  ezql> event.timestamp
-  <the date and time the event was created in the first line>
+ezql> event = \{ :symbol => "AAPL", :price => 50 \}
+ezql> event.symbol
+"AAPL"
+ezql> event.price
+50
+ezql> event.timestamp
+<the date and time the event was created in the first line>
 \end{evaluation}
 
 As can be seen in the example, the timestamp is available as if it
@@ -245,6 +250,17 @@ possibly infinite. For instance, a stream that collects events from
 financial markets may receive thousands of new events every second
 and, what's more important, this flow of events may never terminate.
 
+The following example shows how to declare streams:
+
+\begin{verbatim}
+stocks = new Stream of { :symbol, :price }
+\end{verbatim}
+
+This declares a stream called \verb=stocks= that receives events
+containing two fields (besides the implicit timestamp): \verb=:symbol=
+and \verb=:price=. Now you may develop queries over this stream using
+the operators discussed next.
+
 \section{Query operations}
 \label{sec:query-operations}
 The query operations include all the SQL-like constructs that can be
@@ -252,26 +268,25 @@ used to manipulate data.
 
 The result of each operation will be illustrated with examples of
 applications over a stream with stock data where each tuple contains
-two fields, \verb=:symbol= and :price. It is assumed that this stream,
-\verb=stocks=, contains the following tuples:
+two fields, \verb=:symbol= and \verb=:price=. It is assumed that this
+stream, \verb=stocks=, will receive the following tuples:
 
 \begin{verbatim}
- [{ :symbol => "AAPL", :price => 50 } at 10:59:59 am,
-  { :symbol => "AAPL", :price => 52 } at 11:00:02 am,
-  { :symbol => "MSFT", :price => 70 } at 11:00:03 am,
-  { :symbol => "MSFT", :price => 75 } at 11:00:06 am,
-  { :symbol => "AAPL", :price => 50 } at 11:00:07 am]
+[{ :symbol => "AAPL", :price => 50 } at 10:59:59 am,
+ { :symbol => "AAPL", :price => 52 } at 11:00:02 am,
+ { :symbol => "MSFT", :price => 70 } at 11:00:03 am,
+ { :symbol => "MSFT", :price => 75 } at 11:00:06 am,
+ { :symbol => "AAPL", :price => 50 } at 11:00:07 am]
 \end{verbatim}
 
 Naturally, these values are only for illustration purposes and are not
 representative of the real market.
 
-\subsection{Projections}
-\label{sec:projections}
-A projection applies a function to all tuples in a stream and returns
-a new stream with the results. For instance, if \emph{stocks} is a
-stream with tuples of the form \tuple{symbol, price} representing the
-price of stock actions, one could double the \emph{price} with:
+\subsection{Mapping}
+\label{sec:mapping}
+A mapping applies a function to all tuples in a stream and returns a
+new stream with the results. For instance, one could double the
+\verb=:price= of stock data with:
 
 \begin{verbatim}
   price2x = stocks
@@ -281,32 +296,43 @@ price of stock actions, one could double the \emph{price} with:
 
 The first thing to clarify about this example is that the piece of
 code inside parenthesis, \verb!\t -> { ... }! is actually an anonymous
-or lambda function that receives one argument, \verb=t= and produces a
-new tuple with fields \verb=:symbol=, copied from \verb=t=, and
-\verb=:price= which is equal to twice the price of the
+or lambda function that receives one argument --- \verb=t= ---, and
+produces a new tuple with fields \verb=:symbol=, copied from \verb=t=,
+and \verb=:price= which is equal to twice the price of the
 argument. \verb=select= receives this anonymous function, calls it for
-every tuple inside the \verb=stocks= stream and saves the results in a
-new stream, which it then returns. \verb=select= is really just a
+every tuple received in the \verb=stocks= stream and saves the results
+to a new stream, which it then returns. \verb=select= is really just a
 continuous version of LISP's \verb=mapcar= or Python's \verb=map=.
 
-The result of the previous expression is:
+After the sample events arrive on the \verb=stocks= stream,
+\verb=price2x= will contain the following tuples\footnote{Unlike other
+  ESP products, streams in EzQL retain all their events by default. It
+  is up to the runtime to decide when some event is not needed anymore
+  and ``garbage collect'' it.}:
 
 \begin{evaluation}
-  ezql> price2x
-  [\{ :symbol => "AAPL", :price => 100 \} at 10:59:59 am,
-   \{ :symbol => "AAPL", :price => 104 \} at 11:00:02 am,
-   \{ :symbol => "MSFT", :price => 140 \} at 11:00:03 am,
-   \{ :symbol => "MSFT", :price => 150 \} at 11:00:06 am,
-   \{ :symbol => "AAPL", :price => 100 \} at 11:00:07 am]
+ezql> price2x
+[\{ :symbol => "AAPL", :price => 100 \} at 10:59:59 am,
+ \{ :symbol => "AAPL", :price => 104 \} at 11:00:02 am,
+ \{ :symbol => "MSFT", :price => 140 \} at 11:00:03 am,
+ \{ :symbol => "MSFT", :price => 150 \} at 11:00:06 am,
+ \{ :symbol => "AAPL", :price => 100 \} at 11:00:07 am]
 \end{evaluation}
 
-One can perform further operations on this stream, like
-converting the price from euros to dollars:
+Note that timestamps were copied from the original events. In a real
+implementation, timestamps could be generated from the system clock
+when the events are created by the anonymous function in
+\verb=select=. Thus, in general, they may differ from the original.
 
+One can perform further operations on this stream like, for example,
+convert the price from euros to dollars using a function called
+\verb=eur2dol= defined elsewhere:
+
+\pagebreak
 \begin{verbatim}
-  price2x_dol = price2x
-                  .select (\t -> { :symbol => t.symbol,
-                                   :price => eur2dol(t.price) })
+price2x_dol = price2x
+                .select (\t -> { :symbol => t.symbol,
+                                 :price => eur2dol(t.price) })
 \end{verbatim}
 
 Note that in the previous examples you're just copying \verb=:symbol=
@@ -315,9 +341,9 @@ if the number of fields increases. An alternative syntax might come in
 handy for these situations:
 
 \begin{verbatim}
-  price2x_dol = price2x
-                  .select (\t -> { t with
-                                     :price => eur2dol(t.price) })
+price2x_dol = price2x
+                .select (\t -> { t with
+                                   :price => eur2dol(t.price) })
 \end{verbatim}
 
 This should read as ``Copy all the fields from \verb=t= except
@@ -332,8 +358,8 @@ predicate. For example, to obtain only the Apple tuples one could
 write:
 
 \begin{verbatim}
-  apple_stocks = stocks
-                   .where (\t -> t.symbol == "AAPL")
+apple_stocks = stocks
+                 .where (\t -> t.symbol == "AAPL")
 \end{verbatim}
 
 Note that the predicate is a function that receives an event and
@@ -341,13 +367,14 @@ returns a boolean. Like \verb=select=, \verb=where= calls the
 predicate for every tuple but adds to the resulting stream only those
 tuples where the predicate returns true.
 
-Evaluating the stream \verb=apple_stocks= results in:
+Evaluating the stream \verb=apple_stocks= after the sample events are
+received results in:
 
 \begin{evaluation}
-  ezql> apple_stocks
-  [\{ :symbol => "AAPL", :price => 50 \} at 10:59:59 am,
-   \{ :symbol => "AAPL", :price => 52 \} at 11:00:02 am,
-   \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
+ezql> apple_stocks
+[\{ :symbol => "AAPL", :price => 50 \} at 10:59:59 am,
+ \{ :symbol => "AAPL", :price => 52 \} at 11:00:02 am,
+ \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
 \end{evaluation}
 
 At this point, it is convenient to pause and reflect a little about
@@ -355,10 +382,10 @@ the execution model of EzQL programs. Imagine the following query,
 that doubles the price of Apple events:
 
 \begin{verbatim}
-  apple_stocks_2x =
-    stocks
-      .where  (\t -> t.symbol == "AAPL")
-      .select (\t -> { t with :price => t.price * 2 }
+apple_stocks_2x =
+  stocks
+    .where  (\t -> t.symbol == "AAPL")
+    .select (\t -> { t with :price => t.price * 2 }
 \end{verbatim}
 
 Unlike regular programming languages, EzQL statements like the
@@ -378,42 +405,39 @@ running. To see this, imagine you evaluate \verb=apple_stocks= at
 10:59:00 am:
 
 \begin{evaluation}
-  ezql> apple_stocks_2x
-  []
+ezql> apple_stocks_2x
+[]
 \end{evaluation}
 
 As expected, the stream is empty. But if you evaluate it again 5
 minutes later, at 11:04:00 am, the stream won't be empty anymore:
 
 \begin{evaluation}
-  ezql> apple_stocks_2x
-  [\{ :symbol => "AAPL", :price => 100 \} at 10:59:59 am,
-   \{ :symbol => "AAPL", :price => 104 \} at 11:00:02 am,
-   \{ :symbol => "AAPL", :price => 100 \} at 11:00:07 am]
+ezql> apple_stocks_2x
+[\{ :symbol => "AAPL", :price => 100 \} at 10:59:59 am,
+ \{ :symbol => "AAPL", :price => 104 \} at 11:00:02 am,
+ \{ :symbol => "AAPL", :price => 100 \} at 11:00:07 am]
 \end{evaluation}
-
-Note that you didn't have to recompute the entire
-\verb=stocks.where=\ldots expression.
 
 \subsection{Aggregators}
 \label{sec:aggregators}
 
 Aggregators are functions that are applied to streams and return a
-single value. Example aggregators include \verb=min()=, \verb=max()=,
-\verb=sum()= or \verb=avg()=.
+single value. Example aggregators include the usual suspects:
+\verb=min()=, \verb=max()=, \verb=sum()=, \verb=avg()=, \ldots.
 
 For example, the average price attained by Apple stocks can be
 found out with:
 
 \begin{verbatim}
-  avg_apple = apple_stocks.avg(:price)
+avg_apple = apple_stocks.avg(:price)
 \end{verbatim}
 
 In this example, \verb=avg_apple= is not a standard numeric
-value. Instead, it is a \emph{continuous} value that will change over
-time, as new tuples arrive. Thus, if at any time you need to print the
-average of Apple's stock prices, you need only to print
-\verb=avg_apple= and not the entire expression on the right side.
+value. Instead, its value will change over time, as new tuples
+arrive. Thus, if at any moment you need to print the average of
+Apple's stock prices, you need only to print \verb=avg_apple= and not
+the entire expression on the right side.
 
 The fact that the value of the aggregator changes, suggests that it
 may be seen as stream with all its previous values. But new averages
@@ -422,8 +446,8 @@ if the average of Apple stocks was a stream, one could filter this
 stream to obtain the averages greater than a given threshold:
 
 \begin{verbatim}
-  avg_apple
-    .where (\avg -> avg.value > THRESHOLD)
+avg_apple
+  .where (\avg -> avg.value > THRESHOLD)
 \end{verbatim}
 
 But what if the developer needs to find out for how long was the
@@ -441,14 +465,9 @@ question would be a simple matter of cutting the plot in two by the
 threshold and sum the lengths of the time intervals where the value
 was above the cut. This plot is a \emph{continuous value}, a new kind
 of data abstraction for values that are truly continuous, i.e., their
-value is defined even in the absence of events. Continuous values and
-their operations will be discussed in section [something], but for
-now, here's how we could find out for how long was the average greater
-than the threshold:
-
-\begin{verbatim}
-  (avg_apple > THRESHOLD).sumIntervals()
-\end{verbatim}
+value is defined even in the absence of events. We will resume this
+discussion after we've discussed continuous values in chapter
+\ref{chap:continuous-values}.
 
 \subsection{Sorting}
 \label{sec:sorting}
@@ -469,14 +488,14 @@ For example, to find the maximum stock price for each company one
 could write:
 
 \begin{verbatim}
-  max_by_company = stocks
-                     .groupby(:symbol,
-                             (\group -> group.max(:price)))
+max_by_company = stocks
+                   .groupby(:symbol,
+                           (\group -> group.max(:price)))
 \end{verbatim}
 
-The second parameter received by \emph{group by} is, once again, a
-higher-order function that receives a group and specifies what to do
-with that group.
+The second parameter received by \emph{group by} is, once again, an
+anonymous function that receives a group and specifies what to do with
+that group.
 
 The result of this particular \emph{group by} is a dictionary that
 maps symbols to maximums:
@@ -494,8 +513,8 @@ The maximum price achieved by Apple could be discovered writing
 simply:
 
 \begin{evaluation}
-  ezql> max_by_company["AAPL"]
-  52
+ezql> max_by_company["AAPL"]
+52
 \end{evaluation}
 
 Once again, please note that this maximum is actually a continuous
@@ -505,9 +524,9 @@ The \emph{group by} operator also allows partitioning by more than one
 field at a time:
 
 \begin{verbatim}
-  price_count_per_company = stocks
-                              .groupby({ :symbol, :price }
-                                      (\group -> group.count()))
+price_count_per_company = stocks
+                            .groupby({ :symbol, :price }
+                                    (\group -> group.count()))
 \end{verbatim}
 
 Which results in:
@@ -535,10 +554,10 @@ times Apple stocks were priced at exactly \$50:
 Finally, one can also specify arbitrary partitions:
 
 \begin{verbatim}
-  hourly_price_per_company =
-    stocks
-      .groupby(\t -> { :symbol, :hour => t.timestamp.hour() },
-              (\group -> group.max()))
+hourly_price_per_company =
+  stocks
+    .groupby(\t -> { :symbol, :hour => t.timestamp.hour() },
+            (\group -> group.max(:price)))
 \end{verbatim}
 
 The previous example calculates the maximum price per hour. The first
@@ -558,9 +577,9 @@ in which it is going to put the event. This results in:
 Once again, accessing the results is pretty straightforward:
 
 \begin{evaluation}
-  ezql> hourly_price_per_company[\{ :symbol => "MSFT",
-                                    :hour   => 11 \}]
-  75
+ezql> hourly_price_per_company[\{ :symbol => "MSFT",
+                                 :hour   => 11 \}]
+75
 \end{evaluation}
 
 Despite not being exactly a stream, some stream operations may be
@@ -570,7 +589,7 @@ given predicate. For example, the following query returns a dictionary
 containing only the companies whose maximum price is above \$70:
 
 \begin{verbatim}
-  max_by_company.where (\k, v -> v > 70)
+max_by_company.where (\k, v -> v > 70)
 \end{verbatim}
 
 In this example the predicate is a function that receives two
@@ -615,24 +634,24 @@ There is a situation where you may join two streams without using
 windows: when the timestamp is part of the join predicate. Let's see a
 simple example to understand how these kinds of joins work.
 
-To vary a little, assume now that we have two different streams,
-\verb=temperatures= and \verb=humidity=, that contain temperature and
-humidity readings for rooms in a building. \verb=temperature= contains:
+Assume that we have two streams --- {\tt temp\_readings} and {\tt
+  hum\_readings} ---, that contain temperature and relative humidity
+readings for rooms in a building. \verb=temp_readings= receives:
 
 \begin{verbatim}
- [{ :room_id => "A", :temp => 20 } at 11:00:00 am,
-  { :room_id => "B", :temp => 21 } at 11:01:00 am,
-  { :room_id => "A", :temp => 23 } at 11:02:00 am,
-  { :room_id => "B", :temp => 22 } at 11:03:00 am]
+[{ :room_id => "A", :temp => 20 } at 11:00:00 am,
+ { :room_id => "B", :temp => 21 } at 11:01:00 am,
+ { :room_id => "A", :temp => 23 } at 11:02:00 am,
+ { :room_id => "B", :temp => 22 } at 11:03:00 am]
 \end{verbatim}
 
-\verb=humidity=, on the other hand, contains:
+\verb=hum_readings=, on the other hand, gets the following events:
 
 \begin{verbatim}
- [{ :room_id => "B", :hum => 60 } at 11:00:30 am,
-  { :room_id => "A", :hum => 62 } at 11:01:30 am,
-  { :room_id => "A", :hum => 61 } at 11:02:30 am,
-  { :room_id => "B", :hum => 59 } at 11:03:00 am]
+[{ :room_id => "B", :hum => 0.60 } at 11:00:30 am,
+ { :room_id => "A", :hum => 0.62 } at 11:01:30 am,
+ { :room_id => "A", :hum => 0.61 } at 11:02:30 am,
+ { :room_id => "B", :hum => 0.59 } at 11:03:00 am]
 \end{verbatim}
 
 Now imagine you need to correlate temperatures and humidities. For
@@ -644,13 +663,13 @@ stream with three fields --- \verb=:room_id=, \verb=:temp= and
 streams and are sorted by timestamp. You can do this with:
 
 \begin{verbatim}
-  temps_and_hums = temperature
-                     .outerJoin(humidity,
-                                [:room_id, :room_id], :timestamp)
+temps_and_hums = temp_readings
+                   .outerJoin(hum_readings,
+                              [:room_id, :room_id], :timestamp)
 \end{verbatim}
 
-This results in:
-
+Which results in:
+\pagebreak
 \begin{evaluation}
 ezql> temps_and_hums
 [\{ :room_id => "A", :temp =>  20, :hum =>     \} at 11:00:00,
@@ -664,24 +683,25 @@ ezql> temps_and_hums
 
 Note that some fields don't have a value, they're empty or
 blank. Empty fields mean there was no information for the field at
-that moment. Empty fields are distinct from null values: null may be a
-valid value in some situations. For example, suppose the humidity
-sensor malfunctions and starts to emit null values. How would you
-distinguish real null values like these from ``dummy'' nulls inserted
-by the outer join? This is exactly what empty fields are for.
+that moment. Empty fields are distinct from \verb=null= values:
+\verb=null= may be a valid value in some situations. For example,
+suppose the humidity sensor malfunctions and starts to emit
+\verb=null= values. How would you distinguish real \verb=null= values
+like these from ``dummy'' \verb=null=s inserted by the outer join?
+This is exactly what empty fields are for.
 
 Unfortunately, the fact that some values may be blank influences the
 results of correlations between these fields, a fact that restricts
 the usefulness of this operator. For instance, if we try to answer our
 original question, ``what was the maximum temperature while the
 humidity was above 60\%?'' with the events above, the answer would be
-``null'' because, as far as the engine knows, everytime the humidity
-was above 60\%, there was no information for the temperature. The
-skeptic reader may question the usefulness of having empty fields. It
-may seem they were created to solve a problem and failed. Still, they
-get us halfway there. In chapter \ref{chap:objects} we will see how to
-correcly answer the previous question and where does the solution make
-good use of empty fields.
+\verb=null= because, as far as the engine knows, everytime the
+humidity was above 60\%, there was no information for the
+temperature. The skeptic reader may question the usefulness of having
+empty fields. It may seem they were created to solve a problem and
+failed. Still, they get us halfway there. In chapter
+\ref{chap:continuous-values} we will see how to correcly answer the
+previous question using empty fields as part of the solution.
 
 \subsection{Sliding windows}
 \label{sec:sliding-windows}
@@ -693,16 +713,16 @@ given timestamp. For example, to obtain the Apple tuples received in
 the last 5 minutes, one could do:
 
 \begin{verbatim}
-  recent_apple = apple_stocks[5 min .. now]
+recent_apple = apple_stocks[5 min .. now]
 \end{verbatim}
 
 If this statement is evaluated at 11:05:00 am, \verb=recent_apple=
 will contain:
 
 \begin{evaluation}
-  ezql> recent_apple
-  [\{ :symbol => "AAPL", :price => 52 \} at 11:00:02 am,
-   \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
+ezql> recent_apple
+[\{ :symbol => "AAPL", :price => 52 \} at 11:00:02 am,
+ \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
 \end{evaluation}
 
 Fixed windows, on the other hand, select tuples based on their
@@ -710,16 +730,16 @@ position. The following code selects the last 3 elements received in
 the original \verb=stocks= stream:
 
 \begin{verbatim}
-  last_3 = stocks[0 .. 2]
+last_3 = stocks[0 .. 2]
 \end{verbatim}
 
 Note that streams are 0-based. The previous example will result in:
 
 \begin{evaluation}
-  ezql> last_3
-  [\{ :symbol => "MSFT", :price => 70 \} at 11:00:03 am,
-   \{ :symbol => "MSFT", :price => 75 \} at 11:00:06 am,
-   \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
+ezql> last_3
+[\{ :symbol => "MSFT", :price => 70 \} at 11:00:03 am,
+ \{ :symbol => "MSFT", :price => 75 \} at 11:00:06 am,
+ \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
 \end{evaluation}
 
 Just like aggregators, windows automatically update themselves as time
@@ -736,9 +756,9 @@ windows. One could, for instance, count the number of events received
 per company over the last 5 seconds with:
 
 \begin{verbatim}
-  count_per_company =
-    stocks[5 sec].groupby(:symbol,
-                          \group -> group.count())
+count_per_company =
+  stocks[5 sec].groupby(:symbol,
+                        \group -> group.count())
 \end{verbatim}
 
 If this statement is evaluated at 11:00:08 am, it will result in the
@@ -764,32 +784,32 @@ Note also that the statement is equivalent to:
 That is, applying the window before or after the \emph{group by}
 returns the same result.
 
-\subsection{The flux operator}
-\label{sec:flux}
+%\subsection{The flux operator}
+%\label{sec:flux}
+%
+%The flux (\verb=|>=) operator is basically just a replacement for the
+%. (dot) operator that suggests the idea of a pipeline where tuples
+%flow from operator to operator. For example, to filter all Apple
+%tuples and convert the \verb=:price= from dollars to euros and then
+%obtain the average, one could write:
+%
+%\begin{verbatim}
+%stocks
+%  .where  (\t -> t.symbol == "AAPL")
+%  .select (\t -> { t with :price => dol2eur(t.price) })
+%  .avg    (:price)
+%\end{verbatim}
+%
+%With the flux operator, the same query could be written as:
+%
+%\begin{verbatim}
+%stocks
+%  |> where  (\t -> t.symbol == "AAPL")
+%  |> select (\t -> { t with :price => dol2eur(t.price) })
+%  |> avg    (:price)
+%\end{verbatim}
 
-The flux (\verb=|>=) operator is basically just a replacement for the
-. (dot) operator that suggests the idea of a pipeline where tuples
-flow from operator to operator. For example, to filter all Apple
-tuples and convert the \verb=:price= from dollars to euros and then
-obtain the average, one could write:
-
-\begin{verbatim}
-  stocks
-    .where  (\t -> t.symbol == "AAPL")
-    .select (\t -> { t with :price => dol2eur(t.price) })
-    .avg    (:price)
-\end{verbatim}
-
-With the flux operator, the same query could be written as:
-
-\begin{verbatim}
-  stocks
-    |> where  (\t -> t.symbol == "AAPL")
-    |> select (\t -> { t with :price => dol2eur(t.price) })
-    |> avg    (:price)
-\end{verbatim}
-
-\subsection{Light syntax}
+\section{Light syntax}
 \label{sec:light-syntax}
 
 Up until now we have been using the operators explicitly, as they
@@ -803,13 +823,33 @@ converts the ``price'' from dollars to euros looks like this written
 in the light syntax:
 
 \begin{verbatim}
-  from   t in stocks
-  where  t.symbol == "AAPL"
-  select { t with :price => dol2eur(t.price) }
+from   t in stocks
+where  t.symbol == "AAPL"
+select { t with :price => dol2eur(t.price) }
 \end{verbatim}
 
+The \verb=select= statement at the end may look out-of-place to SQL
+developers. The reasoning behind this decision is simple: by declaring
+variables in the \verb=from= statement before using them in the
+\verb=select= clause, one may get advanced support from the editor,
+like code-completion or IntelliSense. For instance, the development
+environment could provide the developer with a list of event fields
+when he types in ``\verb=t.='' in the previous example.
+
 This ``light'' syntax is really just syntactic sugar: the compiler
-translates code from the light to raw syntax before processing.
+translates code from the light to ``raw'' syntax before
+processing. Why support both syntaxes if they're equivalent? First of
+all, the point of raw syntax is to show that SQL-like operators can be
+supported using simple procedures --- and remember, EzQL is a
+procedural language by nature. More importantly than that, however, is
+that we would like if, in the future, the developer could implement
+his own operators, that is, his own version \verb=select=,
+\verb=where=, \ldots or any new operator he needs that EzQL doesn't
+provide. That's part of the ``be extensible'' goal defined in section
+\ref{sec:design-goals}. With ``light'' syntax, one needs to modify the
+parser to accomodate these new operators, while with ``raw'' syntax
+one just needs to implement the operator as a function and may use it
+right away.
 
 From now on we will use light syntax in all our examples.
 
@@ -819,7 +859,7 @@ From now on we will use light syntax in all our examples.
 \section{Motivation}
 
 In section \ref{sec:timestamp-join}, we were given two streams ---
-\verb=temperatures= and \verb=humidity= ---, containing temperature
+\verb=temp_readings= and \verb=hum_readings= ---, containing temperature
 and humidity readings from a set of rooms in a building. We then
 failed to provide an answer to an apparently simple question: ``what
 was the maximum temperature while the humidity was above
@@ -840,7 +880,7 @@ Joining streams has another weakness. In this example we only had to
 deal with temperatures and humidity readings. But imagine we need to
 take other kinds of sensors into account: atmospheric pressure, noise
 level, \ldots. To use all these different readings in a query, we
-would have to join them all. Furthemore, to perform calculations over
+would have to join them all. Furthermore, to perform calculations over
 each room independently, we need an additional \emph{group by}. All
 these \emph{join}s and \emph{group by}s difficult the understanding of
 queries and hide their real intention, i.e., that there are rooms with
@@ -877,8 +917,8 @@ In EzQL, this could be accomplished with:
 
 \begin{verbatim}
 
-temps_and_hums = temperature
-                   .outerJoin(humidity,
+temps_and_hums = temp_readings
+                   .outerJoin(hum_readings,
                               [:room_id, :room_id], :timestamp)
 
 @createFrom(temps_and_hums, onNew = :room_id)
@@ -909,13 +949,13 @@ in this case) to the objects themselves. If the stream \verb=temps_and_hums= equ
 
 \begin{evaluation}
 ezql> temps_and_hums
-[\{ :room_id => "A", :temp =>  20, :hum =>     \} at 11:00:00,
- \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:00:30,
- \{ :room_id => "B", :temp =>  21, :hum =>     \} at 11:01:00,
- \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:01:30,
- \{ :room_id => "A", :temp =>  23, :hum =>     \} at 11:02:00,
- \{ :room_id => "A", :temp =>    , :hum =>  61 \} at 11:02:30,
- \{ :room_id => "B", :temp =>  22, :hum =>  59 \} at 11:03:00]
+[\{ :room_id => "A", :temp =>  20, :hum =>       \} at 11:00:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  0.62 \} at 11:00:30,
+ \{ :room_id => "B", :temp =>  21, :hum =>       \} at 11:01:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  0.62 \} at 11:01:30,
+ \{ :room_id => "A", :temp =>  23, :hum =>       \} at 11:02:00,
+ \{ :room_id => "A", :temp =>    , :hum =>  0.61 \} at 11:02:30,
+ \{ :room_id => "B", :temp =>  22, :hum =>  0.59 \} at 11:03:00]
 \end{evaluation}
 
 then \verb=Room.all= will return:
@@ -924,8 +964,8 @@ then \verb=Room.all= will return:
   \hline
   id & object \\
   \hline
-  ``A'' & Room with room\_id = ``A'', temp = 23, hum = 61 \\
-  ``B'' & Room with room\_id = ``B'', temp = 22, hum = 59 \\
+  ``A'' & Room with room\_id = ``A'', temp = 23, hum = 0.61 \\
+  ``B'' & Room with room\_id = ``B'', temp = 22, hum = 0.59 \\
   \hline
 \end{tabular}
 
@@ -940,14 +980,14 @@ temperature remains the same 23 degrees as in the previous
 report. It's like in a regular OOP programming language: if an
 attribute isn't modified, it retains the previous value. This is not a
 case-specific rule, it's global: objects always ignore empty fields
-(but they don't ignore null values).
+(but they don't ignore \verb=null= values).
 
 Naturally, we can query these objects as if they were normal streams:
 
 \begin{verbatim}
-  from   room in Room.all
-  where  room.hum > 60
-  select room.room_id
+from   room in Room.all
+where  room.hum > 0.60
+select room.room_id
 \end{verbatim}
 
 This would result in a subset of \verb=Room.all= containing only one
@@ -957,7 +997,7 @@ room:
   \hline
   id & object \\
   \hline
-  ``A'' & Room with room\_id = ``A'', temp = 23, hum = 61 \\
+  ``A'' & Room with room\_id = ``A'', temp = 23, hum = 0.61 \\
   \hline
 \end{tabular}
 
@@ -995,7 +1035,7 @@ RFID tag and every room's entry has RFID readers which emit events to
 the \verb=entries= stream declared with:
 
 \begin{verbatim}
- entries = new Stream of { :room_id, :product_id }
+entries = new Stream of { :room_id, :product_id }
 \end{verbatim}
 
 The question you need to answer is simply ``What is the temperature at
@@ -1062,7 +1102,7 @@ end
 
 The \verb=@hasMany= annotation means that each room may contain an
 unbounded number of products. This annotation also adds a list of
-\verb=Product= instances the every \verb=Room=. So, if you want to get
+\verb=Product= instances to every \verb=Room=. So, if you want to get
 the list of products in room ``A'' you can do so with:
 
 \begin{verbatim}
@@ -1122,7 +1162,13 @@ Naturally, this convention may be overriden.
 % TODO: give examples
 % Which other relation types are supported? Give examples.
 
+\chapter{Execution model: continuous and batch modes}
+
+
+
 \chapter{Continuous values}
+\label{chap:continuous-values}
+
 Just as you may query windows containing old events, you may reference
 old attribute values in your queries. For example, you can calculate
 the maximum temperature of room ``A'' over the last 5 minutes using
@@ -1136,13 +1182,13 @@ You could have solved this using standard stream operators presented
 in chapter \ref{chap:streams-events}:
 
 \begin{verbatim}
-from   ev in temperature
+from   ev in temp_readings
 where  ev.room_id = "A"
 select max(ev.temp)
 \end{verbatim}
 
 Surprisingly though, the results would have been different. To
-understand why, imagine the \verb=temperature= stream contains the
+understand why, imagine the \verb=temp_readings= stream receives the
 following events:
 
 \begin{verbatim}
@@ -1189,8 +1235,13 @@ Attributes belong to a broader class of expressions called
 \emph{continuous values}, which we may define as expressions whose
 past history is well known. This past history includes not only the
 past values the expressions evaluated to, but also the time interval
-in which they did. Continuous values provide an elegant way to solve
-many time related queries, as we will see next.
+in which they did.\footnote{Keeping all the past values at the hands
+  of the developer may seem unrealizable because its simply too much
+  data. However, please note that the runtime should be able to
+  determine which data in the past history won't be needed any longer
+  and delete it. How to implement this is outside the scope of this
+  document.} Continuous values provide an elegant way to solve many
+time related queries, as we will see next.
 
 \section{Aggregators over continuous values}
 
@@ -1322,8 +1373,11 @@ class Product
 end
 \end{verbatim}
 
-Finally, assume the following temperature readings are received in the
-\verb=temperatures= stream:
+As in Java or C++, \verb=this= is a reference to the current product
+whose temperature is being accessed.
+
+Finally, assume the following events are received in the
+\verb=temp_readings= stream:
 
 \begin{verbatim}
  [{ :room_id => "A", :temp => 10 } at 09:50:00 am,
@@ -1331,26 +1385,117 @@ Finally, assume the following temperature readings are received in the
   { :room_id => "C", :temp => 20 } at 10:16:00 am]
 \end{verbatim}
 
-If we correlate both streams, we see that the temperature in room
-``A'' was 10 degrees while the product ``X'' was there, the
-temperature in room ``B'' was 15 degrees while the product was there
-and finally, the temperature in room ``C'' was 20 degrees while the
-product was there. Since the temperature of a product was defined as
-the temperature of the room the product is in, the \verb=temperature=
-attribute for product ``X'' will contain the following history:
+If we correlate \verb=entries= and \verb=temp_readings=, we see that
+the temperature in room ``A'' was 10 degrees while the product ``X''
+was there, the temperature in room ``B'' was 15 degrees while the
+product was there and finally, the temperature in room ``C'' was 20
+degrees while the product was there. Since the temperature of a
+product was defined as the temperature of the room the product is in,
+the \verb=temperature= attribute for product ``X'' will contain the
+following history:
 
 \begin{tabular}{ |l|r|r| }
   \hline
- Time interval & \verb=Product.all["X"].room_id= & \verb=Product.all["X"].temperature= \\
+ Time interval & Product X temperature \\
   \hline
-  $[$10:00; 10:10) & ``A'' & 10 \\
-  $[$10:10; 10:17) & ``B'' & 15 \\
-  $[$10:17;   now) & ``C'' & 20 \\
+  $[$10:00; 10:10) & 10 \\
+  $[$10:10; 10:17) & 15 \\
+  $[$10:17;   now) & 20 \\
   \hline
 \end{tabular}
 
+Now, you could, for instance, calculate the amount of time the
+product's temperature was below 15 degrees with:
+
+\begin{verbatim}
+(Product.all["X"].temperature < 15).sumIntervals()
+\end{verbatim}
+
+Even though the current temperature of the product equals the current
+temperature of its room, the history of temperatures of the product
+does not equal the history of temperatures of its \emph{current}
+room. The engine knows that the product swicthes rooms and is smart
+enough to obtain the temperatures from the correct places. Note that
+this behavior is embodied in the semantics of the \verb=.= (dot)
+operator used in the definition of the \verb=temp_readings=
+attribute. If you want, you can still access the history of
+temperatures of the current room with a simple window:
+
+\begin{verbatim}
+Product.all["X"].room[now].temp
+\end{verbatim}
+
+\section{Aggregators as continuous values}
+\label{sec:aggregators-continuous-values}
+
+In section \ref{sec:aggregators} we alluded to the possibility of
+considering an aggregator as a stream with all its past values. This
+would allow one to, for instance, calculate the maximum price average
+over the last 5 minutes of stock trades data. Unfortunately, we
+concluded that treating aggregators as streams was not enough to solve
+a few interesting problems such as ``For how long was the average
+above a certain threshold?''. Actually, we could reuse the same
+arguments employed in the beginning of this chapter to show that, with
+streams, it wouldn't even be possible to know \emph{if} the average
+was above the threshold at all.
+
+These problems go away if we treat aggregators not as streams but as
+continuous values instead. If you think a little about it, it makes
+sense. An aggregator has a well defined value for a certain period of
+time and it may be useful to consider its past values.
+
+Using the \verb=sumIntervals= aggregator introduced in the previous
+section, it is straightforward to find out for how long was the
+average above the threshold. Assuming the \verb=apple_stocks= stream
+contains the Apple stock data we want to analyze, we could write:
+
+\begin{verbatim}
+(apple_stocks.avg(:price) > THRESHOLD).sumIntervals()
+\end{verbatim}
+
+To conclude this chapter, we will go back to the ``rooms and
+products'' example to develop one last query. The problem, attributed
+to Andrew Witkowski from Oracle, is simple: what were the products
+that spent at least 10 (consecutive or not) minutes at more than 20
+degrees of temperature and 80\% of humidity, while inside the pipeline
+(those products are spoiled and must be discarded)? The complete
+solution in EzQL is transcribed below:
+
+\begin{verbatim}
+# Declare the streams
+temp_readings = new Stream of { :room_id, :temp }
+hum_readings  = new Stream of { :room_id, :hum }
+entries       = new Stream of { :room_id, :product_id }
+
+# Join temperature and humidity
+temps_and_hums = temp_readings
+                   .outerJoin(hum_readings,
+                              [:room_id, :room_id], :timestamp)
+
+@createFrom(temps_and_hums, onNew = :room_id)
+@hasMany(:products)
+class Room
+end
+
+@createFrom(entries, onNew = :product_id)
+@belongsTo(:room)
+class Product
+    temperature = this.room.temp
+    humidity    = this.room.hum
+end
+
+# Spoiled products spent at least 10 minutes at more than 20
+# degrees and 60% of humidity
+spoiled_products =
+  from   prod in Product.all
+  where  (prod.temperature > 20 and prod.humidity > 80)
+           .sumIntervals() >= 10 min
+  select prod
+\end{verbatim}
 
 \chapter{User defined functions and aggregators}
+\label{chap:udfs}
+
 \begin{itemize}
 \item Explain the need for new aggregates (forMoreThan())
 \item Explain the differences between continuous and batch mode
