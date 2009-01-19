@@ -16,14 +16,25 @@
 }
 
 \begin{document}
-\title{Programming in EzQL: a tutorial}
+\title{Introduction to EzQL}
 \author{Lu\'{\i}s Pureza}
 
 \maketitle
 
+\chapter*{Disclaimer}
+
+EzQL is still being designed and will remain so during the rest of
+this internship. There are some operators that have not yet been
+completely defined either because their semantics are not clear or
+because they are simply low priority right now. Also, we are still
+trying to discover new problems and thinking about the best way to
+solve them using our language. As such, this document is not yet in
+its final version. Currently, chapters 1-4 are mostly written.
+
 \tableofcontents
 
 \addtolength{\parskip}{\baselineskip}
+
 \chapter{Introduction}
 \label{chap:introduction}
 EzQL is a new programming language targeted at event stream processing
@@ -292,9 +303,9 @@ new stream with the results. For instance, one could double the
 \verb=:price= of stock data with:
 
 \begin{verbatim}
-  price2x = stocks
-              .select (\t -> { :symbol => t.symbol,
-                               :price => t.price * 2 })
+price2x = stocks
+            .select (\t -> { :symbol => t.symbol,
+                             :price => t.price * 2 })
 \end{verbatim}
 
 The first thing to clarify about this example is that the piece of
@@ -675,48 +686,36 @@ Which results in:
 \pagebreak
 \begin{evaluation}
 ezql> temps_and_hums
-[\{ :room_id => "A", :temp =>  20, :hum =>     \} at 11:00:00,
- \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:00:30,
- \{ :room_id => "B", :temp =>  21, :hum =>     \} at 11:01:00,
- \{ :room_id => "A", :temp =>    , :hum =>  62 \} at 11:01:30,
- \{ :room_id => "A", :temp =>  23, :hum =>     \} at 11:02:00,
- \{ :room_id => "A", :temp =>    , :hum =>  61 \} at 11:02:30,
- \{ :room_id => "B", :temp =>  22, :hum =>  59 \} at 11:03:00]
+[\{ :room_id => "A", :temp =>   20, :hum => null \} at 11:00:00,
+ \{ :room_id => "A", :temp => null, :hum => 0.62 \} at 11:00:30,
+ \{ :room_id => "B", :temp => null, :hum => null \} at 11:01:00,
+ \{ :room_id => "A", :temp => null, :hum => 0.62 \} at 11:01:30,
+ \{ :room_id => "A", :temp =>   23, :hum => null \} at 11:02:00,
+ \{ :room_id => "A", :temp => null, :hum => 0.61 \} at 11:02:30,
+ \{ :room_id => "B", :temp =>   22, :hum => 0.59 \} at 11:03:00]
 \end{evaluation}
 
-Note that some fields don't have a value, they are empty or
-blank. Empty fields mean there was no information for the field at
-that moment. Empty fields are distinct from \verb=null= values:
-\verb=null= may be a valid value in some situations. For example,
-suppose the humidity sensor malfunctions and starts to emit
-\verb=null= values. How would you distinguish real \verb=null= values
-like these from ``dummy'' \verb=null=s inserted by the outer join?
-This is exactly what empty fields are for.
-
-Unfortunately, the fact that some values may be blank influences the
-results of correlations between these fields, a fact that restricts
-the usefulness of this operator. For instance, if we try to answer our
+Unfortunately, the fact that some values are \verb=null= influences
+the results of correlations between these fields and restricts the
+usefulness of this operator. For instance, if we try to answer our
 original question, ``what was the maximum temperature while the
 humidity was above 60\%?'' with the events above, the answer would be
 \verb=null= because, as far as the engine knows, every time the
-humidity was above 60\%, there was no information for the
-temperature. The skeptic reader may question the usefulness of having
-empty fields. It may seem they were created to solve a problem and
-failed. Still, they get us halfway there. In chapter
+humidity was above 60\%, the temperature was \verb=null=. In chapter
 \ref{chap:continuous-values} we will see how to correctly answer the
-previous question using empty fields as part of the solution.
+previous question using objects and continuous values.
 
 \subsection{Sliding windows}
 \label{sec:sliding-windows}
 
 Windows allow the developer to specify which parts of the stream he is
 interested in. There are two types of sliding windows in EzQL:
-temporal and fixed. Temporal windows select only the tuples within a
-given timestamp. For example, to obtain the Apple tuples received in
-the last 5 minutes, one could do:
+temporal and fixed-size. Temporal windows select only the tuples
+within a given timestamp. For example, to obtain the Apple tuples
+received in the last 5 minutes, one could do:
 
 \begin{verbatim}
-recent_apple = apple_stocks[5 min .. now]
+recent_apple = apple_stocks[5 min]
 \end{verbatim}
 
 If this statement is evaluated at 11:05:00 am, \verb=recent_apple=
@@ -728,7 +727,7 @@ ezql> recent_apple
  \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
 \end{evaluation}
 
-Fixed windows, on the other hand, select tuples based on their
+Fixed-size windows, on the other hand, select tuples based on their
 position. The following code selects the last 3 elements received in
 the original \verb=stocks= stream:
 
@@ -745,8 +744,8 @@ ezql> last_3
  \{ :symbol => "AAPL", :price => 50 \} at 11:00:07 am]
 \end{evaluation}
 
-Just like aggregators, windows automatically update themselves as time
-passes or new events arrive.
+Just like aggregators, windows are updated as time passes or new
+events arrive.
 
 In the future, it should also be possible to support more complex
 definitions of windows. For instance, ``all events from the past
@@ -861,23 +860,25 @@ From now on we will use light syntax in all our examples.
 
 \section{Motivation}
 
-In section \ref{sec:timestamp-join}, we were given two streams ---
-\verb=temp_readings= and \verb=hum_readings= ---, containing temperature
-and humidity readings from a set of rooms in a building. We then
-failed to provide an answer to an apparently simple question: ``what
-was the maximum temperature while the humidity was above
-60\%?''. Using a timestamped outer join seemed like the right thing to
-do, but this approach failed as some fields in the resulting stream
-were blank.
+In section \ref{sec:timestamp-join} we were given two streams ---
+\verb=temp_readings= and \verb=hum_readings= ---, containing
+temperature and humidity readings from a set of rooms in a
+building. We then failed to provide an answer to an apparently simple
+question: ``what was the maximum temperature while the humidity was
+above 60\%?''. Using a timestamped outer join seemed like the right
+thing to do, but this approach failed as some fields in the resulting
+stream were \verb=null=.
 
 However, in this scenario, we are dealing with physical quantities
-measured frequently. It wouldn't be completely off the line to assume
-that temperatures and humidities retain their previous values until
-new updates arrive. This approach would work but, in general, we can't
-make these kind of assumptions. Sometimes the inexistence of an event
-really means that nothing has happened (orders not placed, earthquakes
-that didn't happen, \ldots) so it's wrong to assume the previous value
-remains the same in the general case.
+measured frequently. It wouldn't be completely unreasonable to ignore
+\verb=null=s (after all they were created by the join) and assume that
+temperatures and humidities retain their previous values between
+events. This approach would work but, in general, we can't make these
+kind of assumptions. Sometimes the inexistence of an event really
+means that nothing has happened (orders not placed, earthquakes that
+didn't happen, \ldots) so it's wrong to assume the previous value
+remains the same in the general case. Besides, sometimes \verb=null=s
+may actually be valid values and it's wrong to ignore them.
 
 Joining streams has another weakness. In this example we only had to
 deal with temperatures and humidity readings. But imagine we need to
@@ -919,21 +920,18 @@ temperature and humidity attributes.
 In EzQL, this could be accomplished with:
 
 \begin{verbatim}
-
-temps_and_hums = temp_readings
-                   .outerJoin(hum_readings,
-                              [:room_id, :room_id], :timestamp)
-
-@createFrom(temps_and_hums, onNew = :room_id)
+@createFrom(temp_readings, onNew = :room_id)
+@createFrom(hum_readings,  onNew = :room_id)
 class Room
 end
 \end{verbatim}
 
-This code declares a new class, \verb=Room=, but leaves the
-declaration empty. However, is also tags the class with one
-annotation, \verb=@createFrom=. This signals the ESP engine to
+This code declares a new class --- \verb=Room= ---, but leaves the
+declaration empty. However, is also tags the class with two
+\verb=@createFrom= annotations. This signals the ESP engine to
 automatically create new \verb=Room= instances when previously unseen
-\verb=room_ids= show up in the stream \verb=temps_and_hums=.
+\verb=room_id=s show up either \verb=temp_readings= or
+\verb=hum_readings= streams.
 
 In addition, this annotation automatically adds the stream fields to
 the class. So, every Room instance ends up with three attributes:
@@ -948,18 +946,24 @@ Having set up this apparatus, we can now run the simulation and see
 the objects being created for us automatically. All the \verb=Room=
 instances are accessible using \verb=Room.all=. In essence, this is a
 dictionary that maps object id's (taken from the \verb=:room_id= field
-in this case) to the objects themselves. If the stream \verb=temps_and_hums= equals:
+in this case) to the objects themselves. If the stream
+\verb=temps_readings= contains:
 
-\begin{evaluation}
-ezql> temps_and_hums
-[\{ :room_id => "A", :temp =>  20, :hum =>       \} at 11:00:00,
- \{ :room_id => "A", :temp =>    , :hum =>  0.62 \} at 11:00:30,
- \{ :room_id => "B", :temp =>  21, :hum =>       \} at 11:01:00,
- \{ :room_id => "A", :temp =>    , :hum =>  0.62 \} at 11:01:30,
- \{ :room_id => "A", :temp =>  23, :hum =>       \} at 11:02:00,
- \{ :room_id => "A", :temp =>    , :hum =>  0.61 \} at 11:02:30,
- \{ :room_id => "B", :temp =>  22, :hum =>  0.59 \} at 11:03:00]
-\end{evaluation}
+\begin{verbatim}
+[{ :room_id => "A", :temp => 20 } at 11:00:00 am,
+ { :room_id => "B", :temp => 21 } at 11:01:00 am,
+ { :room_id => "A", :temp => 23 } at 11:02:00 am,
+ { :room_id => "B", :temp => 22 } at 11:03:00 am]
+\end{verbatim}
+
+and if \verb=hum_readings= receives:
+
+\begin{verbatim}
+[{ :room_id => "B", :hum => 0.60 } at 11:00:30 am,
+ { :room_id => "A", :hum => 0.62 } at 11:01:30 am,
+ { :room_id => "A", :hum => 0.61 } at 11:02:30 am,
+ { :room_id => "B", :hum => 0.59 } at 11:03:00 am]
+\end{verbatim}
 
 then \verb=Room.all= will return:
 
@@ -973,17 +977,9 @@ then \verb=Room.all= will return:
 \end{tabular}
 
 Note that the temperature inside the room A is 23 degrees even though
-the last event for this room contained an empty \verb=:temp= field. If
-you recall, in section \ref{sec:timestamp-join} empty fields were
-introduced to represent the absence of information. In this example,
-an empty field means the temperature sensor didn't emit anything at
-11:03:00 am. So, it's safe to ignore these fields (after all they were
-created by the \emph{outer join}, anyway) and assume the temperature
-remains the same 23 degrees as in the previous report. It's like in a
+the last update was received at least 1 minute ago. It's like in a
 regular OOP programming language: if an attribute isn't modified, it
-retains the previous value. This is not a case-specific rule, it's
-global: objects always ignore empty fields (but they don't ignore
-\verb=null= values).
+retains the previous value.
 
 Naturally, we can query these objects as if they were normal streams:
 
@@ -1005,29 +1001,13 @@ room:
 \end{tabular}
 
 Previously, we said that all \verb=Room= instances automatically get
-three fields from the stream \verb=temps_and_hums=. This is the
-default behavior, as it will most likely be the intention of the
-developer. But this behavior may be overridden if
+three fields from the streams \verb=temp_readings= and
+\verb=hum_readings=. This is the default behavior, as it will most
+likely be the intention of the developer, but it may be overridden if
 desired. Furthermore, one may create new fields whose values are taken
-from an arbitrary stream. For example, to create all the fields
-manually one could do:
+from an arbitrary stream.
 
-\begin{verbatim}
-@createFrom(temps_and_hums, onNew = :room_id, autoCreate = false)
-class Room
-  @field(from t in temps_and_hums select t.room_id)
-  roomId
-
-  @field(from t in temps_and_hums select t.temp)
-  currentTemperature
-
-  @field(from t in temps_and_hums select t.hum)
-  currentHumidity
-end
-\end{verbatim}
-
-Note how you can specify from which stream to get the attribute values
-using the \verb=@field= annotation.
+TODO: Give example
 
 \section{Associations}
 \label{sec:associations}
@@ -1093,7 +1073,8 @@ to a \verb=Room= to every product. This can be done in EzQL as
 follows:
 
 \begin{verbatim}
-@createFrom(temps_and_hums, onNew = :room_id)
+@createFrom(temp_readings, onNew = :room_id)
+@createFrom(hum_readings,  onNew = :room_id)
 @hasMany(:products)
 class Room
 end
@@ -1166,10 +1147,6 @@ Naturally, this convention may be overridden.
 % TODO: give examples
 % Which other relation types are supported? Give examples.
 
-\chapter{Execution model: continuous and batch modes}
-
-
-
 \chapter{Continuous values}
 \label{chap:continuous-values}
 
@@ -1179,7 +1156,7 @@ the maximum temperature of room A over the last 5 minutes using the
 \verb=temp= attribute from the \verb=Room= class as follows:
 
 \begin{verbatim}
-Room.all["A"].temp[5 min .. now].max()
+Room.all["A"].temp[5 min].max()
 \end{verbatim}
 
 You could have solved this using standard stream operators presented
@@ -1291,13 +1268,12 @@ Room.all["A"].temp >= 25
 
 This expression it will return either \verb=true= or \verb=false=. But
 what happens if the expression is used as part of a continuous query?
-If you remember from section [something], a continuous query is always
-running and producing results. Hence, the query should produce
-\verb=true= when the temperature reaches 25 degrees and \verb=false=
-when it decreases below 25. That is, in the continuous context, the
-entire expression has a value every time the continuous attribute,
-\verb=Room.all["A"].temp=, is defined. The following table shows this
-correspondence:
+continuous query is always running and producing results. Hence, the
+query should produce \verb=true= when the temperature reaches 25
+degrees and \verb=false= when it decreases below 25. That is, in the
+continuous context, the entire expression has a value every time the
+continuous attribute, \verb=Room.all["A"].temp=, is defined. The
+following table shows this correspondence:
 
 \begin{tabular}{ |l|r|r| }
   \hline
@@ -1471,12 +1447,8 @@ temp_readings = new Stream of { :room_id, :temp }
 hum_readings  = new Stream of { :room_id, :hum }
 entries       = new Stream of { :room_id, :product_id }
 
-# Join temperature and humidity
-temps_and_hums = temp_readings
-                   .outerJoin(hum_readings,
-                              [:room_id, :room_id], :timestamp)
-
-@createFrom(temps_and_hums, onNew = :room_id)
+@createFrom(temp_readings, onNew = :room_id)
+@createFrom(hum_readings,  onNew = :room_id)
 @hasMany(:products)
 class Room
 end
@@ -1521,7 +1493,7 @@ stocks when an event is received on the \verb=ReqStdDev= stream:
 
 \begin{verbatim}
 when ReqStdDev()
-  apple_stocks[5 min .. now].stddev(:price)
+  apple_stocks[5 min].stddev(:price)
 \end{verbatim}
 
 Suppose now you want to generalize the previous example to support any
@@ -1530,7 +1502,7 @@ a field of the \verb=ReqStdDev= event and use it as follows:
 
 \begin{verbatim}
 when ReqStdDev(?symbol):
-  from  ev in stocks[5 min .. now]
+  from  ev in stocks[5 min]
   where ev.symbol == ?symbol
   select stddev(price)
 \end{verbatim}
@@ -1546,7 +1518,7 @@ begins with an 'A', you could write:
 \begin{verbatim}
 when ReqStdDev(?symbol)
   if ?symbol.startsWith("A")
-    from  ev in stocks[5 min .. now]
+    from  ev in stocks[5 min]
     where ev.symbol == ?symbol
     select stddev(price)
 \end{verbatim}
@@ -1577,14 +1549,68 @@ is unable to decide which data is relevant and which is not:
 \item Semantic windows? Maybe not...
 \end{itemize}
 
+\chapter{Semantic windows}
+
+Semantic windows are just like regular windows in that they allow the
+developer to operate over part of a stream. However, unlike sliding
+windows that are defined by size or time, semantic windows have their
+endpoints fixed by events. For instance, imagine you need to know how
+many products entered some room while product X whas there. This could
+be solved with semantic windows as follows:
+
+\begin{verbatim}
+from entries(?room_id, ?product_id) until entries(?room_id, ?product_id)
+  from entry in entries
+  where entry.room_id == ?room_id
+  select count()
+\end{verbatim}
+
+
+\begin{verbatim}
+TODO Could this be solved using continuous values?
+
+# How many products entered some room while the temperature of product X was > 20?
+
+entry_count =
+  for prod in Product.all
+    while prod.temp > 20
+      yield entries.count()
+
+ezql> entry_count["X"]
+3
+
+# This I might need to do with the result:
+# - Does the interval need to be consecutive or not?
+# - If it does, how do I get the number of entries for each interval?
+#
+# Is this like a continuous value of the form:
+#
+# +--------------------------------+
+# | Period the temp > 20 | count() |
+# |----------------------+---------|
+# | 11:00 .. 12:00       |      10 |
+# | 13:30 .. 13:40       |      20 |
+# | otherwise            |    null |
+# +--------------------------------+
+\end{verbatim}
+
+Note that events inside sematic windows never expire, which allows a
+few optimizations as some results may be computed incrementally and
+not only when the window is closed. If this is possible, the events
+may be discarded after a new intermediate result is calculated.
+
 \chapter{User defined functions and aggregators}
 \label{chap:udfs}
 
 \begin{itemize}
-\item Explain the need for new aggregates (forMoreThan())
-\item Explain the differences between continuous and batch mode
-\item Explain the aggregates
-\item schedule?!
+\item Explain the need for new aggregators (sumIntervals());
+\item The same definition must work for both continuous and batch modes;
+\item Explain the aggregates;
+\item Some aggregators cannot be used in continuous mode (e.g., stddev)
+\item Some condition may depend only on time to become true
+  (blah.sumIntervals() > 10 min). Should we provide some way to signal
+  the engine to reevaluate the condition when it is supposed to become
+  true?
 \end{itemize}
 \chapter{Reference}
 
