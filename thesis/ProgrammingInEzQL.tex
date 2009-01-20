@@ -502,9 +502,10 @@ For example, to find the maximum stock price for each company one
 could write:
 
 \begin{verbatim}
-max_by_company = stocks
-                   .groupby(:symbol,
-                           (\group -> group.max(:price)))
+max_by_company =
+  stocks
+    .groupby(:symbol,
+            (\group -> group.max(:price)))
 \end{verbatim}
 
 The second parameter received by \emph{group by} is, once again, an
@@ -538,9 +539,10 @@ The \emph{group by} operator also allows partitioning by more than one
 field at a time:
 
 \begin{verbatim}
-price_count_per_company = stocks
-                            .groupby({ :symbol, :price }
-                                    (\group -> group.count()))
+price_count_per_company =
+  stocks
+    .groupby({ :symbol, :price }
+            (\group -> group.count()))
 \end{verbatim}
 
 Which results in:
@@ -603,7 +605,8 @@ given predicate. For example, the following query returns a dictionary
 containing only the companies whose maximum price is above \$70:
 
 \begin{verbatim}
-max_by_company.where (\k, v -> v > 70)
+max_by_company
+  .where (\k, v -> v > 70)
 \end{verbatim}
 
 In this example the predicate is a function that receives two
@@ -866,8 +869,8 @@ temperature and humidity readings from a set of rooms in a
 building. We then failed to provide an answer to an apparently simple
 question: ``what was the maximum temperature while the humidity was
 above 60\%?''. Using a timestamped outer join seemed like the right
-thing to do, but this approach failed as some fields in the resulting
-stream were \verb=null=.
+thing to do, but this approach failed because whenever the humidity
+was greater than 60\%, the temperature was \verb=null=.
 
 However, in this scenario, we are dealing with physical quantities
 measured frequently. It wouldn't be completely unreasonable to ignore
