@@ -7,7 +7,7 @@
 \usepackage[small,bf]{caption}
 
 \begin{document}
-\title{StreamPy: A new language for Event Stream Processing}
+\title{EzQL: A new language for Event Stream Processing}
 \author{Lu\'{\i}s Pureza}
 
 \maketitle
@@ -79,14 +79,14 @@ this disparity may be blamed on the semantics employed by each
 product. It also happens that many products consistently implement
 inappropriate semantics. For example, as we will see in section
 \ref{chap:soa}, DSMS typically provide ways of analyzing data newer
-than some threshold -- 3 minutes, 5 hours, 10 days, etc. However,
+than some threshold: 3 minutes, 5 hours, 10 days, etc. However,
 naively applying these constructs to answer a simple question such as
 ``Was the temperature above 20 $^{\circ}$C during any moment of the
 last 5 minutes?'' will give wrong results. Will see why in chapter
 \ref{chap:motivation}.
 
 Despite these limitations, more and more organizations are adopting
-DSMS and relying on them to process data coming from everywhere --
+DSMS and relying on them to process data coming from everywhere,
 including core business processes. As a consequence, ESP applications
 tend to grow and become more complex. However, it is our opinion that
 languages available in currently existing products are not prepared to
@@ -94,14 +94,14 @@ support such large applications. It's just not the problem with the
 semantics. Simply put, they were not designed for that. In chapter
 \ref{chap:motivation} we will highlight many pitfalls of existing
 solutions and even show a couple of perfectly reasonable queries in
-the context of ESP applications, expressible in one sentence of
+the context of ESP applications, expressive in one sentence of
 English, which are very difficult to implement. If they fail in those
 situations, how could they handle complex applications?
 
 The purpose of this internship is to design a new query language for
 ESP systems. This new language combines powerful constructs, with some
 innovative features that, we hope, should be a step in the right
-direction to create a language that developers find rich, expressible
+direction to create a language that developers find rich, expressive
 and coherent. The rest of this thesis is organized as follows:
 
 \begin{itemize}
@@ -111,9 +111,9 @@ and coherent. The rest of this thesis is organized as follows:
 \item Chapter \ref{chap:motivation} discusses some limitations
   crippling currently available engines and provides some hints as to
   how they could be fixed;
-\item Our proposal will then be introduced in chapter
-  \ref{chap:streampy}, first through the analysis of a few examples
-  followed by a thorough discussion of all its features;
+\item Our proposal will then be introduced in chapter \ref{chap:ezql},
+  first through the analysis of a few examples followed by a thorough
+  discussion of all its features;
 \item Further work and planning for the next semester will be the
   topic of chapter \ref{chap:future-work};
 \item Finally, chapter \ref{chap:conclusion} concludes this document.
@@ -248,8 +248,8 @@ Some of the most important operators are:
   timing constraints regarding matching tuples saying, for example,
   that they must arrive withing 60 seconds of each other;
 \item [Map] Similar to the first part of a SELECT statement, this
-  operator transforms a tuple -- possibly discarding or adding new
-  fields along the way, and sends it downstream;
+  operator transforms a tuple --- possibly discarding or adding new
+  fields along the way ---, and sends it downstream;
 \item [Pattern] Instructs the engine to look for complex events. This
   is a feature borrowed from Complex Event Processing and will be
   discussed below;
@@ -261,19 +261,19 @@ Some of the most important operators are:
 It's clear that most of these operators have SQL counterparts. There
 are a few things that can be done in EventFlow but not in StreamSQL
 [ref], but they're just small details, nothing that changes the
-developer's way of thinking. It's then mostly a matter of taste -- not
-power, to choose between StreamSQL and EventFlow.
+developer's way of thinking. It's then mostly a matter of taste ---
+not power ---, to choose between StreamSQL and EventFlow.
 
 \section{Oracle rules}
 \label{sec:orm}
 
 Oracle Rules Manager (ORM) embraces a completely different
 paradigm. Instead of writing queries, the user creates rules that are
-made of three parts. The first -- the event type, instructs the system
+made of three parts. The first, the event type, instructs the system
 to trigger the rule only when an event of that type occurs. The
 second, the condition, is a predicate that is compared against the
-event. If they match, the third part, the action -- a PL/SQL
-procedure, is executed.
+event. If they match, the third part, the action --- a PL/SQL
+procedure ---, is executed.
 
 Conceptually, a rule has the following format:
 
@@ -416,16 +416,188 @@ spectrum. While is simplifies a lot of tasks that don't naturally fit
 into SQL, MS also looses all the querying capabilities that made SQL
 and its derivatives popular for data processing.
 
-\chapter{A tale of two companies (working title)}
-\label{chap:motivation}
+\chapter{Simple questions, complex answers}
+\label{chap:simple-questions-complex-answers}
 
-SQL and its derivatives have been successfuly employed in databases
-for over 30 years and their decline is unlikely to happen any time
-soon. It may thus seem imprudent to claim that SQL is not well-suited
-for ESP and such a statement must be accompanied with valid
+In this chapter we are going to discuss some simple queries that are
+very complex to express using existing SQL dialects for ESP
+systems. We will try to understand the reasons for this difficulty and
+propose solutions to eliminate it.
+
+\section{The IBM problem}
+
+The first problem is also the simplest. You are given a stream that
+receives events from the financial market containing company symbols
+and their corresponding stock prices. With this stream, you need to
+answer the following question: ``Were IBM actions above \$70 during
+any moment of the last 5 minutes?''.
+
+This seems to be a great use-case for temporal sliding windows
+discussed in chapter \ref{chap:soa}. Unfortunately, the semantics of
+these windows are not appropriate here. To see why, suppose that, at
+10:54, the system receives a notification reporting that IBM actions
+were worth \$71 and, 2 minutes later, it receives another event
+informing that the price decreased to \$69. Suppose further that no
+other events arrived until the question is posed, at 11:00 (of the
+same day). Given these assumptions, any human would answer the obvious
+``yes'', because IBM actions were valued at \$71 between 10:54 and
+10:56 --- well inside the 5 minutes window. However, existing engines
+ignore what happens between events. It's like the price is undefined
+between two consecutive updates. Thus, the engine will completely
+ignore the \$71 notification, because it lies outside the 5 minutes
+window, as figure \ref{fig:outside-window} shows.
+
+\begin{figure}[htbp]
+  \includegraphics[width=\textwidth]{outside-window.png}
+  \caption{Evolution of IBM stock prices in the scenario described in
+    the text. Values in blue boxes represent the two events received
+    at 10:54 and 10:56. As you can see, the first event lies outside
+    the 5 minutes window and thus, will be ignored by the system. The
+    dotted blue lines illustrate the fact that prices remain constant
+    until the next update, an assumption made by humans that the
+    system is unaware of.}
+  \label{fig:outside-window}
+\end{figure}
+
+Note that these semantics will result in wrong results for many other
+queries. For example, if you try to calculate the average price during
+the last 5 minutes using a simple sliding window, the engine will
+return \$69, despite the fact that the price was \$71 during 1 of
+those 5 minutes.
+
+A solution to this problem implemented in Coral8 CCL can be seen in
+Appendix [ref]. The algorithm creates two windows: the 5 minutes
+window and another window that will contain the newest event older
+than 5 minutes (i.e., the event that most recently expired from the 5
+minutes window). Then, we perform a LEFT OUTER JOIN between both
+windows (UNION would be more appropriate, but Coral8 doesn't support
+it) and check if the maximum price in any of these windows is greater
+than 70. Clearly, although it is possible to write the correct
+solution, it should be easier to do so.
+
+To solve this problem in a more effective way, one needs to instruct
+the engine about what happens between events --- i.e., we need to tell
+it that stock actions retain their values until the next update. In
+general though, we could specify any mathematical function that, for a
+given time and history of values, returns an approximation to the
+current value. With this change, the evolution of price becomes a
+continuous function (shown in figure \ref{fig:outside-window} as a
+dotted blue line) that is always defined for any given
+timestamp. Answering the original question now becomes equivalent to
+checking if this continuous function is above \$70 anywhere in the
+last 5 minutes of its domain.
+
+This same problem was posed on an online community where researchers
+and vendors participate [ref]. It generated a lengthy (more than 60
+messages), interesting and sometimes funny debate. Several vendors
+replied --- including Oracle, Aleri, Coral8 and Esper ---, and tried
+to find a good solution using their products, but they failed to do
+so, because their solutions were too complex, inneficient or just
+plain wrong. In the end, some participants concluded this was not an
+event processing problem anyway because it envolves state and tried to
+dismiss it as irrelevant, while others argued that queries like these
+show up every day and if ESP engines can't solve them, their
+usefulness is reduced.
+
+\section{More windows}
+
+Suppose that IBM actions were worth more than \$70 during some
+interval and you want to know what was the average of their price
+during that interval. Solving this problem using current technology is
+not so difficult. Most ESP products include some kind of event
+detection feature that allows the search for patterns of events. To
+obtain an answer, we could find the event where IBM stocks passed the
+\$70 mark, then find all the events where the price stayed above that
+threshold and finally, find the event where they descended below
+\$70. With all these events, we could then proceed to calculate the
+average price.
+
+There are two problems with this approach. The first is that the
+detection of the boundaries of this interval may itself involve the
+detection of another complex pattern. For example, to discover the
+event where the price rose above \$70, one needs to compare some event
+with the one that preceded it. The second problem is that these
+complex event detection features work by first detecting the pattern
+and then processing it. Thus, while the price remains above \$70, the
+engine keeps all the events in memory and only when the price goes
+below that mark will it proceed to calculating the average. This is
+suboptimal, because the engine could keep a temporary sum of the
+prices and a temporary count of the number of events received. These
+two numbers are enough to generate the average and thus, the events
+themselves could be discarded immediately.
+
+In the previous section [ref] we concluded that the evolution of stock
+prices could be seen as a continuous function. Then, conceptually,
+solving this problem should be as easy as writing a continuous query
+that calculates the average \emph{while} the price is greater than
+\$70.
+
+\section{Spoiled products detection}
+Another class of problems that are reasonable in the context of ESP
+systems but are difficult to solve by current systems are those where
+the developer needs to know for how long was a certain condition true
+(or false). For example, imagine the following scenario, attributed to
+Andrew Witkowski from Oracle: a factory has three rooms, every room
+has at least one humidity sensor and one temperature
+sensor. Furthermore, products contain a RFID tag that is read by RFID
+sensors placed at the entrance and exit of each room. All these
+sensors send their readings to a DSMS that needs to answer the
+following question: ``Which products stayed more than 10 minutes
+(overall, not consecutive) at more than 20 ºC and 80\% of
+humidity?''. These products are spoiled and mustn't be sold.
+
+
+\section{Variable-sized windows}
+
+We've seen before that ESP systems provide many windowing facilities
+on top of regular SQL -- sliding windows, jumping windows, windows per
+groups, etc. However, all these windows share a common limitation:
+their sizes are fixed. Suppose you have a new stream whose events
+represent requests to calculate the average price of the last N stock
+updates for some company. Usually, this would be solved by creating a
+window that keeps the last N events for that company. Imagine,
+however, that N is a field of the request --- i.e., the client decides
+how many events to use in the calculation ---, with the restriction
+that it must be smaller than some arbitrary number (otherwise it would
+be necessary to keep everything in memory). Unfortunately, we don't
+know of any way to solve this using SQL dialects in existing products,
+because its not possible to create variable-sized windows even if they
+are contained inside a bigger window.
+
+Some may argue that this is not event processing at all because it
+involves requests that are better handled by a traditional
+DBMS. Still, these scenarios may be more frequent than one thinks and
+it doesn't seem like it's complex to implement anyway.
+
+
+
+
+
+TODO:
+ - Problema da fabrica (explicar o que seria necessario mudar para a humidade)
+ - malloc e free (aggregators must be used with windows)
+ - Problema do leilao
+
+
+
+ It's not our purpose to claim that SQL, in general, is not
+well-suited for these kinds of applications. On the contrary: SQL and
+its derivatives have been successfuly employed in databases for over
+30 years and their decline is unlikely to happen any time
+soon. However, we believe that, in order to solve these problems, one
+needs new data types, operators and different semantics, and the resulting language 
+
+ and that results in a
+new language bearing little resemblance with current ones.
+
+
+
+ It may
+thus seem imprudent to claim that SQL is not well-suited for ESP and
+such a statement must be accompanied with valid
 arguments. Fortunately, it is quite easy to understand, intuitively,
 the problems with this approach. First, experience tells that SQL
-queries easily become overly complex and hard to understand --
+queries easily become overly complex and hard to understand ---
 especially when they begin to include subqueries or perform analytical
 operations now part of the SQL standard. Second, SQL's declarative
 nature doesn't always map well with the way programmers
@@ -435,66 +607,56 @@ Turing-complete, just wasn't made to compete with those languages. We
 will develop these arguments while exploring a simple example (adapted
 from [ref]).
 
+\section{The online auction}
+
 Robay, a fictional online auction company, is experimenting with a
-DSMS to manage auctions. In their setup, they have two relations and
-three streams:
+DSMS to manage auctions. In their setup, they have three streams:
 
 \begin{itemize}
-\item Relations:
-  \begin{itemize}
-  \item \verb=Item(id, name, categoryId)=: Describes auctioned items;
-  \item \verb=Category(id, name, description)=: Represent product categories;
-  \end{itemize}
-\item Streams:
-  \begin{itemize}
-  \item \verb=OpenAuction(itemId, start_price)=: New tuples arriving
-    on this stream signal the beginning of a new auction;
-  \item \verb=ClosedAuction(itemId)=: Signals the end of an auction;
-  \item \verb=Bid(itemId, bid_price)=: Updated when there is a new bid
-    for an ongoing auction.
-  \end{itemize}
+\item \verb=OpenAuction(itemId, start_price)=: New tuples arriving
+  on this stream signal the beginning of a new auction;
+\item \verb=ClosedAuction(itemId)=: Signals the end of an auction;
+\item \verb=Bid(itemId, bid_price)=: Updated when there is a new bid
+  for an ongoing auction.
 \end{itemize}
 
 Information on sellers and buyers has been omitted because it won't be
 necessary to illustrate our point. One of the first queries Robay
-developers wrote returns, for each closed auction, its item and
-category ids, along with the price offered in the winner bid:
+developers wrote returns, for each closed auction, its item id along
+with the price offered in the winner bid:
 
 \begin{verbatim}
-TODO: Implement this in Coral8 CCL
-
 -- Unite Bid with OpenAuction
 ItemPrices:
-    Select itemID, bid_price as price 
-    From   Bid 
-    Union All
-    Select itemID, start_price as price 
-    From OpenAuction
+    SELECT itemID, bid_price as price
+    FROM   Bid
+    UNION ALL
+    SELECT itemID, start_price as price
+    FROM   OpenAuction
 
 -- Get the current price for each product
-CurrentPrice: 
-    Select    P.itemID, Max(P.price) as price
-    From      ItemPrices P
-    Group By  P.itemID
+CurrentPrice:
+    SELECT    P.itemID, Max(P.price) as price
+    FROM      ItemPrices P
+    GROUP BY  P.itemID
 
--- Get the product, category and final price for each closing auction
+-- Get the product and final price for each closing auction
 ClosingPriceStream:
-    Select   Rstream(P.itemID as itemId, T.id as catID, P.price as price)
-    From     ClosedAuction [Now] C, CurrentPrice P, 
-             Item I, Category T    
-    Where    C.itemID = P.itemID and C.itemID = I.id and I.categoryID = T.id 
+    SELECT   Rstream(P.itemID as itemId, P.price as price)
+    FROM     ClosedAuction [Now] C, CurrentPrice P,
+    WHERE    C.itemID = P.itemID
 \end{verbatim}
 
 This solution uses regular SQL extended with windowing constructs and
 should be pretty easy to understand. Despite being so straightforward,
-there are a few issues with it that could be improved. First of all,
-notice that besides the \verb=ClosingPriceStream= -- the desired
-result, two other temporary streams had to be created. They are not
-strictly necessary and their code could be directly inserted in the
-\verb=FROM= clause of the \verb=ClosingPriceStream=, but that would
-quickly result in unreadable code. To avoid creating big and complex
-queries, developers partition them into smaller ones connected by
-temporary streams. Thus, streams end up being used as variables to
+there are a few places where it could be improved. First of all,
+notice that besides the \verb=ClosingPriceStream= --- the desired
+result ---, two other temporary streams had to be created. They are
+not strictly necessary and their code could be directly inserted in
+the \verb=FROM= clause of the \verb=ClosingPriceStream=, but that
+would quickly result in unreadable code. To avoid creating big and
+complex queries, developers partition them into smaller ones connected
+by temporary streams. Thus, streams end up being used as variables to
 store the intermediate results of computations. But streams aren't a
 suitable replacement for all kinds of variables. In procedural
 programming languages, programmers can choose among primitive
@@ -502,41 +664,44 @@ variables (int, float, string, \dots), arrays, dictionaries, lists and
 sets among others, to manage information. Furthermore, Object-Oriented
 Programming brought classes and objects to the table, important not
 only to keep information in an organized way, but also because they
-allow developers think in terms of the real world and model objects
-and the relations between them. Certainly, streams and tables alone
-could be used to simulate all these kinds of constructs, but they're
-just not the right tool for \emph{every} job.
+allow developers to think in terms of the real world and model objects
+and the relationships between them. Certainly, streams and tables
+alone could be used to simulate all these kinds of constructs, but
+they're just not the right tool for \emph{every} job.
 
 Second, notice the query for the \verb=CurrentPrice= stream. To find
 the current price, it first finds the starting price, then all the
 prices from later bids and finally it chooses the largest, which is
 also the latest. Notice how the query builds, implicitly, the current
-state of each item. This is necessary because the DSMS doesn't know
-what an item really is and doesn't understand the relation between two
-updates for the same item. That's why it is necessary, in order to
-find the current price, to instruct the system to go back and get the
-price from the latest event. From an OOP point-of-view, this query
-would be greatly simplified if there was some way to define
-\verb=Item= objects with properties like \verb=current_price= to hold
-the state of each item and use these objects in queries, just like
-regular tuples. Moreover, these objects and their properties could be
-automatically managed by the system, thus relieving the programmer
-from lower-level tasks.
+state of each item by processing each event that affects it. This is a
+common pattern in SQL dialects for ESP and it works because the state
+is dictated by the events. What this means is that if you start from
+the same initial state and follow, one by one, the events that affect
+this state, you always arrive to the same result in the end, just like
+in a finite state machine. While this approach works, it soon becomes
+tedious to write queries like these, specially if the state may be
+affected by many different types of events interacting in complex
+ways. This query would be greatly simplified if there was some way to
+manage the state explicitly, by defining \verb=Item= objects with
+properties like \verb=currentPrice= to hold the state of each item and
+use these objects in queries, just like regular tuples. Moreover,
+these objects and their properties could be automatically managed by
+the system, thus relieving the programmer from lower-level tasks.
 
 Third, notice the \verb=WHERE= predicate in the last query. This
-predicate embodies three inner joins and should also be pretty clear
-for any SQL programmer. The problem is that this join hides an
-important fact about the system being modeled: objects have
-relations. Auctions have one item and items have zero or more
-bids. Relations are not new to the database community: DBMSs have
-embraced and supported them for years. But database relations are
-still considered too low-level by most programmers, who are used to
-think in terms of objects instead of meaningless identifiers. This is
-one reason why Object-Relational Mapping (O/RM) has flourished in the
-last few years. If the developer could, somehow, model these
-relations, the system would be able to enrich the objects mentioned in
-the previous paragraph with pointers to the related objects and manage
-these pointers automatically. With these changes, the last query would
+predicate contains one inner join and should be clear for any SQL
+programmer. The problem is that this join hides an important fact
+about the system being modeled: objects have relationships. Auctions
+have one item and items have zero or more bids. Relationships are not
+new to the database community: DBMSs have embraced and supported them
+for years. But database relationships are still considered too
+low-level by most programmers, who are used to think in terms of
+objects instead of meaningless identifiers. This is one reason why
+Object-Relational Mapping (O/RM) has flourished in the last few
+years. If the developer could, somehow, model these relationships, the
+system would be able to enrich the objects mentioned in the previous
+paragraph with pointers to the related objects and manage these
+pointers automatically. With these changes, the last query would
 become much more explicit and read something along the lines of ``For
 every closed auction, get the current price, category and id of its
 item''.
@@ -551,62 +716,9 @@ developers want and what the systems have to offer becomes more
 evident to the point where, eventually, code becomes unmaintainable
 and needs to be abandoned.
 
-There are a few other issues besides those outlined above. We've seen
-before that ESP systems provide many windowing facilities on top of
-regular SQL -- sliding windows, jumping windows, windows per groups,
-etc. Unfortunately, sometimes this is not enough, as is illustrated in
-the following scenario. The Financial Association for Investments and
-Little Experiments with DSMS is monitoring Robay stock actions. For
-some contrived reason, they want to know the answer to the following
-question: ``During the last period in which Robay actions stayed above
-\$70, what was the average of their value?''. This would be easily
-answered if we could create a window between the time stock actions
-went above \$70 and the time they went below (or the current time, if
-they're still above that mark). Notice that the endpoints for this
-window would then be dictated by regular events, instead of being
-fixed in time or size. These types of windows are called
-\emph{semantic} windows [ref]. Unfortunately, currently available ESP
-systems fail to provide support for semantic windows, making this kind
-of queries difficult to solve.
-
-Halted by this obstacle and unable to make progress, the association
-decided to work on a easier question first: ``Were Robay actions above
-\$70 during any moment of the last 5 minutes?''. This seems to be a
-great use-case for temporal sliding windows. Unfortunately, the
-semantics of these windows are not appropriate here, making the
-solution overwhelmingly difficult. The problem lies, again, with the
-lack of state. Suppose that, at 10:54, the system receives a
-notification reporting that Robay's actions were worth \$71 and, 2
-minutes later, it receives another event informing that the price
-decreased to \$69. Suppose further that no other events arrived until
-the question is posed, at 11:00 (of the same day). We, humans, know
-that the answer is an obvious ``yes'' because Robay's actions were
-valued at \$71 between 10:54 and 10:56. However, the system only cares
-about events and the first notification lies outside the 5 minutes
-window, as figure \ref{fig:outside-window} shows. Thus, this window
-will only include the second event and the answer would be
-negative. If the system knew that, in between notifications, stock
-actions keep their previous prices, it would easily give the right
-answer. But it doesn't and so, solutions for this simple problem
-involve managing the state explicitly, which is certainly much more
-trouble than a simple window. Note that this is analogous to the
-``temperature above 20 $^{\circ}$C'' problem mentioned in the
-Introduction.
-
-\begin{figure}[htbp]
-  \includegraphics[width=\textwidth]{outside-window.png}
-  \caption{Evolution of Robay stock prices in the scenario described
-    in the text. Values in blue boxes represent the two events
-    received at 10:54 and 10:56. As you can see, the first event lies
-    outside the 5 minutes window and thus, will be ignored by the
-    system. The dotted blue lines illustrate the fact that the prices
-    remain constant until the next update, an assumption made by
-    humans that the system is unaware of.}
-  \label{fig:outside-window}
-\end{figure}
 
 To conclude this chapter, it should be said SQL has some benefits. For
-simple things, its declarative nature makes it very expressible. After
+simple things, its declarative nature makes it very expressive. After
 all, queries represent, almost in English, the intention of the
 developer. Also, SQL querying capabilities are very powerful and excel
 in many data processing tasks. It is understandable then, that an
@@ -614,8 +726,10 @@ alternative language should take some inspiration from SQL and borrow
 some features to provide equally powerful constructs.
 
 
-\chapter{The StreamPy query language}
-\label{chap:streampy}
+\chapter{The EzQL query language}
+\label{chap:ezql}
+
+In this chapter we present EzQL, our language designed to overcome 
 
 \chapter{Future work}
 \label{chap:future-work}
@@ -623,5 +737,208 @@ some features to provide equally powerful constructs.
 \chapter{Conclusion}
 \label{chap:conclusion}
 
+\appendix
+\chapter{Solutions in Coral8}
+
+This appendix contains solutions to some of the problems discussed in
+chapter \ref{chap:simple-questions-complex-answers}. We can't claim
+these are the best solutions nor the smallest, but they were all
+proposed/reviewed by Coral8 personnel. We added a few comments to help
+the understanding of the code. Still, if you find yourself staring at
+the code and thinking ``this can't be that hard!''\ldots that's the
+point.
+
+\section{The IBM problem}
+
+\begin{verbatim}
+-- Algorithm:
+--
+-- Keep two windows: one for the last 5 seconds of data, and another with
+-- the newest event that is older than 5 seconds (i.e., the one that
+-- expired last from the first window). Then, join both windows (UNION
+-- would be better, but Coral8 doesn't support it) and check if the
+-- max of prices in any of the two windows is > $70.
+
+CREATE INPUT STREAM StreamIn
+SCHEMA (
+   symbol STRING,
+   price  INTEGER
+);
+
+-- Keep the events from the last 5 seconds.
+CREATE WINDOW Last5Secs
+Schema (
+  symbol STRING,
+  price  FLOAT
+) KEEP 5 Seconds
+INSERT REMOVED ROWS INTO Expired;
+
+ -- Insert the events into the window.
+INSERT INTO Last5Secs
+SELECT *
+FROM StreamIn;
+
+
+-- Keeps the previously expired event from Last5Secs (one per symbol)
+CREATE WINDOW Expired
+Schema (
+  symbol STRING,
+  price  FLOAT
+) KEEP LAST PER symbol;
+
+
+-- For each symbol, true means its stocks were at > $70 during any moment
+-- of the last 5 seconds, false means otherwise.
+CREATE WINDOW Result
+Schema (
+  symbol STRING,
+  result BOOLEAN
+) KEEP LAST PER symbol;
+
+-- Join both windows and check if the max of any of them is > $70
+-- This would be prettier with UNION
+--
+-- Note: When events expire, this generates two events: one before
+--       the expiration and another after.
+INSERT INTO Result
+SELECT L.symbol,
+      IF max(coalesce(max(L.price), 0), coalesce(max(E.price), 0)) > 70
+       THEN TRUE
+        ELSE FALSE
+      END
+FROM Last5Secs AS L LEFT OUTER JOIN Expired AS E
+      ON L.symbol = E.symbol
+GROUP BY L.symbol;
+\end{verbatim}
+
+\section{The factory problem}
+
+This is just a simplification of the original problem. In particular,
+it doesn't handle humidity and it's assumed that rooms have a single
+temperature sensor.
+
+\begin{verbatim}
+-- Algorithm:
+--
+-- - Always maintain an explicit counter per product containing
+--   the number of seconds the product spent at > 20 degrees.
+--   This counter also contains the time the product was last
+--   updated (last_update).
+--
+-- - When a product swicthes rooms, if the temperature in the
+--   previous room was > 20, add now() + last_update to the
+--   counter and replace the previous last_update with now();
+--
+-- - When the temperature in a room changes, if the previous
+--   temperature was > 20, add now() + last_update to the
+--   counter and replace the previous last_update with now();
+--
+
+CREATE INPUT STREAM entries
+SCHEMA (
+   product_id STRING,
+   room_id STRING
+);
+
+CREATE INPUT STREAM temp_readings
+SCHEMA (
+   room_id STRING,
+   temperature INTEGER
+);
+
+
+-- Holds the last two entries per product
+CREATE WINDOW ProductRoom
+Schema (
+   product_id STRING,
+   room_id STRING
+) KEEP 2 ROWS PER product_id;
+
+
+INSERT INTO ProductRoom
+SELECT *
+FROM entries;
+
+
+-- Holds the last two temp_readings per room
+CREATE WINDOW RoomTemperature
+Schema (
+   room_id STRING,
+   temperature INTEGER
+) KEEP 2 ROWS PER room_id;
+
+
+INSERT INTO RoomTemperature
+SELECT *
+FROM temp_readings;
+
+CREATE LOCAL STREAM OnExit
+SCHEMA (
+   product_id STRING,
+   old_room_id STRING
+);
+
+
+-- When a product leaves a room, generate an event containing the
+-- product and the old room.
+INSERT INTO OnExit
+SELECT entries.product_id, ProductRoom.room_id
+FROM entries LEFT OUTER JOIN
+ ProductRoom ON entries.product_id = ProductRoom.product_id
+WHERE entries.room_id != ProductRoom.room_id;
+
+
+CREATE LOCAL STREAM OnTemperatureChange
+SCHEMA (
+   room_id STRING,
+   old_temperature STRING
+);
+
+
+-- When the temperature changes, generate an event containing the
+-- room and the old temperature
+INSERT INTO OnTemperatureChange
+SELECT temp_readings.room_id, RoomTemperature.temperature
+FROM temp_readings LEFT OUTER JOIN
+ RoomTemperature ON temp_readings.room_id = RoomTemperature.room_id
+WHERE temp_readings.temperature != RoomTemperature.temperature;
+
+-- Per each product, maintain a counter with the time the product
+-- spent above 20 degrees and the last time this counter was updated
+CREATE WINDOW ProductTemperatureCounter
+Schema (
+   product_id    STRING,
+   time_above_20 INTERVAL,
+   last_update   TIMESTAMP
+) KEEP LAST PER product_id;
+
+-- Initialize this counter
+INSERT INTO ProductTemperatureCounter
+SELECT product_id, 0 seconds, NOW()
+FROM entries
+WHERE room_id = "A";
+
+-- Every time the product leaves the room, checks if the temperature in
+-- the old room was > 20 and updates the counter of that product
+INSERT INTO ProductTemperatureCounter
+SELECT E.product_id, IF T.temperature > 20
+                      THEN time_above_20 + now() - C.last_update
+                      ELSE time_above_20
+                    END, now()
+FROM OnExit as E, RoomTemperature as T, ProductTemperatureCounter as C
+WHERE E.old_room_id = T.room_id
+ AND E.product_id = C.product_id;
+
+-- Every time the temperature changes, checks if the previous temperature
+-- was > 20 and updates the counters of all the products in that room
+INSERT INTO ProductTemperatureCounter
+SELECT R.product_id, IF T.old_temperature > 20
+                      THEN time_above_20 + now() - C.last_update
+                      ELSE time_above_20
+                    END, now()
+FROM OnTemperatureChange as T, ProductRoom as R, ProductTemperatureCounter as C
+WHERE T.room_id = R.room_id
+ AND R.product_id = C.product_id;
+\end{verbatim}
 
 \end{document}
