@@ -425,6 +425,7 @@ systems. We will try to understand the reasons for this difficulty and
 propose solutions to eliminate it.
 
 \section{The IBM problem}
+\label{sec:ibm-problem}
 
 The first problem is also the simplest. You are given a stream that
 receives events from the financial market containing company symbols
@@ -469,11 +470,11 @@ A solution to this problem implemented in Coral8 CCL can be seen in
 Appendix [ref]. The algorithm creates two windows: the 5 minutes
 window and another window that will contain the newest event older
 than 5 minutes (i.e., the event that most recently expired from the 5
-minutes window). Then, we perform a LEFT OUTER JOIN between both
-windows (UNION would be more appropriate, but Coral8 doesn't support
-it) and check if the maximum price in any of these windows is greater
-than 70. Clearly, although it is possible to write the correct
-solution, it should be easier to do so.
+minutes window). Then, we perform a \verb=LEFT OUTER JOIN= between
+both windows (\verb=UNION= would be more appropriate, but Coral8
+doesn't support it) and check if the maximum price in any of these
+windows is greater than 70. Clearly, although it is possible to write
+the correct solution, it should be easier to do so.
 
 To solve this problem in a more effective way, one needs to instruct
 the engine about what happens between events --- i.e., we need to tell
@@ -499,7 +500,111 @@ dismiss it as irrelevant, while others argued that queries like these
 show up every day and if ESP engines can't solve them, their
 usefulness is reduced.
 
-\section{More windows}
+
+\section{Spoiled products detection}
+\label{sec:spoiled-products}
+
+Another class of problems that are reasonable in the context of ESP
+systems but are difficult to solve by current systems are those where
+the developer needs to know for how long was a certain condition true
+(or false). For example, imagine the following scenario, attributed to
+Andrew Witkowski from Oracle: a factory has three rooms, every room
+has at least one humidity sensor and one temperature
+sensor. Furthermore, products contain a RFID tag that is read by RFID
+sensors placed at the entrance and exit of each room. All these
+sensors send their readings to a DSMS that needs to answer the
+following question: ``Which products stayed more than 10 minutes
+(overall, not consecutive) at more than 20 $^{\circ}$C and 80\% of
+humidity?''. These products are spoiled and mustn't be sold.
+
+A solution for a simplification of this problem is shown in Appendix
+\ref{sec:spoiled-products-solution}. This solution does not take
+humidity into consideration and assumes there is only one sensor per
+room. The algorithm is simple: for each product, we keep one counter
+with the time the product spent above 20 degrees, as well as the
+timestamp for when this counter was last updated. When a product
+leaves a room, we update its counter if the temperature in the
+previous room was higher than 20, and set the last updated timestamp
+to the current time, given by the \verb=now()= function. When the
+temperature changes, we do the same thing for all products in that
+room.
+
+This solution is quite big as it is and it still doesn't solve the
+orignal problem. One may argue that this is a difficult problem and
+the solution can't be simple anyway. Nonetheless, it is a good
+exercise to analyze this piece of code to see what's wrong with it.
+
+Let's begin by thinking about what would have to be modified to
+support humidity. Naturally, we would have to create a new stream ---
+\verb=hum_readings= --- that receives humidity readings from
+sensors. Then, it would make sense to create a window to keep the last
+humidity reading per room, analogous to the \verb=RoomTemperature=
+window for temperatures. When the humidity changes, we need to
+generate new events with the identifier of the room and its old
+humidity, just like we do now when a product switches rooms or when
+the temperature changes. When an event arrives on this stream, we
+check if the previous humidity was greater than 80\% and if the
+current temperature is above 20 degrees. If both conditions hold, we
+may finally proceed to update the product's counter as well as its
+last updated timestamp. Unfortunately, we are not done yet: it is also
+necessary to modify the other queries that are triggered when the
+temperature changes or when the product switches rooms, to take the
+current humidity level into consideration. Thus, adding new sensors
+implies not only writing new queries, but also modifying existing
+ones. Clearly, this approach does not scale\footnote{``scale'' here
+  refers to the source code, not to the performance of the solution.}
+as extensive rewrites are necessary everytime the requirements are
+modified. Software engineering best-practices dictate that, if
+something like this happens, then the code is not modular enough or is
+using the wrong abstractions.
+
+The solution for this problem implemented in the appendix shows some
+of these symptoms. There, besides the two input streams and the window
+with the counter per product, we create two other windows and two
+temporary streams. The windows contain the current and previous
+temperatures of each room and the current and previous room for each
+product. Thus, these windows are used to maintain the state of the
+system. To support humidity, we would need a third window to maintain
+the current and previous humidity level for each room. Note how
+information (temperature and humidity) for a given entity (the room)
+becomes scattered across several windows. To correlate temperature
+with humidity, one would need to join these windows and then group by
+the room's id. Years of thinking in terms of objects and programming
+using the object-oriented paradigm, indicate that this query would be
+greatly simplified if there was some way to define \verb=Room= objects
+with properties like \verb=currentTemperature= or
+\verb=currentHumidity=, and use these objects in queries, just like
+regular events. Moreover, one could instruct the system to create the
+objects and manage their attributes automatically, by looking at the
+right events. We could take this one step further by supporting
+relationships between objects, akin to what Object-Relational Mapping
+(O/RM) tools like Hibernate [ref], do for regular databases. This way,
+each \verb=Room= object would possess a list with its \verb=Product=s
+and each \verb=Product= would include a reference to the \verb=Room=
+where it is at. With these changes, finding the current temperature of
+the room where a product is would be as simple as typing
+\verb=product.room.currentTemperature=.
+
+As for the two temporary streams, their events are created when the
+products switch rooms or when the temperature of a room changes, and
+contain the previous room id or the previous temperature. These
+streams are not strictly necessary as their code could be directly
+inserted into the \verb=FROM= clause of the queries that use
+them. However, this would not be a good idea as it would quickly
+result in unreadable code. To avoid creating big and complex queries,
+developers partition them into smaller ones connected by temporary
+streams. Thus, streams end up being used as variables to store the
+intermediate results of computations. But streams aren't a suitable
+replacement for all kinds of variables. In procedural programming
+languages, programmers can choose among primitive variables (int,
+float, string, \dots), arrays, dictionaries, lists, sets and, why not,
+objects. Certainly, streams and windows alone could be used to
+simulate all these kinds of constructs, but they're just not the right
+tool for \emph{every} job.
+
+
+\section{What was the $<$result$>$ while $<$condition$>$ hold?}
+\label{sec:result-while}
 
 Suppose that IBM actions were worth more than \$70 during some
 interval and you want to know what was the average of their price
@@ -526,28 +631,14 @@ prices and a temporary count of the number of events received. These
 two numbers are enough to generate the average and thus, the events
 themselves could be discarded immediately.
 
-In the previous section [ref] we concluded that the evolution of stock
-prices could be seen as a continuous function. Then, conceptually,
-solving this problem should be as easy as writing a continuous query
-that calculates the average \emph{while} the price is greater than
-\$70.
-
-\section{Spoiled products detection}
-Another class of problems that are reasonable in the context of ESP
-systems but are difficult to solve by current systems are those where
-the developer needs to know for how long was a certain condition true
-(or false). For example, imagine the following scenario, attributed to
-Andrew Witkowski from Oracle: a factory has three rooms, every room
-has at least one humidity sensor and one temperature
-sensor. Furthermore, products contain a RFID tag that is read by RFID
-sensors placed at the entrance and exit of each room. All these
-sensors send their readings to a DSMS that needs to answer the
-following question: ``Which products stayed more than 10 minutes
-(overall, not consecutive) at more than 20 ºC and 80\% of
-humidity?''. These products are spoiled and mustn't be sold.
+In the previous section \ref{sec:spoiled-products} we concluded that
+the evolution of stock prices could be seen as a continuous
+function. Then, conceptually, solving this problem should be as easy
+as writing a continuous query that calculates the average \emph{while}
+the price is greater than \$70.
 
 
-\section{Variable-sized windows}
+\section{Variable windows}
 
 We've seen before that ESP systems provide many windowing facilities
 on top of regular SQL -- sliding windows, jumping windows, windows per
@@ -569,162 +660,32 @@ involves requests that are better handled by a traditional
 DBMS. Still, these scenarios may be more frequent than one thinks and
 it doesn't seem like it's complex to implement anyway.
 
+\section{A different perspective}
 
+In this chapter we have shown that there are problems where existing
+languages perform poorly. We believe this happens because these
+languages work at a very low level which forbids the developer to
+think in terms of higher abstractions. For example, the sliding window
+discussed in section \ref{sec:ibm-problem} only knows about events and
+ignores their meaning. The \verb=JOIN=s and \verb=GROUP BY=s employed
+in the resolution of the spoiled products problem are necessary
+because there is no way to keep related information together. In
+section \ref{sec:result-while} we discussed that, in order to identify
+the moment the stock price passes some threshold, it is necessary to
+look at past events. Meanwhile, thinking of the evolution of price as
+a continuous function would give a much simpler answer.
 
-
-
-TODO:
- - Problema da fabrica (explicar o que seria necessario mudar para a humidade)
- - malloc e free (aggregators must be used with windows)
- - Problema do leilao
-
-
-
- It's not our purpose to claim that SQL, in general, is not
-well-suited for these kinds of applications. On the contrary: SQL and
-its derivatives have been successfuly employed in databases for over
-30 years and their decline is unlikely to happen any time
-soon. However, we believe that, in order to solve these problems, one
-needs new data types, operators and different semantics, and the resulting language 
-
- and that results in a
-new language bearing little resemblance with current ones.
-
-
-
- It may
-thus seem imprudent to claim that SQL is not well-suited for ESP and
-such a statement must be accompanied with valid
-arguments. Fortunately, it is quite easy to understand, intuitively,
-the problems with this approach. First, experience tells that SQL
-queries easily become overly complex and hard to understand ---
-especially when they begin to include subqueries or perform analytical
-operations now part of the SQL standard. Second, SQL's declarative
-nature doesn't always map well with the way programmers
-think. Sometimes, things that are simple to do in C or Java become
-ugly hacks when translated to SQL, because SQL, despite being
-Turing-complete, just wasn't made to compete with those languages. We
-will develop these arguments while exploring a simple example (adapted
-from [ref]).
-
-\section{The online auction}
-
-Robay, a fictional online auction company, is experimenting with a
-DSMS to manage auctions. In their setup, they have three streams:
-
-\begin{itemize}
-\item \verb=OpenAuction(itemId, start_price)=: New tuples arriving
-  on this stream signal the beginning of a new auction;
-\item \verb=ClosedAuction(itemId)=: Signals the end of an auction;
-\item \verb=Bid(itemId, bid_price)=: Updated when there is a new bid
-  for an ongoing auction.
-\end{itemize}
-
-Information on sellers and buyers has been omitted because it won't be
-necessary to illustrate our point. One of the first queries Robay
-developers wrote returns, for each closed auction, its item id along
-with the price offered in the winner bid:
-
-\begin{verbatim}
--- Unite Bid with OpenAuction
-ItemPrices:
-    SELECT itemID, bid_price as price
-    FROM   Bid
-    UNION ALL
-    SELECT itemID, start_price as price
-    FROM   OpenAuction
-
--- Get the current price for each product
-CurrentPrice:
-    SELECT    P.itemID, Max(P.price) as price
-    FROM      ItemPrices P
-    GROUP BY  P.itemID
-
--- Get the product and final price for each closing auction
-ClosingPriceStream:
-    SELECT   Rstream(P.itemID as itemId, P.price as price)
-    FROM     ClosedAuction [Now] C, CurrentPrice P,
-    WHERE    C.itemID = P.itemID
-\end{verbatim}
-
-This solution uses regular SQL extended with windowing constructs and
-should be pretty easy to understand. Despite being so straightforward,
-there are a few places where it could be improved. First of all,
-notice that besides the \verb=ClosingPriceStream= --- the desired
-result ---, two other temporary streams had to be created. They are
-not strictly necessary and their code could be directly inserted in
-the \verb=FROM= clause of the \verb=ClosingPriceStream=, but that
-would quickly result in unreadable code. To avoid creating big and
-complex queries, developers partition them into smaller ones connected
-by temporary streams. Thus, streams end up being used as variables to
-store the intermediate results of computations. But streams aren't a
-suitable replacement for all kinds of variables. In procedural
-programming languages, programmers can choose among primitive
-variables (int, float, string, \dots), arrays, dictionaries, lists and
-sets among others, to manage information. Furthermore, Object-Oriented
-Programming brought classes and objects to the table, important not
-only to keep information in an organized way, but also because they
-allow developers to think in terms of the real world and model objects
-and the relationships between them. Certainly, streams and tables
-alone could be used to simulate all these kinds of constructs, but
-they're just not the right tool for \emph{every} job.
-
-Second, notice the query for the \verb=CurrentPrice= stream. To find
-the current price, it first finds the starting price, then all the
-prices from later bids and finally it chooses the largest, which is
-also the latest. Notice how the query builds, implicitly, the current
-state of each item by processing each event that affects it. This is a
-common pattern in SQL dialects for ESP and it works because the state
-is dictated by the events. What this means is that if you start from
-the same initial state and follow, one by one, the events that affect
-this state, you always arrive to the same result in the end, just like
-in a finite state machine. While this approach works, it soon becomes
-tedious to write queries like these, specially if the state may be
-affected by many different types of events interacting in complex
-ways. This query would be greatly simplified if there was some way to
-manage the state explicitly, by defining \verb=Item= objects with
-properties like \verb=currentPrice= to hold the state of each item and
-use these objects in queries, just like regular tuples. Moreover,
-these objects and their properties could be automatically managed by
-the system, thus relieving the programmer from lower-level tasks.
-
-Third, notice the \verb=WHERE= predicate in the last query. This
-predicate contains one inner join and should be clear for any SQL
-programmer. The problem is that this join hides an important fact
-about the system being modeled: objects have relationships. Auctions
-have one item and items have zero or more bids. Relationships are not
-new to the database community: DBMSs have embraced and supported them
-for years. But database relationships are still considered too
-low-level by most programmers, who are used to think in terms of
-objects instead of meaningless identifiers. This is one reason why
-Object-Relational Mapping (O/RM) has flourished in the last few
-years. If the developer could, somehow, model these relationships, the
-system would be able to enrich the objects mentioned in the previous
-paragraph with pointers to the related objects and manage these
-pointers automatically. With these changes, the last query would
-become much more explicit and read something along the lines of ``For
-every closed auction, get the current price, category and id of its
-item''.
-
-It may seem that these issues aren't as bad as we're making
-them. After all, the queries above are still easy to understand. Note
-however, that the example is also very short. As explained in the
-introduction, more and more code like this is being written like this
-every day by organizations that rely on DSMS to manage their business
-processes. As the code base grows, this mismatch between what
-developers want and what the systems have to offer becomes more
-evident to the point where, eventually, code becomes unmaintainable
-and needs to be abandoned.
-
-
-To conclude this chapter, it should be said SQL has some benefits. For
-simple things, its declarative nature makes it very expressive. After
-all, queries represent, almost in English, the intention of the
-developer. Also, SQL querying capabilities are very powerful and excel
-in many data processing tasks. It is understandable then, that an
-alternative language should take some inspiration from SQL and borrow
-some features to provide equally powerful constructs.
-
+It's not our purpose to claim that SQL, in general, is not well-suited
+for ESP applications. However, we believe that ESP problems have their
+own needs that require the availability of new data types, new
+operators and different semantics, to the point where the resulting
+language can hardly be called a SQL dialect anymore. Still, SQL has
+benefits. For simple things, its declarative nature makes it very
+expressive. After all, queries represent, almost in English, the
+intention of the developer. Also, SQL querying capabilities are very
+powerful and excel in many data processing tasks. It is understandable
+then, that a new language should take some inspiration from SQL and
+borrow some features to provide equally powerful constructs.
 
 \chapter{The EzQL query language}
 \label{chap:ezql}
@@ -738,7 +699,7 @@ In this chapter we present EzQL, our language designed to overcome
 \label{chap:conclusion}
 
 \appendix
-\chapter{Solutions in Coral8}
+\chapter{Solutions to a few problems}
 
 This appendix contains solutions to some of the problems discussed in
 chapter \ref{chap:simple-questions-complex-answers}. We can't claim
@@ -811,10 +772,11 @@ FROM Last5Secs AS L LEFT OUTER JOIN Expired AS E
 GROUP BY L.symbol;
 \end{verbatim}
 
-\section{The factory problem}
+\section{The spoiled products problem}
+\label{sec:spoiled-products-solution}
 
 This is just a simplification of the original problem. In particular,
-it doesn't handle humidity and it's assumed that rooms have a single
+it doesn't handle humidity and assumes that rooms have a single
 temperature sensor.
 
 \begin{verbatim}
