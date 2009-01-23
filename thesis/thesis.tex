@@ -5,6 +5,48 @@
 \usepackage{graphicx}
 \usepackage{color}
 \usepackage[small,bf]{caption}
+\usepackage{listings}
+
+\usepackage[T1]{fontenc}
+\usepackage[scaled=0.80]{beramono}
+
+
+\lstdefinelanguage{EzQL}
+{
+  morekeywords=[1]{from, select, where, group, by, in, hour, min,
+    class, end, min, and},
+  morekeywords=[2]{max, sumIntervals, avg, @createFrom,
+    @hasMany, @belongsTo, sumIntervalsWhereValueIs,
+    lengthOfMaxIntervalWhereValueIs},
+  sensitive=false,
+  morecomment=[l]{\#},
+  morestring=[b]",
+}
+
+\lstdefinelanguage{CCL}
+{
+  morekeywords=[1]{dummy, from, select, where, group, by, create, input,
+    stream, schema, string, integer, as, window, insert, removed, rows,
+  keep, seconds, into, float, last, per, outer, join, boolean,
+  if, then, else, end, dummy, ON, left, right, interval, timestamp,
+  full, local, and, hours, dummy}
+  morekeywords=[2]{dummy, max, coalesce, now, dummy},
+  sensitive=false,
+  morecomment=[l]{--},
+  morestring=[b]",
+}
+
+\lstdefinelanguage{Oracle}
+{
+  morekeywords={dummy, on, if, then, and, dummy}
+  sensitive=false,
+  morecomment=[l]{--},
+  morestring=[b]",
+}
+
+
+\definecolor{light-gray}{gray}{0.97}
+\definecolor{dark-gray}{gray}{0.50}
 
 \begin{document}
 \title{EzQL: A new language for Event Stream Processing}
@@ -151,12 +193,22 @@ applications which means each vendor has their own. Fortunately,
 they're all very similar. The simplest things can be done exactly as
 in regular SQL:
 
-\begin{verbatim}
-INSERT INTO PriceMicrosoft
-SELECT *
-FROM StockTrades
-WHERE symbol = 'MSFT'
-\end{verbatim}
+\lstset{
+  language=CCL,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+}
+
+\begin{lstlisting}
+  insert into PriceMicrosoft
+  select *
+  from   StockTrades
+  where  symbol = 'MSFT'
+\end{lstlisting}
+
+% TODO: s/MSFT/ACME
 
 This query looks for tuples where the field \verb=symbol= equals
 ``MSFT'' arriving at the stream \verb=StockTrades= and adds them to
@@ -169,12 +221,12 @@ becomes possible, for example, to calculate the most expensive order
 among the last million, or the average of Microsoft's stock prices
 over the last 3 hours, as the following example shows:
 
-\begin{verbatim}
-INSERT INTO AvgPriceMicrosoft
-SELECT avg(price)
-FROM StockTrades KEEP 3 HOURS
-WHERE symbol = 'MSFT'
-\end{verbatim}
+\begin{lstlisting}
+  insert into AvgPriceMicrosoft
+  select avg(price)
+  from   StockTrades keep 3 hours
+  where  symbol = 'MSFT'
+\end{lstlisting}
 
 It's possible to customize the retain policy and keep, for example,
 the 10 largest updates based on their price, the 10 last updates per
@@ -277,19 +329,27 @@ procedure ---, is executed.
 
 Conceptually, a rule has the following format:
 
-\begin{verbatim}
-ON   <event>
-IF   <condition>
-THEN <action>
-\end{verbatim}
+\lstset{
+  language=Oracle,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=\bf,
+}
+
+
+\begin{lstlisting}
+  on   <event>
+  if   <condition>
+  then <action>
+\end{lstlisting}
 
 The following example shows a simple rule:
 
-\begin{verbatim}
-ON   StockTick(symbol, price, volume)
-IF   symbol = 'MSFT' and price > 100
-THEN buyStocks(symbol)
-\end{verbatim}
+\begin{lstlisting}
+  on   StockTick(symbol, price)
+  if   symbol = 'MSFT' and price > 100
+  then buyStocks(symbol)
+\end{lstlisting}
 
 The event shown above represents a stock update received from some
 external source. These are the simplest kind of events, also called
@@ -693,6 +753,19 @@ borrow some features to provide equally powerful constructs.
 \chapter{The EzQL query language}
 \label{chap:ezql}
 
+\lstset{
+  language=EzQL,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+  % frame=leftline,
+  % framerule=1pt,
+  % rulesep=20pt,
+  % backgroundcolor=\color{light-gray},
+  % rulecolor=\color{dark-gray}
+}
+
 In this chapter we introduce EzQL, our proposal to attack the issues
 outlined in the previous chapter. Its main features are:
 
@@ -767,12 +840,12 @@ receives the following events at the given timestamps:
 You may filter ACME stocks, double their price and store the results
 in a new stream by doing:
 
-\begin{verbatim}
+\begin{lstlisting}
 acme_stocks_2x =
   from ev in stocks
   where ev.symbol == "ACME"
   select { :new_price => ev.price * 2 }
-\end{verbatim}
+\end{lstlisting}
 
 Three things in this snippet may require further explanation. First,
 the portion between \verb={ ... }= creates a new tuple with one field
@@ -817,12 +890,12 @@ arrive.
 The next example shows a more complicated query that calculates, for
 every company, the maximum price of its stocks over the last hour:
 
-\begin{verbatim}
+\begin{lstlisting}
 max_per_company_1h =
   from ev in stocks[1 hour]
   group by ev.symbol
   select max(ev.price)
-\end{verbatim}
+\end{lstlisting}
 
 The result of this query is a dictionary that maps company symbols to
 their maximum prices. At 11:10:00, for example, this dictionary will
@@ -875,14 +948,14 @@ Suppose you have three streams:
 
 Defining a class \verb=Room= in EzQL can be done as follows:
 
-\begin{verbatim}
-# A room is created every time a new room_id is seen in any of
-# these streams
-@createFrom(temp_readings, onNew = :room_id)
-@createFrom(hum_readings,  onNew = :room_id)
-class Room
-end
-\end{verbatim}
+\begin{lstlisting}
+  # A room is created every time a new room_id is seen in any of
+  # these streams
+  @createFrom(temp_readings, onNew = :room_id)
+  @createFrom(hum_readings,  onNew = :room_id)
+  class Room
+  end
+\end{lstlisting}
 
 This code declares a new class --- \verb=Room= ---, but leaves the
 declaration empty. However, is also tags the class with two
@@ -950,11 +1023,11 @@ the previous value.
 
 Naturally, we can query these objects as if they were normal streams:
 
-\begin{verbatim}
-from   room in Room.all
-where  room.humidity > 0.60
-select room.room_id
-\end{verbatim}
+\begin{lstlisting}
+  from   room in Room.all
+  where  room.humidity > 0.60
+  select room.room_id
+\end{lstlisting}
 
 This would result in a subset of \verb=Room.all= containing only one
 room:
@@ -975,30 +1048,30 @@ Modeling associations between entities is just as easy. For instance,
 to specify the one-to-many relationship between products and rooms you
 would just need to add a few annotations to the declarations:
 
-\begin{verbatim}
-# A room is created every time a new room_id is seen in any of
-# these streams.
-@createFrom(temp_readings, onNew = :room_id)
-@createFrom(hum_readings,  onNew = :room_id)
-@hasMany(:products) # There may be many products inside one room
-class Room
-end
+\begin{lstlisting}
+  # A room is created every time a new room_id is seen in any of
+  # these streams.
+  @createFrom(temp_readings, onNew = :room_id)
+  @createFrom(hum_readings,  onNew = :room_id)
+  @hasMany(:products) # There may be many products inside one room
+  class Room
+  end
 
-# A product is created every time a new product_id is seen.
-@createFrom(entries, onNew = :product_id)
-@belongsTo(:room)  # A product is inside one room
-class Product
-end
-\end{verbatim}
+  # A product is created every time a new product_id is seen.
+  @createFrom(entries, onNew = :product_id)
+  @belongsTo(:room)  # A product is inside one room
+  class Product
+  end
+\end{lstlisting}
 
 The \verb=@hasMany= annotation means that each room may contain an
 unbounded number of products. This annotation also adds a list of
 \verb=Product= instances to every \verb=Room=. So, if you want to get
 the list of products in room A you can do so with:
 
-\begin{verbatim}
-Room.all["A"].products
-\end{verbatim}
+\begin{lstlisting}
+  Room.all["A"].products
+\end{lstlisting}
 
 The \verb=@belongsTo= annotation adds the reverse association, i.e.,
 it means that every product is inside one room. Moreover, this
@@ -1006,19 +1079,19 @@ annotation also adds an attribute \verb=room= to every
 \verb=Product=. Thus, to know in which room is product X one could
 write:
 
-\begin{verbatim}
-Products.all["X"].room
-# or ...
-Products.all["X"].room.room_id  # ... to get just the ID
-\end{verbatim}
+\begin{lstlisting}
+  Products.all["X"].room
+  # or ...
+  Products.all["X"].room.room_id  # ... to get just the ID
+\end{lstlisting}
 
 And you can find the number of products per room using:
 
-\begin{verbatim}
-from   room in Room.all
-select { :room_id => room.room_id,
-         :product_count => room.products.length }
-\end{verbatim}
+\begin{lstlisting}
+  from   room in Room.all
+  select { :room_id => room.room_id,
+           :product_count => room.products.length }
+\end{lstlisting}
 
 In this example, \verb=length= returns the number of elements in a
 list.
@@ -1069,11 +1142,11 @@ Room.all["A"].temperature[5 min].max()
 You could have solved this using standard stream operators presented
 in chapter \ref{sec:stream-operations}, without creating objects:
 
-\begin{verbatim}
-from   ev in temp_readings
-where  ev.room_id == "A"
-select max(ev.temperature)
-\end{verbatim}
+\begin{lstlisting}
+  from   ev in temp_readings
+  where  ev.room_id == "A"
+  select max(ev.temperature)
+\end{lstlisting}
 
 Surprisingly though, the results may differ. To see why, note that
 this is just another instance of the ACME problem --- ``Were ACME
@@ -1111,14 +1184,14 @@ only regular stream operations.
 Just for the sake of completeness, here is the solution to the window
 problem written in EzQL:
 
-\begin{verbatim}
-# Companies are created when new symbols appear
-@createFrom(stocks, onNew = :symbol)
-class Company
-end
+\begin{lstlisting}
+  # Companies are created when new symbols appear
+  @createFrom(stocks, onNew = :symbol)
+  class Company
+  end
 
-above_70 = Company.all["ACME"].price[5 min].max() > 70
-\end{verbatim}
+  above_70 = Company.all["ACME"].price[5 min].max() > 70
+\end{lstlisting}
 
 % TODO: Complete, write this in other places
 Notice that, with objects and continuous values, we can now support
@@ -1149,17 +1222,17 @@ that checks the past history of the temperature and sums the intervals
 where it was equal to some parameter. Then, answering the question
 would be as simple as:
 
-\begin{verbatim}
-Room.all["A"].temperature.sumIntervalsWhereValueIs(25)
-\end{verbatim}
+\begin{lstlisting}
+  Room.all["A"].temperature.sumIntervalsWhereValueIs(25)
+\end{lstlisting}
 
 Or you could find the biggest interval where the temperature was 25
 degrees using another aggregator,
 \verb=lengthOfMaxIntervalWhereValueIs=:
 
-\begin{verbatim}
-Room.all["A"].temperature.lengthOfMaxIntervalWhereValueIs(25)
-\end{verbatim}
+\begin{lstlisting}
+  Room.all["A"].temperature.lengthOfMaxIntervalWhereValueIs(25)
+\end{lstlisting}
 
 These aggregators have rather lengthy names and they have a few
 limitations. For instance, they only consider intervals with the same
@@ -1171,9 +1244,9 @@ temperature above or below a certain threshold?
 Suppose you need to know if the current temperature is above or equal
 to 25 degrees:
 
-\begin{verbatim}
-Room.all["A"].temperature >= 25
-\end{verbatim}
+\begin{lstlisting}
+  Room.all["A"].temperature >= 25
+\end{lstlisting}
 
 This expression it will return either \verb=true= or \verb=false=. But
 what happens if the expression is used as part of a continuous query?
@@ -1206,9 +1279,9 @@ where the temperature was equal or above 25 degrees, we could use the
 \verb=sumIntervals= aggregator, which sums up the intervals where the
 value is \verb=true=:
 
-\begin{verbatim}
-(Room.all["A"].temperature >= 25).sumIntervals()
-\end{verbatim}
+\begin{lstlisting}
+  (Room.all["A"].temperature >= 25).sumIntervals()
+\end{lstlisting}
 
 This expression would return 4 minutes for the temperature values
 presented in the previous table.
@@ -1216,9 +1289,9 @@ presented in the previous table.
 Note that to find out for how long the temperature was equal to 25
 degrees, you could now write:
 
-\begin{verbatim}
-(Room.all["A"].temperature == 25).sumIntervals()
-\end{verbatim}
+\begin{lstlisting}
+  (Room.all["A"].temperature == 25).sumIntervals()
+\end{lstlisting}
 
 This approach is certainly more understandable (and generic!) than
 using the aggregators defined in the previous section.
@@ -1261,15 +1334,15 @@ product is in:
 
 % TODO: New lines should come in bold
 
-\begin{verbatim}
-@createFrom(entries, onNew = :product_id)
-@belongsTo(:room)
-class Product
-    # The temperature of a product is the
-    # temperature of its room
-    temperature = this.room.temperature
-end
-\end{verbatim}
+\begin{lstlisting}
+  @createFrom(entries, onNew = :product_id)
+  @belongsTo(:room)
+  class Product
+      # The temperature of a product is the
+      # temperature of its room
+      temperature = this.room.temperature
+  end
+\end{lstlisting}
 
 As in Java or C++, \verb=this= is a reference to the current product
 whose temperature is being accessed.
@@ -1308,9 +1381,9 @@ attribute for product X will contain the following history:
 Now, you could, for instance, calculate the amount of time the
 product's temperature was below 15 degrees with:
 
-\begin{verbatim}
-(Product.all["X"].temperature < 15).sumIntervals()
-\end{verbatim}
+\begin{lstlisting}
+  (Product.all["X"].temperature < 15).sumIntervals()
+\end{lstlisting}
 
 Under the previous values, this expression would return 10 minutes.
 
@@ -1338,9 +1411,9 @@ section, it is straightforward to find out for how long was the
 average above some threshold. Assuming the \verb=acme_stocks= stream
 contains the ACME stock data we want to analyze, we could write:
 
-\begin{verbatim}
-(acme_stocks.avg(:price) > THRESHOLD).sumIntervals()
-\end{verbatim}
+\begin{lstlisting}
+  (acme_stocks.avg(:price) > THRESHOLD).sumIntervals()
+\end{lstlisting}
 
 % TODO: Solve MACD
 
@@ -1350,28 +1423,28 @@ transcribed below:
 
 % TODO: Again, bold lines for new stuff
 
-\begin{verbatim}
-@createFrom(temp_readings, onNew = :room_id)
-@createFrom(hum_readings,  onNew = :room_id)
-@hasMany(:products)
-class Room
-end
+\begin{lstlisting}
+  @createFrom(temp_readings, onNew = :room_id)
+  @createFrom(hum_readings,  onNew = :room_id)
+  @hasMany(:products)
+  class Room
+  end
 
-@createFrom(entries, onNew = :product_id)
-@belongsTo(:room)
-class Product
-    temperature = this.room.temperature
-    humidity    = this.room.humidity
-end
+  @createFrom(entries, onNew = :product_id)
+  @belongsTo(:room)
+  class Product
+      temperature = this.room.temperature
+      humidity    = this.room.humidity
+  end
 
-# Spoiled products spent at least 10 minutes at more than 20
-# degrees and 80% of humidity
-spoiled_products =
-  from   prod in Product.all
-  where  (prod.temperature > 20 and prod.humidity > 0.80)
-           .sumIntervals() >= 10 min
-  select prod
-\end{verbatim}
+  # Spoiled products spent at least 10 minutes at more than 20
+  # degrees and 80% of humidity
+  spoiled_products =
+    from   prod in Product.all
+    where  (prod.temperature > 20 and prod.humidity > 0.80)
+             .sumIntervals() >= 10 min
+    select prod
+\end{lstlisting}
 
 The reader is invited to compare this solution with the one presented
 in the appendix \ref{sec:spoiled-products-solution} written in Coral8
@@ -1400,66 +1473,73 @@ code.
 
 \section{The ACME problem}
 
-\begin{verbatim}
+\lstset{
+  language=CCL,
+  columns=fixed,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+}
+
+
+\begin{lstlisting}
 -- Algorithm:
 --
--- Keep two windows: one for the last 5 seconds of data, and another with
--- the newest event that is older than 5 seconds (i.e., the one that
--- expired last from the first window). Then, join both windows (UNION
--- would be better, but Coral8 doesn't support it) and check if the
--- max of prices in any of the two windows is > $70.
+-- Keep two windows: one for the last 5 seconds of data, and another
+-- with the newest event that is older than 5 seconds (i.e., the one
+-- that expired last from the first window). Then, join both windows
+-- (UNION would be better, but Coral8 doesn't support it) and check
+-- if the max of prices in any of the two windows is > $70.
 
-CREATE INPUT STREAM StreamIn
-SCHEMA (
-   symbol STRING,
-   price  INTEGER
+create input stream StreamIn
+schema (
+   symbol string,
+   price  integer
 );
 
 -- Keep the events from the last 5 seconds.
-CREATE WINDOW Last5Secs
-Schema (
-  symbol STRING,
-  price  FLOAT
-) KEEP 5 Seconds
-INSERT REMOVED ROWS INTO Expired;
+create window Last5Secs
+schema (
+  symbol string,
+  price  float
+) keep 5 seconds
+insert removed rows into Expired;
 
  -- Insert the events into the window.
-INSERT INTO Last5Secs
-SELECT *
-FROM StreamIn;
-
+insert into Last5Secs
+select *
+from StreamIn;
 
 -- Keeps the previously expired event from Last5Secs (one per symbol)
-CREATE WINDOW Expired
-Schema (
-  symbol STRING,
-  price  FLOAT
-) KEEP LAST PER symbol;
+create window Expired
+schema (
+  symbol string,
+  price  float
+) keep last per symbol;
 
-
--- For each symbol, true means its stocks were at > $70 during any moment
--- of the last 5 seconds, false means otherwise.
-CREATE WINDOW Result
-Schema (
-  symbol STRING,
-  result BOOLEAN
-) KEEP LAST PER symbol;
+-- For each symbol, true means its stocks were at > $70 during any
+-- moment of the last 5 seconds, false means otherwise.
+create window Result
+schema (
+  symbol string,
+  result boolean
+) keep last per symbol;
 
 -- Join both windows and check if the max of any of them is > $70
 -- This would be prettier with UNION
 --
 -- Note: When events expire, this generates two events: one before
 --       the expiration and another after.
-INSERT INTO Result
-SELECT L.symbol,
-      IF max(coalesce(max(L.price), 0), coalesce(max(E.price), 0)) > 70
-       THEN TRUE
-        ELSE FALSE
-      END
-FROM Last5Secs AS L LEFT OUTER JOIN Expired AS E
-      ON L.symbol = E.symbol
-GROUP BY L.symbol;
-\end{verbatim}
+insert into Result
+select L.symbol,
+       if max(coalesce(max(L.price),0), coalesce(max(E.price),0)) > 70
+         then true
+         else false
+       end
+from   Last5Secs as L full outer join Expired as E
+         on L.symbol = E.symbol
+group by L.symbol;
+\end{lstlisting}
 
 \section{The spoiled products problem}
 \label{sec:spoiled-products-solution}
@@ -1468,7 +1548,7 @@ This is just a simplification of the original problem. In particular,
 it doesn't handle humidity and assumes that rooms have a single
 temperature sensor.
 
-\begin{verbatim}
+\begin{lstlisting}
 -- Algorithm:
 --
 -- - Always maintain an explicit counter per product containing
@@ -1476,7 +1556,7 @@ temperature sensor.
 --   This counter also contains the time the product was last
 --   updated (last_update).
 --
--- - When a product swicthes rooms, if the temperature in the
+-- - When a product switches rooms, if the temperature in the
 --   previous room was > 20, add now() + last_update to the
 --   counter and replace the previous last_update with now();
 --
@@ -1485,111 +1565,111 @@ temperature sensor.
 --   counter and replace the previous last_update with now();
 --
 
-CREATE INPUT STREAM entries
-SCHEMA (
-   product_id STRING,
-   room_id STRING
+create input stream entries
+schema (
+   product_id string,
+   room_id string
 );
 
-CREATE INPUT STREAM temp_readings
-SCHEMA (
-   room_id STRING,
-   temperature INTEGER
+create input stream temp_readings
+schema (
+   room_id string,
+   temperature integer
 );
-
 
 -- Holds the last two entries per product
-CREATE WINDOW ProductRoom
-Schema (
-   product_id STRING,
-   room_id STRING
-) KEEP 2 ROWS PER product_id;
+create window ProductRoom
+schema (
+   product_id string,
+   room_id string
+) keep 2 rows per product_id;
 
-
-INSERT INTO ProductRoom
-SELECT *
-FROM entries;
-
+insert into ProductRoom
+select *
+from entries;
 
 -- Holds the last two temp_readings per room
-CREATE WINDOW RoomTemperature
-Schema (
-   room_id STRING,
-   temperature INTEGER
-) KEEP 2 ROWS PER room_id;
+create window RoomTemperature
+schema (
+   room_id string,
+   temperature integer
+) keep 2 rows per room_id;
 
+insert into RoomTemperature
+select *
+from temp_readings;
 
-INSERT INTO RoomTemperature
-SELECT *
-FROM temp_readings;
-
-CREATE LOCAL STREAM OnExit
-SCHEMA (
-   product_id STRING,
-   old_room_id STRING
+create local stream OnExit
+schema (
+   product_id string,
+   old_room_id string
 );
-
 
 -- When a product leaves a room, generate an event containing the
 -- product and the old room.
-INSERT INTO OnExit
-SELECT entries.product_id, ProductRoom.room_id
-FROM entries LEFT OUTER JOIN
- ProductRoom ON entries.product_id = ProductRoom.product_id
-WHERE entries.room_id != ProductRoom.room_id;
+insert into OnExit
+select entries.product_id, ProductRoom.room_id
+from   entries left outer join ProductRoom
+         on entries.product_id = ProductRoom.product_id
+where  entries.room_id != ProductRoom.room_id;
 
-
-CREATE LOCAL STREAM OnTemperatureChange
-SCHEMA (
-   room_id STRING,
-   old_temperature STRING
+create local stream OnTemperatureChange
+schema (
+   room_id string,
+   old_temperature string
 );
-
 
 -- When the temperature changes, generate an event containing the
 -- room and the old temperature
-INSERT INTO OnTemperatureChange
-SELECT temp_readings.room_id, RoomTemperature.temperature
-FROM temp_readings LEFT OUTER JOIN
- RoomTemperature ON temp_readings.room_id = RoomTemperature.room_id
-WHERE temp_readings.temperature != RoomTemperature.temperature;
+insert into OnTemperatureChange
+select temp_readings.room_id, RoomTemperature.temperature
+from   temp_readings left outer join RoomTemperature
+         on temp_readings.room_id = RoomTemperature.room_id
+where  temp_readings.temperature != RoomTemperature.temperature;
 
 -- Per each product, maintain a counter with the time the product
 -- spent above 20 degrees and the last time this counter was updated
-CREATE WINDOW ProductTemperatureCounter
-Schema (
-   product_id    STRING,
-   time_above_20 INTERVAL,
-   last_update   TIMESTAMP
-) KEEP LAST PER product_id;
+create window ProductTemperatureCounter
+schema (
+   product_id    string,
+   time_above_20 interval,
+   last_update   timestamp
+) keep last per product_id;
 
 -- Initialize this counter
-INSERT INTO ProductTemperatureCounter
-SELECT product_id, 0 seconds, NOW()
-FROM entries
-WHERE room_id = "A";
+insert into ProductTemperatureCounter
+select product_id, 0 seconds, now()
+from entries
+where room_id = "A";
 
--- Every time the product leaves the room, checks if the temperature in
--- the old room was > 20 and updates the counter of that product
-INSERT INTO ProductTemperatureCounter
-SELECT E.product_id, IF T.temperature > 20
-                      THEN time_above_20 + now() - C.last_update
-                      ELSE time_above_20
-                    END, now()
-FROM OnExit as E, RoomTemperature as T, ProductTemperatureCounter as C
-WHERE E.old_room_id = T.room_id
- AND E.product_id = C.product_id;
+-- Every time the product leaves the room, checks if the temperature
+-- in the old room was > 20 and updates the counter of that product
+insert into ProductTemperatureCounter
+select E.product_id,
+       if T.temperature > 20
+         then time_above_20 + now() - C.last_update
+         else time_above_20
+       end,
+       now()
+from  OnExit as E, RoomTemperature as T,
+      ProductTemperatureCounter as C
+where E.old_room_id = T.room_id
+        and E.product_id = C.product_id;
 
--- Every time the temperature changes, checks if the previous temperature
--- was > 20 and updates the counters of all the products in that room
-INSERT INTO ProductTemperatureCounter
-SELECT R.product_id, IF T.old_temperature > 20
-                      THEN time_above_20 + now() - C.last_update
-                      ELSE time_above_20
-                    END, now()
-FROM OnTemperatureChange as T, ProductRoom as R, ProductTemperatureCounter as C
-WHERE T.room_id = R.room_id
- AND R.product_id = C.product_id;
-\end{verbatim}
+-- Every time the temperature changes, checks if the previous
+-- temperature was > 20 and updates the counters of all the products
+-- in that room
+insert into ProductTemperatureCounter
+select R.product_id,
+       if T.old_temperature > 20
+         then time_above_20 + now() - C.last_update
+         else time_above_20
+       end,
+       now()
+from  OnTemperatureChange as T, ProductRoom as R,
+      ProductTemperatureCounter as C
+where T.room_id = R.room_id
+        and R.product_id = C.product_id;
+\end{lstlisting}
 
 \end{document}
