@@ -424,24 +424,24 @@ very complex to express using existing SQL dialects for ESP
 systems. We will try to understand the reasons for this difficulty and
 propose solutions to eliminate it.
 
-\section{The IBM problem}
-\label{sec:ibm-problem}
+\section{Events and how to deal with state}
+\label{sec:acme-problem}
 
 The first problem is also the simplest. You are given a stream that
 receives events from the financial market containing company symbols
 and their corresponding stock prices. With this stream, you need to
-answer the following question: ``Were IBM actions above \$70 during
+answer the following question: ``Were ACME actions above \$70 during
 any moment of the last 5 minutes?''.
 
 This seems to be a great use-case for temporal sliding windows
 discussed in chapter \ref{chap:soa}. Unfortunately, the semantics of
 these windows are not appropriate here. To see why, suppose that, at
-10:54, the system receives a notification reporting that IBM actions
+10:54, the system receives a notification reporting that ACME actions
 were worth \$71 and, 2 minutes later, it receives another event
 informing that the price decreased to \$69. Suppose further that no
 other events arrived until the question is posed, at 11:00 (of the
 same day). Given these assumptions, any human would answer the obvious
-``yes'', because IBM actions were valued at \$71 between 10:54 and
+``yes'', because ACME actions were valued at \$71 between 10:54 and
 10:56 --- well inside the 5 minutes window. However, existing engines
 ignore what happens between events. It's like the price is undefined
 between two consecutive updates. Thus, the engine will completely
@@ -450,7 +450,7 @@ window, as figure \ref{fig:outside-window} shows.
 
 \begin{figure}[htbp]
   \includegraphics[width=\textwidth]{outside-window.png}
-  \caption{Evolution of IBM stock prices in the scenario described in
+  \caption{Evolution of ACME stock prices in the scenario described in
     the text. Values in blue boxes represent the two events received
     at 10:54 and 10:56. As you can see, the first event lies outside
     the 5 minutes window and thus, will be ignored by the system. The
@@ -503,6 +503,9 @@ usefulness is reduced.
 
 \section{Spoiled products detection}
 \label{sec:spoiled-products}
+
+% TODO: Refer that we assume temperature remains constant between
+% updates, because the sensor is prepared, blah blah
 
 Another class of problems that are reasonable in the context of ESP
 systems but are difficult to solve by current systems are those where
@@ -606,12 +609,12 @@ tool for \emph{every} job.
 \section{What was the $<$result$>$ while $<$condition$>$ hold?}
 \label{sec:result-while}
 
-Suppose that IBM actions were worth more than \$70 during some
+Suppose that ACME actions were worth more than \$70 during some
 interval and you want to know what was the average of their price
 during that interval. Solving this problem using current technology is
 not so difficult. Most ESP products include some kind of event
 detection feature that allows the search for patterns of events. To
-obtain an answer, we could find the event where IBM stocks passed the
+obtain an answer, we could find the event where ACME stocks passed the
 \$70 mark, then find all the events where the price stayed above that
 threshold and finally, find the event where they descended below
 \$70. With all these events, we could then proceed to calculate the
@@ -666,7 +669,7 @@ In this chapter we have shown that there are problems where existing
 languages perform poorly. We believe this happens because these
 languages work at a very low level which forbids the developer to
 think in terms of higher abstractions. For example, the sliding window
-discussed in section \ref{sec:ibm-problem} only knows about events and
+discussed in section \ref{sec:acme-problem} only knows about events and
 ignores their meaning. The \verb=JOIN=s and \verb=GROUP BY=s employed
 in the resolution of the spoiled products problem are necessary
 because there is no way to keep related information together. In
@@ -690,7 +693,695 @@ borrow some features to provide equally powerful constructs.
 \chapter{The EzQL query language}
 \label{chap:ezql}
 
-In this chapter we present EzQL, our language designed to overcome 
+In this chapter we introduce EzQL, our proposal to attack the issues
+outlined in the previous chapter. Its main features are:
+
+\begin{itemize}
+\item The language integrates both pulse and state-changes semantics,
+  discussed in the previous chapter. Thus, \emph{EzQL does not lose
+    any hability offered by current systems}\footnote{At least in
+    theory. In practice some things may not be implemented due to the
+    lack of time.}, while it also adds new capabilities;
+\item Includes a simple \emph{object-model} where real-world entities
+  can be modeled as objects with properties --- temperature, price or
+  speed, for example ---, whose values depend on the values of
+  events. For instance, this object-model allows the creation of many
+  Room objects each with their own temperature attribute which is
+  automatically updated as new sensor readings arrive. Furthermore,
+  these objects and the values of their properties define the state of
+  the application and this state can be queried just like regular
+  events;
+\item The object model supports \emph{associations} between objects,
+  inspired by Ob\-ject-Relational Mapping (O/RM) tools for
+  databases. Thus, it is possible to say, for instance, that a room
+  has many products and, correspondingly, that a product belongs to
+  one room. Again, these associations may change as new events arrive,
+  i.e., a product may leave one room and enter another. Naturally,
+  these relationships can also be queried --- one can ask, for
+  example, which is the cheapest product inside room A. This type of
+  queries can already be written in currently available systems, but
+  we will see that they become much simpler in EzQL;
+\item EzQL provides some support for \emph{temporal queries}, a common
+  class of queries in ESP applications that current products don't
+  always handle so well, as we have seen. This support integrates with
+  the object-model so that one can easily ask, for example, for how
+  long was the temperature in some room above 20$^{\circ}$C during the
+  last 10 minutes;
+\item Combines the \emph{imperative} (C, Java) and the
+  \emph{declarative} (SQL) paradigms allowing the developer to query
+  data with a SQL-like language or by writing an algorithm, specified
+  as a sequence of small steps, for those cases where SQL is not
+  appropriate;
+\end{itemize}
+
+Before we delve into the language, it's important to mention that, at
+this point, the syntax is not yet set in stone. Right now, the
+semantics are the most important thing, specially because continuous
+queries on streams are conceptually different from the regular
+sequential programming we are used to, as we will see. Besides, when
+designing a new language, syntax is the easiest thing to change.
+
+\section{Operations on streams}
+\label{sec:stream-operations}
+
+To manipulate raw streams of data, EzQL supports the basic constructs
+that can be found in other languages. As such, we will discuss these
+features very briefly.
+
+Suppose you have a stream called \verb=stocks= that receives events
+with two fields --- \verb=:symbol= and \verb=:price= ---, that
+receives the following events at the given timestamps:
+
+\begin{tabular}{ |l|l|r| }
+  \hline
+  Timestamp & \verb=:symbol= & \verb=:price= \\
+  \hline
+  10:59:59 am & \verb="ACME"= & 50 \\
+  11:00:02 am & \verb="ACME"= & 52 \\
+  11:00:03 am & \verb="XPTO"= & 70 \\
+  11:00:06 am & \verb="XPTO"= & 75 \\
+  11:00:07 am & \verb="ACME"= & 50 \\
+  \hline
+\end{tabular}
+
+You may filter ACME stocks, double their price and store the results
+in a new stream by doing:
+
+\begin{verbatim}
+acme_stocks_2x =
+  from ev in stocks
+  where ev.symbol == "ACME"
+  select { :new_price => ev.price * 2 }
+\end{verbatim}
+
+Three things in this snippet may require further explanation. First,
+the portion between \verb={ ... }= creates a new tuple with one field
+--- \verb=:new_price= ---, which is equal to the original price times
+two.
+
+Second, the seasoned SQL developer may find weird the fact that the
+\verb=select= comes after the \verb=from=. The rationale behind this
+decision is that variables are declared in the \verb=from= clause
+before they are used in the rest of the query. This way, an advanced
+editor will be able to assist the developer for example, by showing
+the fields of the \verb=ev= event when he types in \verb='ev.'=. Once
+again, this is a syntax issue and may be modified if we conclude that
+it bothers developers.
+
+Third, we did not specify a timestamp for the new events. This is
+because the timestamp is a special field, common to all events, that
+is managed by the engine.
+
+After 11:00:07 am, the stream \verb=acme_stocks_2x= will contain the
+following events:
+
+\begin{tabular}{ |l|r| }
+  \hline
+  Timestamp & \verb=:new_price= \\
+  \hline
+  10:59:59 am & 100 \\
+  11:00:02 am & 104 \\
+  11:00:07 am & 100 \\
+  \hline
+\end{tabular}
+
+Notice that \verb=acme_stocks_2x= is an active stream that receives
+events and processes them on arrival, as can be seen by comparing the
+timestamps in both streams. Thus, if new ACME stock reports arrive
+into the \verb=stocks= stream, their price will be doubled and then
+sent to the \verb=acme_stocks_2x= stream. This is a very important
+point to make: since these queries are continuous --- i.e., they are
+always executing ---, results may change as time passes or new events
+arrive.
+
+The next example shows a more complicated query that calculates, for
+every company, the maximum price of its stocks over the last hour:
+
+\begin{verbatim}
+max_per_company_1h =
+  from ev in stocks[1 hour]
+  group by ev.symbol
+  select max(ev.price)
+\end{verbatim}
+
+The result of this query is a dictionary that maps company symbols to
+their maximum prices. At 11:10:00, for example, this dictionary will
+contain:
+
+\begin{tabular}{ |l|c| }
+  \hline
+  \verb=:symbol= & \verb=max(ev.price)= \\
+  \hline
+  \verb="ACME"= & 52 \\
+  \verb="XPTO"= & 75 \\
+  \hline
+\end{tabular}
+
+Just like most data types in EzQL, this dictionary will be
+automatically updated to reflect the arrival of new events or the
+passage of time. For example, if reports from previously unseen
+companies arrive, a new entry will be added to the dictionary; and if
+ACME stocks rise, their corresponding maximum price will be modified
+as well.
+
+Other operations such as joining streams with windows, filtering
+groups or sorting windows are also supported, but we won't discuss
+them here as they are similar to their counterparts in other
+languages. Notice, however, that these operations are enough to
+support the pulse semantics introduced in the previous chapter,
+allowing EzQL to handle most --- if not all --- problems that existing
+products already solve.
+
+\section{Modeling entities with objects}
+\label{sec:objects}
+
+In chapter \ref{chap:simple-questions-complex-answers}, we argued that
+some queries would become simpler if the developer could model the
+state of each entity and the relationships between them using
+objects. In this section we will explain how to do this in EzQL using
+the spoiled products detection example from section
+\ref{sec:spoiled-products}.
+
+Suppose you have three streams:
+
+\begin{itemize}
+\item \verb=temp_readings(:room_id, :temperature)= which receives
+  temperature readings per room;
+\item \verb=hum_readings(:room_id, :humidity)= where humidity readings
+  are sent to;
+\item and finally, \verb=entries(:room_id, :product_id)= whose events
+  are created when a product has entered a room.
+\end{itemize}
+
+Defining a class \verb=Room= in EzQL can be done as follows:
+
+\begin{verbatim}
+# A room is created every time a new room_id is seen in any of
+# these streams
+@createFrom(temp_readings, onNew = :room_id)
+@createFrom(hum_readings,  onNew = :room_id)
+class Room
+end
+\end{verbatim}
+
+This code declares a new class --- \verb=Room= ---, but leaves the
+declaration empty. However, is also tags the class with two
+\verb=@createFrom= annotations. This signals the ESP engine to
+automatically create new \verb=Room= instances when previously unseen
+\verb=room_id=s show up in either \verb=temp_readings= or
+\verb=hum_readings= streams.
+
+In addition, this annotation adds the stream fields to
+the class. This way, every Room instance ends up with three
+attributes: \verb=room_id=, \verb=temperature= and
+\verb=humidity=. These attributes are automatically filled and updated
+by the system as new events arrive, so that the developer doesn't have
+to worry with these details. Naturally, the values of these attributes
+are independent from object to object. That is, an event with
+\verb=room_id= equal to 2 will only affect the \verb=Room= instance
+with \verb=room_id= equal to 2 and not the others.
+
+Having set up this apparatus, we can now run the simulation and see
+the objects being created for us automatically. All the \verb=Room=
+instances are accessible using \verb=Room.all=. In essence, this is a
+dictionary that maps object id's (taken from the \verb=:room_id= field
+in this case) to the objects themselves. If the stream
+\verb=temps_readings= contains:
+
+\begin{tabular}{ |l|l|c| }
+  \hline
+  Timestamp & \verb=:room_id= & \verb=:temperature= \\
+  \hline
+  11:00:00 am & \verb="A"= & 20 \\
+  11:01:00 am & \verb="B"= & 21 \\
+  11:02:00 am & \verb="A"= & 23 \\
+  11:03:00 am & \verb="B"= & 22 \\
+  \hline
+\end{tabular}
+
+and if \verb=hum_readings= receives:
+
+\begin{tabular}{ |l|l|c| }
+  \hline
+  Timestamp & \verb=:room_id= & \verb=:temperature= \\
+  \hline
+  11:00:30 am & \verb="B"= & 0.60 \\
+  11:01:30 am & \verb="A"= & 0.62 \\
+  11:02:30 am & \verb="A"= & 0.61 \\
+  11:03:00 am & \verb="B"= & 0.59 \\
+  \hline
+\end{tabular}
+
+then \verb=Room.all=, if evaluated after 11:03:00 am, will return:
+
+\begin{tabular}{ |l|l| }
+  \hline
+  Object id & Object \\
+  \hline
+  \verb="A"= & Room with room\_id = \verb="A"=, temperature = 23, humidity = 0.61 \\
+  \verb="B"= & Room with room\_id = \verb="B"=, temperature = 22, humidity = 0.59 \\
+  \hline
+\end{tabular}
+
+Note that the temperature inside room A is 23 degrees even though the
+last update was received at least 1 minute ago. It's like in a regular
+OOP programming language: if an attribute isn't modified, it retains
+the previous value.
+
+Naturally, we can query these objects as if they were normal streams:
+
+\begin{verbatim}
+from   room in Room.all
+where  room.humidity > 0.60
+select room.room_id
+\end{verbatim}
+
+This would result in a subset of \verb=Room.all= containing only one
+room:
+
+\begin{tabular}{ |l|l| }
+  \hline
+  Object id & Object \\
+  \hline
+  \verb="A"= & Room with room\_id = \verb="A"=, temperature = 23, humidity = 0.61 \\
+  \hline
+\end{tabular}
+
+Individual \verb=Room=s may be accessed by indexing \verb=Room.all=
+with the room's id. For instance, evaluating
+\verb=Room.all["A"].temperature= would result in 23.
+
+Modeling associations between entities is just as easy. For instance,
+to specify the one-to-many relationship between products and rooms you
+would just need to add a few annotations to the declarations:
+
+\begin{verbatim}
+# A room is created every time a new room_id is seen in any of
+# these streams.
+@createFrom(temp_readings, onNew = :room_id)
+@createFrom(hum_readings,  onNew = :room_id)
+@hasMany(:products) # There may be many products inside one room
+class Room
+end
+
+# A product is created every time a new product_id is seen.
+@createFrom(entries, onNew = :product_id)
+@belongsTo(:room)  # A product is inside one room
+class Product
+end
+\end{verbatim}
+
+The \verb=@hasMany= annotation means that each room may contain an
+unbounded number of products. This annotation also adds a list of
+\verb=Product= instances to every \verb=Room=. So, if you want to get
+the list of products in room A you can do so with:
+
+\begin{verbatim}
+Room.all["A"].products
+\end{verbatim}
+
+The \verb=@belongsTo= annotation adds the reverse association, i.e.,
+it means that every product is inside one room. Moreover, this
+annotation also adds an attribute \verb=room= to every
+\verb=Product=. Thus, to know in which room is product X one could
+write:
+
+\begin{verbatim}
+Products.all["X"].room
+# or ...
+Products.all["X"].room.room_id  # ... to get just the ID
+\end{verbatim}
+
+And you can find the number of products per room using:
+
+\begin{verbatim}
+from   room in Room.all
+select { :room_id => room.room_id,
+         :product_count => room.products.length }
+\end{verbatim}
+
+In this example, \verb=length= returns the number of elements in a
+list.
+
+All these attributes created automatically are managed by the engine
+without any additional effort required from the programmer. Thus, when
+product X enters room B, its \verb=room= attribute will now point to
+room B and the room's \verb=products= list will contain a reference to
+product X.
+
+This may seem like a bit of hidden magic at first, but it's really
+just a simple convention:
+
+\begin{enumerate}
+\item The \verb=:products= parameter to the \verb=@hasMany= annotation
+  instructs the engine to create a list of \verb=Product=
+  instances. It knows that this list should hold \verb=Product=s,
+  because ``product'' is the singular of ``products''. This list will
+  be named \verb=products=;
+\item On the other hand, the \verb=:room= parameter to the
+  \verb=belongsTo= annotation tells the engine to create a field named
+  \verb=room= in every product. This field will hold an instance of the
+  \verb=Room= class (once again, it finds the class name through the
+  parameter);
+\item The engine fills the \verb=room= attribute of every product by
+  checking its \verb=room_id= field. Remember, this field was created
+  automatically by the \verb=@createFrom= annotation. Given the
+  identifier of the room, the engine can easily lookup the
+  corresponding \verb=Room= instance using the \verb=Room.all=
+  dictionary;
+\item The \verb=products= list in every \verb=Room= is filled using
+  the reverse relationship. That is, the products that belong to room
+  ``A'' are those where the condition \verb!room_id == "A"! is true.
+\end{enumerate}
+
+\section{Continuous values}
+\label{sec:continuous-values}
+
+Just as you may query windows containing old events, you may reference
+old attribute values in your queries. For example, you can calculate
+the maximum temperature of room A over the last 5 minutes using the
+\verb=temperature= attribute from the \verb=Room= class as follows:
+
+\begin{verbatim}
+Room.all["A"].temperature[5 min].max()
+\end{verbatim}
+
+You could have solved this using standard stream operators presented
+in chapter \ref{sec:stream-operations}, without creating objects:
+
+\begin{verbatim}
+from   ev in temp_readings
+where  ev.room_id == "A"
+select max(ev.temperature)
+\end{verbatim}
+
+Surprisingly though, the results may differ. To see why, note that
+this is just another instance of the ACME problem --- ``Were ACME
+stocks above \$70 during any moment of the last 5 minutes?'' ---
+discussed in section \ref{sec:acme-problem}: the temperature could have
+been at its maximum 5 minutes ago\footnote{Once again, we assume
+  temperatures remain constant between updates.}, but the notification
+for this reading might have happened a little earlier and thus, a
+regular sliding window applied to a stream would not consider it when
+calculating the maximum.
+
+Objects, on the other hand, behave differently. As mentioned in
+section \ref{sec:objects}, an object's attribute retains its value
+until a new event changes it. One could plot the evolution of an
+attribute over time as a step function that changes when new events
+arrive, as figure [something] illustrates for hypothetical values of
+the \verb=Room.all["A"].temperature= attribute. As the plot shows, the
+temperature is at its maximum when the window opens and keeps its
+value until it drops a few minutes later, well inside the 5 minutes
+window. Thus, querying the attribute for its maximum value over the
+last 5 minutes would consider all the values the attribute possessed
+during that time --- even if the corresponding event came earlier ---
+and would give the correct result.
+
+[TODO Picture]
+
+This is surprising because objects were introduced with the intention
+of simplifying queries. But objects also introduce state and this
+seemingly innocuous change has profound implications. In essence,
+events are discrete while attributes are continuous --- i.e., their
+value is always defined. With objects, writing many state related
+queries --- like the one in this example --- becomes easier than using
+only regular stream operations.
+
+Just for the sake of completeness, here is the solution to the window
+problem written in EzQL:
+
+\begin{verbatim}
+# Companies are created when new symbols appear
+@createFrom(stocks, onNew = :symbol)
+class Company
+end
+
+above_70 = Company.all["ACME"].price[5 min].max() > 70
+\end{verbatim}
+
+% TODO: Complete, write this in other places
+Notice that, with objects and continuous values, we can now support
+the state-changes semantics discussed in chapter
+\ref{chap:simple-questions-complex-answers} while retaining support
+for pulse semantics by using regular stream operations.
+
+Attributes belong to a broader class of expressions called
+\emph{continuous values}, which we may define as expressions whose
+past history is well known. This past history includes not only the
+past values the expressions evaluated to, but also the time interval
+in which they did. Continuous values provide an elegant way to solve
+many time related queries, as we will see next.
+
+\subsection{Aggregators over continuous values}
+
+The fact that continuous values retain their previous values allows
+one to compute aggregations over those values as we saw
+above. However, continuous values hold two dimensions of information:
+their previous values and the time intervals for when those values
+hold. The traditional aggregations we are used to --- \verb=max=,
+\verb=avg= and \verb=sum=, among others ---, only care for the
+previous values. But we can exploit the time intervals information to
+create and experiment with new kinds of aggregators. For example,
+imagine you want to know for how long the temperature was equal to 25
+degrees. We could create a \verb=sumIntervalsWhereValueIs= aggregator
+that checks the past history of the temperature and sums the intervals
+where it was equal to some parameter. Then, answering the question
+would be as simple as:
+
+\begin{verbatim}
+Room.all["A"].temperature.sumIntervalsWhereValueIs(25)
+\end{verbatim}
+
+Or you could find the biggest interval where the temperature was 25
+degrees using another aggregator,
+\verb=lengthOfMaxIntervalWhereValueIs=:
+
+\begin{verbatim}
+Room.all["A"].temperature.lengthOfMaxIntervalWhereValueIs(25)
+\end{verbatim}
+
+These aggregators have rather lengthy names and they have a few
+limitations. For instance, they only consider intervals with the same
+value. What if you need to know for how many minutes was the
+temperature above or below a certain threshold?
+
+\subsection{Continuous queries produce continuous values}
+
+Suppose you need to know if the current temperature is above or equal
+to 25 degrees:
+
+\begin{verbatim}
+Room.all["A"].temperature >= 25
+\end{verbatim}
+
+This expression it will return either \verb=true= or \verb=false=. But
+what happens if the expression is used as part of a continuous query?
+Continuous queries are always running and producing results. Hence,
+the query should produce \verb=true= when the temperature reaches 25
+degrees and \verb=false= when it descendes below 25. That is, in the
+continuous context, the entire expression has a value every time the
+continuous attribute, \verb=Room.all["A"].temperature=, is
+defined. The following table shows this correspondence for some
+possible values of the temperature:
+
+\begin{tabular}{ |l|r|r| }
+  \hline
+  Time interval & \verb=temperature= & \verb!temperature >= 25! \\
+  \hline
+  $[$10:50; 10:53) & 25.0 & \verb=true=  \\
+  $[$10:53; 10:55) & 24.9 & \verb=false= \\
+  $[$10:55; 10:56) & 24.8 & \verb=false= \\
+  $[$10:57; 10:59) & 24.9 & \verb=false= \\
+  $[$10:59; 11:00) & 25.0 & \verb=true=  \\
+  \hline
+\end{tabular}
+
+The boolean expression has a current value as well as a collection of
+previous values. By definition then, the boolean expression is,
+itself, a continuous value. So we can just use new aggregators like
+the ones defined in the previous section to perform arbitrary
+computations on these values. For example, to sum the time intervals
+where the temperature was equal or above 25 degrees, we could use the
+\verb=sumIntervals= aggregator, which sums up the intervals where the
+value is \verb=true=:
+
+\begin{verbatim}
+(Room.all["A"].temperature >= 25).sumIntervals()
+\end{verbatim}
+
+This expression would return 4 minutes for the temperature values
+presented in the previous table.
+
+Note that to find out for how long the temperature was equal to 25
+degrees, you could now write:
+
+\begin{verbatim}
+(Room.all["A"].temperature == 25).sumIntervals()
+\end{verbatim}
+
+This approach is certainly more understandable (and generic!) than
+using the aggregators defined in the previous section.
+
+\subsection{Composite attributes}
+
+Let's go back to the spoiled products detection example from section
+\ref{sec:spoiled-products}. Suppose we have the following
+sequence of events arriving into the \verb=entries= stream:
+
+\begin{tabular}{ |l|l|c| }
+  \hline
+  Timestamp & \verb=:product_id= & \verb=:room_id= \\
+  \hline
+  10:00 am & \verb="X"= & \verb="A"= \\
+  10:10 am & \verb="X"= & \verb="B"= \\
+  10:17 am & \verb="X"= & \verb="C"= \\
+  \hline
+\end{tabular}
+
+That is, the product X enters room A at 10 am, 10 minutes later it
+enters room B and finally, at 10:17 am it enters room C. After all
+these events are received, the attribute
+\verb=Product.all["X"].room_id= will be a continuous value with the
+following history:
+
+\begin{tabular}{ |l|r| }
+  \hline
+  Time interval & \verb=Product.all["X"].room_id= \\
+  \hline
+  $[$10:00; 10:10) & \verb="A"= \\
+  $[$10:10; 10:17) & \verb="B"= \\
+  $[$10:17;   now) & \verb="C"= \\
+  \hline
+\end{tabular}
+
+Suppose we enrich our \verb=Product= instances with a temperature
+attribute which gets its value from the temperature of the room the
+product is in:
+
+% TODO: New lines should come in bold
+
+\begin{verbatim}
+@createFrom(entries, onNew = :product_id)
+@belongsTo(:room)
+class Product
+    # The temperature of a product is the
+    # temperature of its room
+    temperature = this.room.temperature
+end
+\end{verbatim}
+
+As in Java or C++, \verb=this= is a reference to the current product
+whose temperature is being accessed.
+
+Finally, assume the following events are received in the temperature
+readings stream --- \verb=temp_readings=:
+
+\begin{tabular}{ |l|l|c| }
+  \hline
+  Timestamp & \verb=:room_id= & \verb=:temperature= \\
+  \hline
+  09:50 am & \verb="A"= & 10 \\
+  10:09 am & \verb="B"= & 15 \\
+  10:16 am & \verb="C"= & 20 \\
+  \hline
+\end{tabular}
+
+If we correlate \verb=entries= and \verb=temp_readings=, we see that
+the temperature in room A was 10 degrees while the product X was
+there, the temperature in room B was 15 degrees while the product was
+there and finally, the temperature in room C was 20 degrees while the
+product was there. Since the temperature of a product was defined as
+the temperature of the room the product is in, the \verb=temperature=
+attribute for product X will contain the following history:
+
+\begin{tabular}{ |l|r|r| }
+  \hline
+ Time interval & Product X temperature \\
+  \hline
+  $[$10:00; 10:10) & 10 \\
+  $[$10:10; 10:17) & 15 \\
+  $[$10:17;   now) & 20 \\
+  \hline
+\end{tabular}
+
+Now, you could, for instance, calculate the amount of time the
+product's temperature was below 15 degrees with:
+
+\begin{verbatim}
+(Product.all["X"].temperature < 15).sumIntervals()
+\end{verbatim}
+
+Under the previous values, this expression would return 10 minutes.
+
+Even though the current temperature of the product equals the current
+temperature of its room, the history of temperatures of the product
+does not equal the history of temperatures of its \emph{current}
+room. The engine knows that the product switches rooms and is smart
+enough to obtain the temperatures from the correct places. Note that
+this behavior is embodied in the semantics of the \verb=.= (dot)
+operator used in the definition of the \verb=temperature=
+attribute.
+
+\subsection{Aggregators as continuous values}
+\label{sec:aggregators-continuous-values}
+
+If you remember from section \ref{sec:stream-operations}, the value of
+an aggregator may change in response to a new event or simply as time
+passes. Also, aggregators are like attributes in that they retain
+their values until one of these conditions make them change. Thus,
+like attributes, aggregators may be seen as another kind of continuous
+values.
+
+Using the \verb=sumIntervals= aggregator introduced in the previous
+section, it is straightforward to find out for how long was the
+average above some threshold. Assuming the \verb=acme_stocks= stream
+contains the ACME stock data we want to analyze, we could write:
+
+\begin{verbatim}
+(acme_stocks.avg(:price) > THRESHOLD).sumIntervals()
+\end{verbatim}
+
+% TODO: Solve MACD
+
+We are now in a condition to solve the spoiled products detection of
+section \ref{sec:spoiled-products}. The complete solution in EzQL is
+transcribed below:
+
+% TODO: Again, bold lines for new stuff
+
+\begin{verbatim}
+@createFrom(temp_readings, onNew = :room_id)
+@createFrom(hum_readings,  onNew = :room_id)
+@hasMany(:products)
+class Room
+end
+
+@createFrom(entries, onNew = :product_id)
+@belongsTo(:room)
+class Product
+    temperature = this.room.temperature
+    humidity    = this.room.humidity
+end
+
+# Spoiled products spent at least 10 minutes at more than 20
+# degrees and 80% of humidity
+spoiled_products =
+  from   prod in Product.all
+  where  (prod.temperature > 20 and prod.humidity > 0.80)
+           .sumIntervals() >= 10 min
+  select prod
+\end{verbatim}
+
+The reader is invited to compare this solution with the one presented
+in the appendix \ref{sec:spoiled-products-solution} written in Coral8
+CCL. In particular, note how easy it was too include the humidity in
+our solution. Note also how the information regarding the status of
+each product and each room is now encapsulated inside \verb=Room= and
+\verb=Product= objects. Moreover, notice how the \verb=sumIntervals=
+aggregator maintains an implicit counter for each product, with the
+amount of time the product spent under the given conditions, that we
+had to manage manually in the CCL.
 
 \chapter{Future work}
 \label{chap:future-work}
@@ -703,13 +1394,11 @@ In this chapter we present EzQL, our language designed to overcome
 
 This appendix contains solutions to some of the problems discussed in
 chapter \ref{chap:simple-questions-complex-answers}. We can't claim
-these are the best solutions nor the smallest, but they were all
-proposed/reviewed by Coral8 personnel. We added a few comments to help
-the understanding of the code. Still, if you find yourself staring at
-the code and thinking ``this can't be that hard!''\ldots that's the
-point.
+these are the best solutions nor the smallest, but they shouldn't be
+too far away. We added a few comments to help the understanding of the
+code.
 
-\section{The IBM problem}
+\section{The ACME problem}
 
 \begin{verbatim}
 -- Algorithm:
