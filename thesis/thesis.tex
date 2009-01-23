@@ -841,10 +841,10 @@ You may filter ACME stocks, double their price and store the results
 in a new stream by doing:
 
 \begin{lstlisting}
-acme_stocks_2x =
-  from ev in stocks
-  where ev.symbol == "ACME"
-  select { :new_price => ev.price * 2 }
+  acme_stocks_2x =
+    from ev in stocks
+    where ev.symbol == "ACME"
+    select { :new_price => ev.price * 2 }
 \end{lstlisting}
 
 Three things in this snippet may require further explanation. First,
@@ -891,10 +891,10 @@ The next example shows a more complicated query that calculates, for
 every company, the maximum price of its stocks over the last hour:
 
 \begin{lstlisting}
-max_per_company_1h =
-  from ev in stocks[1 hour]
-  group by ev.symbol
-  select max(ev.price)
+  max_per_company_1h =
+    from ev in stocks[1 hour]
+    group by ev.symbol
+    select max(ev.price)
 \end{lstlisting}
 
 The result of this query is a dictionary that maps company symbols to
