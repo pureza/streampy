@@ -7,10 +7,6 @@
 \usepackage[small,bf]{caption}
 \usepackage{listings}
 
-\usepackage[T1]{fontenc}
-\usepackage[scaled=0.80]{beramono}
-
-
 \lstdefinelanguage{EzQL}
 {
   morekeywords=[1]{from, select, where, group, by, in, hour, min,
@@ -29,8 +25,8 @@
     stream, schema, string, integer, as, window, insert, removed, rows,
   keep, seconds, into, float, last, per, outer, join, boolean,
   if, then, else, end, dummy, ON, left, right, interval, timestamp,
-  full, local, and, hours, dummy}
-  morekeywords=[2]{dummy, max, coalesce, now, dummy},
+  full, local, and, hours, minutes, dummy}
+  morekeywords=[2]{dummy, max, coalesce, now, avg, dummy},
   sensitive=false,
   morecomment=[l]{--},
   morestring=[b]",
@@ -43,6 +39,18 @@
   morecomment=[l]{--},
   morestring=[b]",
 }
+
+
+\lstdefinelanguage{MonitorScript}
+{
+  morekeywords=[1]{dummy, monitor, dictionary, string, int, action, on, all,
+    route, if, then, dummy}
+  morekeywords=[2]{},
+  sensitive=false,
+  morecomment=[l]{//},
+  morestring=[b]",
+}
+
 
 
 \definecolor{light-gray}{gray}{0.97}
@@ -72,20 +80,20 @@ power plant malfunctions.
 
 One particular class of applications, now referred to as Event Stream
 Processing (ESP), has been the subject of much attention over the last
-few years due to the technical challenges it presents. ESP
-applications are characterized by dealing with a possible infinite
-amount of data constantly flowing in to be processed as fast as
-possible to continuously produce new and updated results that may
-themselves be used to justify new decisions. It turns out that many
-applications fit naturally in this model: financial analysis,
-health-care monitoring, network intrusion detection, personnel and
-product tracking through RFID devices, business monitoring and many
-more.
+few years due to the potential it presents to solve many real-world
+problems. ESP applications are characterized by dealing with a
+possible infinite amount of data constantly flowing in to be processed
+as fast as possible to continuously produce new and updated results
+that may themselves be used to justify new decisions. It turns out
+that many applications fit naturally in this model: financial
+analysis, health-care monitoring, network intrusion detection,
+personnel and product tracking through RFID devices, business
+monitoring and many more.
 
 Due to the inability of current technology to satisfy the increasing
 demands from all these markets, computer scientists developed the
-first Data Stream Management Systems (DSMS). Coming mostly from the
-database community, these researchers intended to build a generic
+first Data Stream Management Systems (DSMS) [ref]. Coming mostly from
+the database community, these researchers intended to build a generic
 engine that abstracted away all the low level details of managing
 streams of data in high demanding scenarios, while retaining much of
 the querying capabilities of regular Database Management Systems
@@ -103,82 +111,80 @@ features from Complex Event Processing (CEP) systems, that allowed the
 user to detect complex patterns and correlations among the input
 streams of data. This required adding new constructs into the query
 language. Recently, some companies unhappy with declarative, SQL-like
-languages, began to support procedural languages, more familiar to C
-and Java programmers. Nowadays, each product includes its own flavor
-of a SQL-like language with its own unique and esoteric extensions, or
-a rule-based language, or a procedural language, or any combination of
-these three. Besides the obvious issue created by the lack of a
-standard, all this variety demonstrates that DSMS applications have
-their own needs and a satisfactory end-user query language for them is
-yet to be found.
+languages [ref], began to support procedural languages, more familiar
+to C and Java programmers. Nowadays, each product includes its own
+flavor of a SQL-like language with its own unique and esoteric
+extensions, or a rule-based language, or a procedural language, or any
+combination of these three. Besides the obvious issue created by the
+lack of a standard, all this variety demonstrates that DSMS
+applications have their own needs and a satisfactory end-user query
+language for them is yet to be found.
 
 To make matters worse, the semantics on many of these products
 disagree in fundamental ways. In [ref], researchers analyzed how two
 of the most prominent products from Oracle and StreamBase reacted in
 the presence of simultaneous events. Surprisingly, they found that in
-some scenarios, they are both wrong! Furthermore, they concluded that
-this disparity may be blamed on the semantics employed by each
+some scenarios, not only do their results diverge between them, but
+they also differ from the expected answer. Furthermore, they concluded
+that this disparity may be blamed on the semantics employed by each
 product. It also happens that many products consistently implement
-inappropriate semantics. For example, as we will see in section
-\ref{chap:soa}, DSMS typically provide ways of analyzing data newer
-than some threshold: 3 minutes, 5 hours, 10 days, etc. However,
-naively applying these constructs to answer a simple question such as
-``Was the temperature above 20 $^{\circ}$C during any moment of the
-last 5 minutes?'' will give wrong results. Will see why in chapter
-\ref{chap:motivation}.
+semantics that, despite working correcly for most problems, turn out
+to be innapropriate for others, making some queries difficult, if not
+impossible, to write. Will will analyze a few examples in chapter
+\ref{chap:simple-questions-complex-answers}.
 
-Despite these limitations, more and more organizations are adopting
-DSMS and relying on them to process data coming from everywhere,
-including core business processes. As a consequence, ESP applications
-tend to grow and become more complex. However, it is our opinion that
-languages available in currently existing products are not prepared to
-support such large applications. It's just not the problem with the
-semantics. Simply put, they were not designed for that. In chapter
-\ref{chap:motivation} we will highlight many pitfalls of existing
-solutions and even show a couple of perfectly reasonable queries in
-the context of ESP applications, expressive in one sentence of
-English, which are very difficult to implement. If they fail in those
-situations, how could they handle complex applications?
+Nonetheless, more and more organizations are adopting DSMS and relying
+on them to process data coming from everywhere, including core
+business processes. As a consequence, ESP applications tend to grow
+and become more complex. However, it is our opinion that languages
+available in currently existing products are not prepared to support
+such large applications because they force developers to think in
+terms of low-level abstractions, resulting in programs that are
+difficult to write and worse to understand. The purpose of this
+document is to highlight these problems with concrete examples and
+then propose a new query language for ESP systems. This language
+provides a set of powerful constructs that exploit new semantics,
+allowing it to solve some new ESP problems while keeping the ability
+to handle all others, sometimes in better ways.
 
-The purpose of this internship is to design a new query language for
-ESP systems. This new language combines powerful constructs, with some
-innovative features that, we hope, should be a step in the right
-direction to create a language that developers find rich, expressive
-and coherent. The rest of this thesis is organized as follows:
+The rest of this thesis is organized as follows:
 
 \begin{itemize}
-\item In chapter \ref{chap:soa}, we will expand on the previous
-  paragraphs to detail the chap:soa and to show that art is indeed
-  very subjective and multifaceted;
-\item Chapter \ref{chap:motivation} discusses some limitations
-  crippling currently available engines and provides some hints as to
-  how they could be fixed;
-\item Our proposal will then be introduced in chapter \ref{chap:ezql},
-  first through the analysis of a few examples followed by a thorough
-  discussion of all its features;
+\item In chapter \ref{chap:soa}, we will discuss the state-of-the-art
+  pertaining to ESP languages;
+\item Chapter \ref{chap:simple-questions-complex-answers} expands on
+  the previous paragraphs to show a few problems where currently
+  available languages show some limitations. We will also discuss how
+  they could be fixed;
+\item Our proposal --- EzQL ---, will then be introduced in chapter
+  \ref{chap:ezql};
 \item Further work and planning for the next semester will be the
   topic of chapter \ref{chap:future-work};
 \item Finally, chapter \ref{chap:conclusion} concludes this document.
 \end{itemize}
 
-By the end of this document, it should be clear that not only current
-technology will fail short of fulfilling the increasing needs of
-costumers, but also that our proposal contains some interesting
-characteristics that deserve further attention.
-
 \chapter{State-of-the-art}
 \label{chap:soa}
 
-This section will analyze SQL dialects present in some industry
-products for event processing - Coral8, StreamBase and Esper. Then,
-StreamBase EventFlow, a method for creating queries visually through a
-boxes and arrows interface will be discussed. Despite not involving
+This chapter will begin by analyzing SQL dialects present in some
+industry products for event processing --- Coral8 [ref], StreamBase
+[ref] and Esper [ref]. As far as we know, there isn't any ESP language
+being actively researched, although there are efforts to provide more
+powerful languages to detect complex patterns of events, such as SASE+
+[ref]. Pattern detection is outside the scope of this thesis, because
+we are interested in processing events, not detecting them. It should
+be noted, however, that these two kinds of languages --- one for
+processing and another for detecting ---, are more or less orthogonal
+to each other and may be integrated with some work. The document
+proceeds with StreamBase EventFlow --- a method for creating queries
+visually through a boxes and arrows interface. Despite not involving
 programming languages, it's important to study these alternatives
 because, after all, they're trying to address the same problem. Next
 comes Oracle Rules Manager with its rule-based paradigm for complex
-event processing. We will conclude this chapter analyzing
-MonitorScript, a procedural language developed by Progress Apama to
-overcome the limitations imposed by SQL.
+event processing. Finally, we will conclude this chapter analyzing
+MonitorScript, a procedural language developed by Progress Apama with
+the intention of overcoming the limitations imposed by SQL-like
+languages.
 
 \section{SQL-based languages}
 \label{sec:sql}
@@ -202,34 +208,35 @@ in regular SQL:
 }
 
 \begin{lstlisting}
-  insert into PriceMicrosoft
+  insert into PriceACME
   select *
   from   StockTrades
-  where  symbol = 'MSFT'
+  where  symbol = 'ACME'
 \end{lstlisting}
 
 % TODO: s/MSFT/ACME
 
 This query looks for tuples where the field \verb=symbol= equals
-``MSFT'' arriving at the stream \verb=StockTrades= and adds them to
-the \verb=PriceMicrosoft= stream. It's just a simple filter.
+``ACME'' arriving at the stream \verb=StockTrades= and adds them to
+the \verb=PriceACME= stream. It's just a simple filter that separates
+ACME events from the others.
 
 One feature that assumes particular importance in the context of ESP
-is the concept of window. Windows allow developers to consider only
-part of a stream and make computations over it. In particular, it
-becomes possible, for example, to calculate the most expensive order
-among the last million, or the average of Microsoft's stock prices
-over the last 3 hours, as the following example shows:
+is the concept of window. Windows allow developers to consider only a
+continuous section of a stream and make computations over it. In
+particular, it becomes possible, for example, to calculate the most
+expensive order among the last million, or the average of ACME's stock
+prices over the last 3 hours, as the following example shows:
 
 \begin{lstlisting}
-  insert into AvgPriceMicrosoft
+  insert into AvgPriceACME
   select avg(price)
   from   StockTrades keep 3 hours
-  where  symbol = 'MSFT'
+  where  symbol = 'ACME'
 \end{lstlisting}
 
-It's possible to customize the retain policy and keep, for example,
-the 10 largest updates based on their price, the 10 last updates per
+More advanced windows allow the developer to retain, for example, the
+10 largest updates based on their price, the 10 last updates per
 company or simply to keep everything.
 
 The window defined in the previous example is a \emph{sliding}
@@ -240,15 +247,16 @@ alternative is \emph{jumping} windows, where tuples are appended to
 the window and then, when the oldest element was supposed to be
 removed, all of them expire at the same time, the window becomes empty
 and the cycle begins all over again. This way, it's possible to find
-out the largest price attained by Microsoft stocks over the last hour,
-the hour before and so on.
+out the largest price attained by ACME stocks over the last hour, the
+hour before and so on.
 
 All the examples in this section were written in Coral8 Continuous
-Computation Language (CCL). Nonetheless, all the other systems in this
-section provide similar features albeit with different syntax. In
-fact, there have been talks about creating a standard language lately,
-an idea that was met with some skepticism by some vendors and users
-that don't like SQL anyway and opted for other approaches [ref].
+Computation Language (CCL) [ref]. Nonetheless, all the other systems
+in this section provide similar features albeit with different
+syntax. In fact, there have been talks about creating a standard
+language lately, an idea that was met with some skepticism by some
+vendors and users that don't like SQL anyway and opted for other
+approaches [ref].
 
 With the undeniable increasing relevance of ESP and the predominance
 of SQL-based languages in currently-available products, it is
@@ -410,14 +418,14 @@ tasks. MonitorScript (MS) is Apama's response to these complains.
 
 Deriving from the procedural family of programming languages, MS
 programs look a lot like Java programs. However, the most important
-and unique feature it includes was borrowed from Erlang: the process
-model based on having many little \emph{processes} that execute in
-parallel and communicate with each other through messages. In MS,
-these entities are called \emph{monitors}. A monitor is an event
-processing agent that basically sets up an arbitrary number of
-\emph{listeners} that await for the occurrence of events. When one
-matching event arrives, monitors process it. Monitors can also send
-events to each other, through the \emph{route} statement.
+and unique feature it includes is the process model based on having
+many little \emph{processes} that execute in parallel and communicate
+with each other through messages. In MS, these entities are called
+\emph{monitors}. A monitor is an event processing agent that basically
+sets up an arbitrary number of \emph{listeners} that await for the
+occurrence of events. When one matching event arrives, monitors
+process it. Monitors can also send events to each other, through the
+\emph{route} statement.
 
 Last but not least, monitors can have state. This means that instead
 of writing a SQL query to capture the state of the system, MS updates
@@ -429,7 +437,16 @@ procedural program, the big picture is not always that clear.
 To get a feeling for the language, here is a small MonitorScript
 snippet:
 
-\begin{verbatim}
+\lstset{
+  language=MonitorScript,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+}
+
+
+\begin{lstlisting}
 monitor ProcessMarket {
     // Keep the last price per company
     dictionary <string, int> lastPerCompany;
@@ -456,7 +473,7 @@ monitor ProcessMarket {
         }
     }
 }
-\end{verbatim}
+\end{lstlisting}
 
 This listing declares one monitor (\verb=ProcessMarket=), that waits
 for \verb=Tick= and \verb=LastPriceRequest= events. When it receives a
@@ -484,29 +501,140 @@ very complex to express using existing SQL dialects for ESP
 systems. We will try to understand the reasons for this difficulty and
 propose solutions to eliminate it.
 
-\section{Events and how to deal with state}
+\section{Events are from Mars, state is from Venus}
 \label{sec:acme-problem}
 
-The first problem is also the simplest. You are given a stream that
-receives events from the financial market containing company symbols
-and their corresponding stock prices. With this stream, you need to
-answer the following question: ``Were ACME actions above \$70 during
-any moment of the last 5 minutes?''.
+% TODO spell checker
 
-This seems to be a great use-case for temporal sliding windows
-discussed in chapter \ref{chap:soa}. Unfortunately, the semantics of
-these windows are not appropriate here. To see why, suppose that, at
-10:54, the system receives a notification reporting that ACME actions
-were worth \$71 and, 2 minutes later, it receives another event
-informing that the price decreased to \$69. Suppose further that no
-other events arrived until the question is posed, at 11:00 (of the
-same day). Given these assumptions, any human would answer the obvious
-``yes'', because ACME actions were valued at \$71 between 10:54 and
-10:56 --- well inside the 5 minutes window. However, existing engines
-ignore what happens between events. It's like the price is undefined
-between two consecutive updates. Thus, the engine will completely
-ignore the \$71 notification, because it lies outside the 5 minutes
-window, as figure \ref{fig:outside-window} shows.
+In the context of ESP applications, events are always discrete and
+stateless entities. Discrete because they have a well defined position
+in time, and stateless because the information an event carries
+becomes invalid outside that position. This works for many scenarios
+that are discrete by nature --- earthquake reports, orders placed in
+an online store, heart beats or even noise readings sampled
+periodically, just to name a few. However, some systems are truly
+continuous and the values reported by an event influence what we know
+about the system and what we can conclude about its state. Examples
+include price change reports, where we know that the price of a
+product will remain the same until a later event signals a change,
+temperature readings by a smart sensor that issues reports only when
+the temperature differs by 0.1 degrees from the one in the previous
+notification, or a goal scored in a football match that updates its
+result until another goal is scored or the match ends. Unfortunately,
+the semantics employed by ESP systems don't work so well in these
+cases.
+
+To see why, let's begin with a small example. Suppose we build an ESP
+application to monitor noise-levels in a street, measured by a sensor
+every 10 minutes. This application receives the following two events
+and no others:
+
+\begin{tabular}{ |l|r| }
+  \hline
+  Timestamp & Noise (dB) \\
+  \hline
+  11:00 am & 70 \\
+  11:10 am & 50 \\
+  \hline
+\end{tabular}
+
+Suppose further, that our application is interested only in analyzing
+the last 20 minutes of data and, to achieve that, uses a regular
+temporal sliding window like the ones discussed in section
+\ref{sec:sql}. Figure [something] shows the contents of this window
+between 11:00 am and 11:30 am.
+
+% TODO Figure
+%
+% Before 11:00 -> empty
+% 11:00 -> 70
+% 11:10 -> 50, 70
+% 11:20 -> 50
+% 11:30 -> empty
+
+By querying this window, we are now able to answer a few
+questions. For example, at 11:10, the loudest reading registered
+during the past 20 minutes was 70 dB, while 10 minutes later the
+first event expires and the answer becomes 50 dB. Note that you cannot
+ask for the loudest moment in the last 20 minutes, because a noisy
+ambulance may have passed while the sensor was idle. That is, you
+cannot assume anything in the time that goes from one event to
+another. However, given the data that is available, the application
+returns the correct answer.
+
+This application is so successful that we are asked to adapt it to
+monitor the stock market. Our clients are investors who want to be
+able to make good decisions as quickly as possible and, to do so, our
+application must handle events informing about every single
+transaction. Suppose the application is deployed and receives the same
+two events from the previous example, where instead of representing
+noise-levels, they now refer to the value of ACME stock actions. Using
+the same 20 minutes window, we may try to compute the highest price
+attained by ACME during this period. At 11:10 am, the application will
+return \$70, while at 11:20 am the answer will change to \$50, just
+like in the previous example. However, this answer is known to be
+wrong because the price remained at \$70 until 11:10 am. Despite using
+the same input data, posing the same question and obtaining the same
+two results, one was correct while the other was wrong.
+
+The central difference between these two examples, pertains to what
+can be assumed between events. There are three different cases:
+
+\begin{itemize}
+\item Between events the value is undefined. This is what happens when
+  the value is discrete by nature --- the sender of a network packet
+  is undefined when there is no network traffic ---, or when the event
+  generator is sampling a continuous entity, like the noise sensor of
+  the first example. We will refer to this as the \emph{pulse}
+  semantics;
+\item The value remains constant until the next event modifies
+  it. This is valid if the value represents a new state, like the
+  price of ACME stock actions, that remains the same between two
+  updates. As such, we will call this the \emph{state-changes}
+  semantics. Some continuous distributions that are known to be smooth
+  may also be modeled under these semantics. For example, temperature
+  may be assumed to remain constant between two updates, unless sudden
+  variations not reported by the sensors are problematic;
+\item In some rare cases, the value between events may be approximated
+  by a well known mathematical function.
+\end{itemize}
+
+Existing languages adopted the pulse semantics by design. This is a
+natural choice if we consider events as isolated occurences. However,
+if events represent changes in state, these languages will disappoint
+because the developer has to manage this state manually. This can be
+seen in Appendix \ref{sec:acme-problem-solution}, where a solution to
+the ACME stocks problem, implemented in Coral8 CCL, is shown. The
+algorithm creates two windows: the 20 minutes window and another
+window that will contain the newest event older than 20 minutes (i.e.,
+the event that most recently expired from the 20 minutes
+window). Then, we perform a \verb=full outer join= between both
+windows (\verb=union= would be more appropriate, but Coral8 doesn't
+support it) and calculate the maximum price in either of them. As you
+can see, this solution is quite verbose, which would be OK if only
+there weren't so many situations like this, where the values are
+continuous and must be handled with special care.
+
+A slightly modified version of the ACME problem was posed on an online
+community where researchers and vendors participate [ref]. It
+generated a lengthy (more than 60 messages), interesting and sometimes
+funny debate. Several vendors replied --- including Oracle, Aleri,
+Coral8 and Esper ---, and tried to find a good solution using their
+products. In our opinion, they failed because their solutions were
+verbose (like the Coral8 one above), inneficient or wrong. In the end,
+some participants concluded this was not an event processing problem
+anyway because it envolves state and tried to dismiss it as
+irrelevant, while others argued that queries like these show up every
+day and if ESP engines can't solve them, their usefulness is reduced.
+
+We agree that existing ESP engines shouldn't be applied to problems
+like these, not because they don't matter, but because these engines
+were not prepared to solve them --- even if they are able to do so
+with more or less trouble. Instead, we believe these problems call for
+a new language, encompassing both pulse and state-changes semantics,
+that provides first-class constructs to deal with them.
+
+% TODO Remove this
 
 \begin{figure}[htbp]
   \includegraphics[width=\textwidth]{outside-window.png}
@@ -520,48 +648,8 @@ window, as figure \ref{fig:outside-window} shows.
   \label{fig:outside-window}
 \end{figure}
 
-Note that these semantics will result in wrong results for many other
-queries. For example, if you try to calculate the average price during
-the last 5 minutes using a simple sliding window, the engine will
-return \$69, despite the fact that the price was \$71 during 1 of
-those 5 minutes.
 
-A solution to this problem implemented in Coral8 CCL can be seen in
-Appendix [ref]. The algorithm creates two windows: the 5 minutes
-window and another window that will contain the newest event older
-than 5 minutes (i.e., the event that most recently expired from the 5
-minutes window). Then, we perform a \verb=LEFT OUTER JOIN= between
-both windows (\verb=UNION= would be more appropriate, but Coral8
-doesn't support it) and check if the maximum price in any of these
-windows is greater than 70. Clearly, although it is possible to write
-the correct solution, it should be easier to do so.
-
-To solve this problem in a more effective way, one needs to instruct
-the engine about what happens between events --- i.e., we need to tell
-it that stock actions retain their values until the next update. In
-general though, we could specify any mathematical function that, for a
-given time and history of values, returns an approximation to the
-current value. With this change, the evolution of price becomes a
-continuous function (shown in figure \ref{fig:outside-window} as a
-dotted blue line) that is always defined for any given
-timestamp. Answering the original question now becomes equivalent to
-checking if this continuous function is above \$70 anywhere in the
-last 5 minutes of its domain.
-
-This same problem was posed on an online community where researchers
-and vendors participate [ref]. It generated a lengthy (more than 60
-messages), interesting and sometimes funny debate. Several vendors
-replied --- including Oracle, Aleri, Coral8 and Esper ---, and tried
-to find a good solution using their products, but they failed to do
-so, because their solutions were too complex, inneficient or just
-plain wrong. In the end, some participants concluded this was not an
-event processing problem anyway because it envolves state and tried to
-dismiss it as irrelevant, while others argued that queries like these
-show up every day and if ESP engines can't solve them, their
-usefulness is reduced.
-
-
-\section{Spoiled products detection}
+\section{Spoiled products detection a.k.a. The ``too muggy'' query}
 \label{sec:spoiled-products}
 
 % TODO: Refer that we assume temperature remains constant between
@@ -580,17 +668,17 @@ following question: ``Which products stayed more than 10 minutes
 (overall, not consecutive) at more than 20 $^{\circ}$C and 80\% of
 humidity?''. These products are spoiled and mustn't be sold.
 
-A solution for a simplification of this problem is shown in Appendix
-\ref{sec:spoiled-products-solution}. This solution does not take
-humidity into consideration and assumes there is only one sensor per
-room. The algorithm is simple: for each product, we keep one counter
-with the time the product spent above 20 degrees, as well as the
-timestamp for when this counter was last updated. When a product
-leaves a room, we update its counter if the temperature in the
-previous room was higher than 20, and set the last updated timestamp
-to the current time, given by the \verb=now()= function. When the
-temperature changes, we do the same thing for all products in that
-room.
+A solution for a simplification of this problem, written in Coral8
+CCL, is shown in Appendix \ref{sec:spoiled-products-solution}. This
+solution does not take humidity into consideration and assumes there
+is only one sensor per room. The algorithm is simple: for each
+product, we keep one counter with the time the product spent above 20
+degrees, as well as the timestamp for when this counter was last
+updated. When a product leaves a room, we update its counter if the
+temperature in the previous room was higher than 20, and set the last
+updated timestamp to the current time, given by the \verb=now()=
+function. When the temperature changes, we do the same thing for all
+products in that room.
 
 This solution is quite big as it is and it still doesn't solve the
 orignal problem. One may argue that this is a difficult problem and
@@ -1459,8 +1547,12 @@ had to manage manually in the CCL.
 \chapter{Future work}
 \label{chap:future-work}
 
+% TODO
+
 \chapter{Conclusion}
 \label{chap:conclusion}
+
+% TODO
 
 \appendix
 \chapter{Solutions to a few problems}
@@ -1472,10 +1564,11 @@ too far away. We added a few comments to help the understanding of the
 code.
 
 \section{The ACME problem}
+\label{sec:acme-problem-solution}
 
 \lstset{
   language=CCL,
-  columns=fixed,
+  columns=fullflexible,
   basicstyle=\tt,
   keywordstyle=[1]\bf,
   keywordstyle=[2]\it,
@@ -1485,58 +1578,54 @@ code.
 \begin{lstlisting}
 -- Algorithm:
 --
--- Keep two windows: one for the last 5 seconds of data, and another
--- with the newest event that is older than 5 seconds (i.e., the one
+-- Keep two windows: one for the last 20 minutes of data, and another
+-- with the newest event that is older than 20 minutes (i.e., the one
 -- that expired last from the first window). Then, join both windows
--- (UNION would be better, but Coral8 doesn't support it) and check
--- if the max of prices in any of the two windows is > $70.
+-- (union would be better, but Coral8 doesn't support it) and get
+-- the max of prices in any of the two windows.
 
 create input stream StreamIn
 schema (
    symbol string,
-   price  integer
+   price  float
 );
 
--- Keep the events from the last 5 seconds.
-create window Last5Secs
+-- Keep the events from the last 20 minutes.
+create window Last20Mins
 schema (
   symbol string,
   price  float
-) keep 5 seconds
+) keep 20 minutes
 insert removed rows into Expired;
 
  -- Insert the events into the window.
-insert into Last5Secs
+insert into Last20Mins
 select *
 from StreamIn;
 
--- Keeps the previously expired event from Last5Secs (one per symbol)
+-- Keeps the previously expired event from Last20Mins (one per symbol)
 create window Expired
 schema (
   symbol string,
   price  float
 ) keep last per symbol;
 
--- For each symbol, true means its stocks were at > $70 during any
--- moment of the last 5 seconds, false means otherwise.
+-- For each symbol, store its max value over the last 20 minutes.
 create window Result
 schema (
   symbol string,
-  result boolean
+  result float
 ) keep last per symbol;
 
--- Join both windows and check if the max of any of them is > $70
+-- Join both windows and get the max of either of them
 -- This would be prettier with UNION
 --
 -- Note: When events expire, this generates two events: one before
 --       the expiration and another after.
 insert into Result
 select L.symbol,
-       if max(coalesce(max(L.price),0), coalesce(max(E.price),0)) > 70
-         then true
-         else false
-       end
-from   Last5Secs as L full outer join Expired as E
+       max(coalesce(max(L.price),0), coalesce(max(E.price),0))
+from   Last20Mins as L full outer join Expired as E
          on L.symbol = E.symbol
 group by L.symbol;
 \end{lstlisting}
