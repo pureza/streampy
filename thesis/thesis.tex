@@ -94,33 +94,36 @@ monitoring and many more.
 
 Due to the inability of current technology to satisfy the increasing
 demands from all these markets, computer scientists developed the
-first Data Stream Management Systems (DSMS) [ref]. Coming mostly from
-the database community, these researchers intended to build a generic
-engine that abstracted away all the low level details of managing
-streams of data in high demanding scenarios, while retaining much of
-the querying capabilities of regular Database Management Systems
-(DBMS), so that they could be easily adapted to a multitude of
-domains. It's no surprise then, that the first DSMSs inherited a SQL
-dialect with some new extensions. Aurora [ref], with its boxes and
-arrows graphical queries was the exception, but the operators it
-provided still took inspiration from SQL. Later, when the first DSMS
-hit the market, some emphasis was put on end-user interaction and some
+first Data Stream Management Systems (DSMS) \cite{stream}
+\cite{aurora} \cite{telegraphcq}. Coming mostly from the database
+community, these researchers intended to build a generic engine that
+abstracted away all the low level details of managing streams of data
+in high demanding scenarios, while retaining much of the querying
+capabilities of regular Database Management Systems (DBMS), so that
+they could be easily adapted to a multitude of domains. It's no
+surprise then, that the first DSMSs inherited a SQL dialect with some
+new extensions. Aurora \cite{aurora}, with its boxes and arrows
+graphical queries was the exception, but the operators it provided
+still took inspiration from SQL. Later, when the first DSMS hit the
+market, some emphasis was put on end-user interaction and some
 applications began to include rule-based systems that allow the
 developer to specify how he wants to react to events using Event
 Condition Action (ECA) rules, a concept developed in the context of
-active databases [ref]. At the same time, DSMS began to incorporate
-features from Complex Event Processing (CEP) systems, that allowed the
-user to detect complex patterns and correlations among the input
-streams of data. This required adding new constructs into the query
-language. Recently, some companies unhappy with declarative, SQL-like
-languages [ref], began to support procedural languages, more familiar
-to C and Java programmers. Nowadays, each product includes its own
-flavor of a SQL-like language with its own unique and esoteric
-extensions, or a rule-based language, or a procedural language, or any
-combination of these three. Besides the obvious issue created by the
-lack of a standard, all this variety demonstrates that DSMS
-applications have their own needs and a satisfactory end-user query
-language for them is yet to be found.
+active databases \cite{adbms-manifesto}. At the same time, DSMS began
+to incorporate features from Complex Event Processing (CEP) systems,
+that allowed the user to detect complex patterns and correlations
+among the input streams of data. This required adding new constructs
+into the query language. Recently, some companies unhappy with
+declarative, SQL-like languages (see, for example,
+\cite{sql-impendance-mismatch:post} or \cite{flexstreams-whitepaper}),
+began to support procedural languages, more familiar to C and Java
+programmers. Nowadays, each product includes its own flavor of a
+SQL-like language with its own unique and esoteric extensions, or a
+rule-based language, or a procedural language, or any combination of
+these three. Besides the obvious issue created by the lack of a
+standard, all this variety demonstrates that DSMS applications have
+their own needs and a satisfactory end-user query language for them is
+yet to be found.
 
 To make matters worse, the semantics on many of these products
 disagree in fundamental ways. In \cite{towards_stream_sql_standard},
@@ -170,37 +173,38 @@ The rest of this thesis is organized as follows:
 \label{chap:soa}
 
 This chapter will begin by analyzing SQL dialects present in some
-industry products for event processing --- Coral8 \cite{coral8},
-StreamBase [ref] and Esper [ref]. As far as we know, there isn't any
-ESP language being actively researched, although there are efforts to
-provide more powerful languages to detect complex patterns of events,
-such as SASE+ [ref]. Pattern detection is outside the scope of this
-thesis, because we are interested in processing events, not detecting
-them. It should be noted, however, that these two kinds of languages
---- one for processing and another for detecting ---, are more or less
-orthogonal to each other and may be integrated with some work. The
-document proceeds with StreamBase EventFlow --- a method for creating
-queries visually through a boxes and arrows interface. Despite not
-involving programming languages, it's important to study these
-alternatives because, after all, they're trying to address the same
-problem. Next comes Oracle Rules Manager with its rule-based paradigm
-for complex event processing. Finally, we will conclude this chapter
-analyzing MonitorScript, a procedural language developed by Progress
-Apama with the intention of overcoming the limitations imposed by
-SQL-like languages.
+industry products for event processing --- Coral8 \cite{coral8:www},
+StreamBase \cite{streambase:www} and Esper \cite{esper:www}. As far as
+we know, there isn't any ESP language being actively researched,
+although there are efforts to provide more powerful languages to
+detect complex patterns of events, such as SASE+ \cite{SASE+}. Pattern
+detection is outside the scope of this thesis, because we are
+interested in processing events, not detecting them. It should be
+noted, however, that these two kinds of languages --- one for
+processing and another for detecting ---, are more or less orthogonal
+to each other and may be integrated with some work. The document
+proceeds with StreamBase EventFlow --- a method for creating queries
+visually through a boxes and arrows interface. Despite not involving
+programming languages, it's important to study these alternatives
+because, after all, they're trying to address the same problem. Next
+comes Oracle Rules Manager with its rule-based paradigm for complex
+event processing. Finally, we will conclude this chapter analyzing
+MonitorScript, a procedural language developed by Progress Apama with
+the intention of overcoming the limitations imposed by SQL-like
+languages.
 
 \section{SQL-based languages}
 \label{sec:sql}
 
 The most popular way of writing queries is through a declarative,
 SQL-based language. Products adopting this solution include Coral8
-[ref], StreamBase [ref] and Esper [ref]. As explained in the
-introduction, this comes as a result of all the effort the database
-community has put into creating the first ESP engines. Currently there
-is no standard for a query language designed specifically for these
-applications which means each vendor has their own. Fortunately,
-they're all very similar. The simplest things can be done exactly as
-in regular SQL:
+\cite{coral8:www}, StreamBase \cite{streambase:www} and Esper
+\cite{esper:www}. As explained in the introduction, this comes as a
+result of all the effort the database community has put into creating
+the first ESP engines. Currently there is no standard for a query
+language designed specifically for these applications which means each
+vendor has their own. Fortunately, they're all very similar. The
+simplest things can be done exactly as in regular SQL:
 
 \lstset{
   language=CCL,
@@ -254,12 +258,12 @@ out the largest price attained by ACME stocks over the last hour, the
 hour before and so on.
 
 All the examples in this section were written in Coral8 Continuous
-Computation Language (CCL) [ref]. Nonetheless, all the other systems
-in this section provide similar features albeit with different
-syntax. In fact, there have been talks about creating a standard
-language lately, an idea that was met with some skepticism by some
-vendors and users that don't like SQL anyway and opted for other
-approaches [ref].
+Computation Language (CCL) \cite{coral8-ccl:www}. Nonetheless, all the
+other systems in this section provide similar features albeit with
+different syntax. In fact, there have been talks about creating a
+standard language lately, an idea that was met with some skepticism by
+some vendors and users that don't like SQL anyway and opted for other
+approaches \cite{sql-impendance-mismatch:post}.
 
 With the undeniable increasing relevance of ESP and the predominance
 of SQL-based languages in currently-available products, it is
@@ -323,17 +327,18 @@ Some of the most important operators are:
 
 It's clear that most of these operators have SQL counterparts. There
 are a few things that can be done in EventFlow but not in StreamSQL
-[ref], but they're just small details, nothing that changes the
-developer's way of thinking. It's then mostly a matter of taste ---
-not power ---, to choose between StreamSQL and EventFlow.
+(see the online documentation at \cite{eventflow2streamsql}), but
+they're just small details, nothing that changes the developer's way
+of thinking. It's then mostly a matter of taste --- not power ---, to
+choose between StreamSQL and EventFlow.
 
 \section{Oracle rules}
 \label{sec:orm}
 
-Oracle Rules Manager (ORM) embraces a completely different
-paradigm. Instead of writing queries, the user creates rules that are
-made of three parts. The first, the event type, instructs the system
-to trigger the rule only when an event of that type occurs. The
+Oracle Rules Manager (ORM) \cite{orm:www} embraces a completely
+different paradigm. Instead of writing queries, the user creates rules
+that are made of three parts. The first, the event type, instructs the
+system to trigger the rule only when an event of that type occurs. The
 second, the condition, is a predicate that is compared against the
 event. If they match, the third part, the action --- a PL/SQL
 procedure ---, is executed.
@@ -619,10 +624,11 @@ there weren't so many situations like this, where the values are
 continuous and must be handled with special care.
 
 A slightly modified version of the ACME problem was posed on an online
-community where researchers and vendors participate [ref]. It
-generated a lengthy (more than 60 messages), interesting and sometimes
-funny debate. Several vendors replied --- including Oracle, Aleri,
-Coral8 and Esper ---, and tried to find a good solution using their
+community where researchers and vendors participate
+\cite{simple-problem} \cite{simple-problem2}. It generated a lengthy
+(more than 60 messages), interesting and sometimes funny
+debate. Several vendors replied --- including Oracle, Aleri, Coral8
+and Esper ---, and tried to find a good solution using their
 products. In our opinion, they failed because their solutions were
 verbose (like the Coral8 one above), inneficient or wrong. In the end,
 some participants concluded this was not an event processing problem
@@ -732,12 +738,12 @@ regular events. Moreover, one could instruct the system to create the
 objects and manage their attributes automatically, by looking at the
 right events. We could take this one step further by supporting
 relationships between objects, akin to what Object-Relational Mapping
-(O/RM) tools like Hibernate [ref], do for regular databases. This way,
-each \verb=Room= object would possess a list with its \verb=Product=s
-and each \verb=Product= would include a reference to the \verb=Room=
-where it is at. With these changes, finding the current temperature of
-the room where a product is would be as simple as typing
-\verb=product.room.currentTemperature=.
+(O/RM) tools like Hibernate \cite{hibernate:www}, do for regular
+databases. This way, each \verb=Room= object would possess a list with
+its \verb=Product=s and each \verb=Product= would include a reference
+to the \verb=Room= where it is at. With these changes, finding the
+current temperature of the room where a product is would be as simple
+as typing \verb=product.room.currentTemperature=.
 
 As for the two temporary streams, their events are created when the
 products switch rooms or when the temperature of a room changes, and
