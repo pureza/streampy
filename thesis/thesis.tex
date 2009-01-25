@@ -1,4 +1,4 @@
-\documentclass{report}
+\documentclass[a4,11pt]{report}
 
 
 \usepackage{alltt}
@@ -92,7 +92,7 @@ analysis, health-care monitoring, network intrusion detection,
 personnel and product tracking through RFID devices, business
 monitoring and many more.
 
-Due to the inability of current technology to satisfy the increasing
+Due to the inability of existing technology to satisfy the increasing
 demands from all these markets, computer scientists developed the
 first Data Stream Management Systems (DSMS) \cite{stream}
 \cite{aurora} \cite{telegraphcq}. Coming mostly from the database
@@ -129,14 +129,14 @@ To make matters worse, the semantics on many of these products
 disagree in fundamental ways. In \cite{towards_stream_sql_standard},
 researchers analyzed how two of the most prominent products from
 Oracle and StreamBase reacted in the presence of simultaneous
-events. Surprisingly, they found that in some scenarios, not only do
-their results diverge between them, but they also differ from the
-expected answer. Furthermore, they concluded that this disparity may
-be blamed on the semantics employed by each product. It also happens
-that many products consistently implement semantics that, despite
-working correcly for most problems, turn out to be innapropriate for
-others, making some queries difficult, if not impossible, to
-write. Will will analyze a few examples in chapter
+events. Surprisingly, they found that, in some scenarios, not only do
+their results diverge, but they also differ from the expected
+answer. Furthermore, they concluded that this disparity may be blamed
+on the semantics employed by each product. It also happens that many
+products consistently implement semantics that, despite working
+correctly for most problems, turn out to be inappropriate for others,
+making some queries difficult, if not impossible, to write. Will will
+analyze a few examples in chapter
 \ref{chap:simple-questions-complex-answers}.
 
 Nonetheless, more and more organizations are adopting DSMS and relying
@@ -164,9 +164,8 @@ The rest of this thesis is organized as follows:
   they could be fixed;
 \item Our proposal --- EzQL ---, will then be introduced in chapter
   \ref{chap:ezql};
-\item Further work and planning for the next semester will be the
-  topic of chapter \ref{chap:future-work};
-\item Finally, chapter \ref{chap:conclusion} concludes this document.
+\item Finally, further work and planning for the next semester will be
+  the topic of chapter \ref{chap:future-work}.
 \end{itemize}
 
 \chapter{State-of-the-art}
@@ -182,29 +181,31 @@ detection is outside the scope of this thesis, because we are
 interested in processing events, not detecting them. It should be
 noted, however, that these two kinds of languages --- one for
 processing and another for detecting ---, are more or less orthogonal
-to each other and may be integrated with some work. The document
-proceeds with StreamBase EventFlow --- a method for creating queries
-visually through a boxes and arrows interface. Despite not involving
-programming languages, it's important to study these alternatives
-because, after all, they're trying to address the same problem. Next
-comes Oracle Rules Manager with its rule-based paradigm for complex
-event processing. Finally, we will conclude this chapter analyzing
-MonitorScript, a procedural language developed by Progress Apama with
-the intention of overcoming the limitations imposed by SQL-like
-languages.
+to each other and may be integrated with some work.
+
+The document proceeds with StreamBase EventFlow --- a method for
+creating queries visually through a boxes and arrows
+interface. Despite not involving programming languages, it's important
+to study these alternatives because, after all, they're trying to
+address the same problem. Next comes Oracle Rules Manager with its
+rule-based paradigm for complex event processing. We will conclude
+this chapter analyzing MonitorScript, a procedural language developed
+by Progress Apama with the intention of overcoming the limitations
+imposed by SQL-like languages.
 
 \section{SQL-based languages}
 \label{sec:sql}
 
-The most popular way of writing queries is through a declarative,
-SQL-based language. Products adopting this solution include Coral8
-\cite{coral8:www}, StreamBase \cite{streambase:www} and Esper
-\cite{esper:www}. As explained in the introduction, this comes as a
-result of all the effort the database community has put into creating
-the first ESP engines. Currently there is no standard for a query
-language designed specifically for these applications which means each
-vendor has their own. Fortunately, they're all very similar. The
-simplest things can be done exactly as in regular SQL:
+The most popular way of writing queries for ESP applications is
+through a declarative, SQL-based language. Products adopting this
+solution include Coral8 \cite{coral8:www}, StreamBase
+\cite{streambase:www} and Esper \cite{esper:www}. As explained in the
+introduction, this comes as a result of all the effort the database
+community has put into creating the first ESP engines. Currently there
+is no standard for a query language designed specifically for these
+applications which means each vendor has their own. Fortunately,
+they're all very similar. The simplest things can be done exactly as
+in regular SQL:
 
 \lstset{
   language=CCL,
@@ -221,19 +222,17 @@ simplest things can be done exactly as in regular SQL:
   where  symbol = 'ACME'
 \end{lstlisting}
 
-% TODO: s/MSFT/ACME
-
 This query looks for tuples where the field \verb=symbol= equals
 ``ACME'' arriving at the stream \verb=StockTrades= and adds them to
 the \verb=PriceACME= stream. It's just a simple filter that separates
 ACME events from the others.
 
 One feature that assumes particular importance in the context of ESP
-is the concept of window. Windows allow developers to consider only a
-continuous section of a stream and make computations over it. In
-particular, it becomes possible, for example, to calculate the most
-expensive order among the last million, or the average of ACME's stock
-prices over the last 3 hours, as the following example shows:
+is the concept of \emph{window}. Windows allow developers to consider
+only a continuous section of a stream and make computations over
+it. In particular, it becomes possible, for example, to calculate the
+most expensive order among the last million, or the average of ACME's
+stock prices over the last 3 hours, as the following example shows:
 
 \begin{lstlisting}
   insert into AvgPriceACME
@@ -261,16 +260,15 @@ All the examples in this section were written in Coral8 Continuous
 Computation Language (CCL) \cite{coral8-ccl:www}. Nonetheless, all the
 other systems in this section provide similar features albeit with
 different syntax. In fact, there have been talks about creating a
-standard language lately, an idea that was met with some skepticism by
-some vendors and users that don't like SQL anyway and opted for other
-approaches \cite{sql-impendance-mismatch:post}.
+standard language lately, an idea that was met with some skepticism
+\cite{sql-impendance-mismatch:post} by some vendors and users that
+don't like SQL anyway and opted for other approaches.
 
 With the undeniable increasing relevance of ESP and the predominance
 of SQL-based languages in currently-available products, it is
-important to analyze the limitations of these languages. After all, it
-doesn't make sense to build yet another programming language if the
-existing ones are good enough. This will be the topic of the next
-chapter.
+important to analyze their limitations. After all, it doesn't make
+sense to build yet another programming language if the existing ones
+are good enough. This will be the topic of the next chapter.
 
 \section{Building queries visually with StreamBase's EventFlow}
 \label{sec:eventflow}
@@ -313,13 +311,12 @@ Some of the most important operators are:
   two infinite streams may require keeping all tuples from both
   streams in memory. To avoid problems later on, the user must specify
   timing constraints regarding matching tuples saying, for example,
-  that they must arrive withing 60 seconds of each other;
+  that they must arrive within 60 seconds of each other;
 \item [Map] Similar to the first part of a SELECT statement, this
   operator transforms a tuple --- possibly discarding or adding new
   fields along the way ---, and sends it downstream;
-\item [Pattern] Instructs the engine to look for complex events. This
-  is a feature borrowed from Complex Event Processing and will be
-  discussed below;
+\item [Pattern] Instructs the engine to look for specific patterns of
+  events;
 \item [Union] Acts as a multiplexer, connecting many input streams to
   a single output stream, to where all tuples are sent. Similar to the
   SQL UNION statement.
@@ -363,7 +360,7 @@ The following example shows a simple rule:
 
 \begin{lstlisting}
   on   StockTick(symbol, price)
-  if   symbol = 'MSFT' and price > 100
+  if   symbol = 'ACME' and price > 100
   then buyStocks(symbol)
 \end{lstlisting}
 
@@ -371,9 +368,10 @@ The event shown above represents a stock update received from some
 external source. These are the simplest kind of events, also called
 \emph{primitive} events. ORM also supports \emph{composite} events
 that are defined as combinations of other events. For example, it is
-possible to define a composite event that occurs when Microsoft shares
-drop by 10\% and, less than 5 minutes later, IBM shares gain 2\%. To
-be more specific, the following types of combinations are supported:
+possible to define a composite event that occurs when ACME shares drop
+10\% and, less than 5 minutes later, some other company's shares gain
+2\%. To be more specific, the following types of combinations are
+supported:
 \begin{description}
 \item [Sequencing] Specifies the order between events, i.e., event A
   must occur before event B;
@@ -490,14 +488,14 @@ indexed by the company's symbol and replies with a \verb=TickAck=
 message. When it receives a \verb=PriceRequest=, it fetches the last
 price from the dictionary and sends a \verb=PriceReply= message.
 
-Note the need to create request, reply and acknowledgement messages
+Note the need to create request, reply and acknowledgment messages
 when what one really wants to do is to perform a method invocation
 between different monitors. Indeed, the runtime system could provide
 some kind of remote procedure call mechanism and handle the low-level
 details by itself.
 
 MS and SQL are at opposite ends of the programming language
-spectrum. While is simplifies a lot of tasks that don't naturally fit
+spectrum. While it simplifies a lot of tasks that don't naturally fit
 into SQL, MS also looses all the querying capabilities that made SQL
 and its derivatives popular for data processing.
 
@@ -509,10 +507,8 @@ very complex to express using existing SQL dialects for ESP
 systems. We will try to understand the reasons for this difficulty and
 propose solutions to eliminate it.
 
-\section{Events are from Mars, state is from Venus}
+\section{Events are discrete, state is continuous}
 \label{sec:acme-problem}
-
-% TODO spell checker
 
 In the context of ESP applications, events are always discrete and
 stateless entities. Discrete because they have a well defined position
@@ -546,19 +542,18 @@ and no others:
   \hline
 \end{tabular}
 
-Suppose further, that our application is interested only in analyzing
-the last 20 minutes of data and, to achieve that, uses a regular
-temporal sliding window like the ones discussed in section
-\ref{sec:sql}. Figure [something] shows the contents of this window
-between 11:00 am and 11:30 am.
+Suppose further, that our application is interested in analyzing the
+last 20 minutes of data and, to achieve that, uses a regular temporal
+sliding window like the ones discussed in section
+\ref{sec:sql}. Figure \ref{fig:window-contents} shows the contents of
+this window between 11:00 am and 11:30 am.
 
-% TODO Figure
-%
-% Before 11:00 -> empty
-% 11:00 -> 70
-% 11:10 -> 50, 70
-% 11:20 -> 50
-% 11:30 -> empty
+\begin{figure}[htbp]
+  \includegraphics[width=\textwidth]{window-contents.png}
+  \caption{Contents of the 20 minutes sliding window between 11:00 am
+    and 11:30 am.}
+  \label{fig:window-contents}
+\end{figure}
 
 By querying this window, we are now able to answer a few
 questions. For example, at 11:10, the loudest reading registered
@@ -581,9 +576,22 @@ the same 20 minutes window, we may try to compute the highest price
 attained by ACME during this period. At 11:10 am, the application will
 return \$70, while at 11:20 am the answer will change to \$50, just
 like in the previous example. However, this answer is known to be
-wrong because the price remained at \$70 until 11:10 am. Despite using
-the same input data, posing the same question and obtaining the same
-two results, one was correct while the other was wrong.
+wrong because the price remained at \$70 until 11:10 am and thus, the
+answer should remain unchanged until 11:30 am. Despite using the same
+input data, posing the same question and obtaining the same two
+results, one was correct while the other was wrong.
+
+\begin{figure}[htbp]
+  \center
+  \includegraphics[width=0.7\textwidth]{outside-window.png}
+  \caption{Evolution of ACME stock prices in the scenario described in
+    the text. Values in boxes represent the two events received at
+    11:00 am and 11:10 am. As you can see, at 11:25 am the first event
+    lies outside the window and the engine will not consider it, even
+    though its value remained valid throughout part of the window.}
+  \label{fig:outside-window}
+\end{figure}
+
 
 The central difference between these two examples, pertains to what
 can be assumed between events. There are three different cases:
@@ -608,7 +616,7 @@ can be assumed between events. There are three different cases:
 \end{itemize}
 
 Existing languages adopted the pulse semantics by design. This is a
-natural choice if we consider events as isolated occurences. However,
+natural choice if we consider events as isolated occurrences. However,
 if events represent changes in state, these languages will disappoint
 because the developer has to manage this state manually. This can be
 seen in Appendix \ref{sec:acme-problem-solution}, where a solution to
@@ -630,9 +638,9 @@ community where researchers and vendors participate
 debate. Several vendors replied --- including Oracle, Aleri, Coral8
 and Esper ---, and tried to find a good solution using their
 products. In our opinion, they failed because their solutions were
-verbose (like the Coral8 one above), inneficient or wrong. In the end,
+verbose (like the Coral8 one above), inefficient or wrong. In the end,
 some participants concluded this was not an event processing problem
-anyway because it envolves state and tried to dismiss it as
+anyway because it involves state and tried to dismiss it as
 irrelevant, while others argued that queries like these show up every
 day and if ESP engines can't solve them, their usefulness is reduced.
 
@@ -643,19 +651,6 @@ with more or less trouble. Instead, we believe these problems call for
 a new language, encompassing both pulse and state-changes semantics,
 that provides first-class constructs to deal with them.
 
-% TODO Remove this
-
-\begin{figure}[htbp]
-  \includegraphics[width=\textwidth]{outside-window.png}
-  \caption{Evolution of ACME stock prices in the scenario described in
-    the text. Values in blue boxes represent the two events received
-    at 10:54 and 10:56. As you can see, the first event lies outside
-    the 5 minutes window and thus, will be ignored by the system. The
-    dotted blue lines illustrate the fact that prices remain constant
-    until the next update, an assumption made by humans that the
-    system is unaware of.}
-  \label{fig:outside-window}
-\end{figure}
 
 
 \section{Spoiled products detection a.k.a. The ``too muggy'' query}
@@ -664,18 +659,27 @@ that provides first-class constructs to deal with them.
 % TODO: Refer that we assume temperature remains constant between
 % updates, because the sensor is prepared, blah blah
 
-Another class of problems that are reasonable in the context of ESP
-systems but are difficult to solve by current systems are those where
-the developer needs to know for how long was a certain condition true
-(or false). For example, imagine the following scenario, attributed to
-Andrew Witkowski from Oracle: a factory has three rooms, every room
-has at least one humidity sensor and one temperature
-sensor. Furthermore, products contain a RFID tag that is read by RFID
-sensors placed at the entrance and exit of each room. All these
-sensors send their readings to a DSMS that needs to answer the
-following question: ``Which products stayed more than 10 minutes
-(overall, not consecutive) at more than 20 $^{\circ}$C and 80\% of
-humidity?''. These products are spoiled and mustn't be sold.
+Another class of problems that are reasonable in the context of ESP,
+but are difficult to solve by current systems, are those where the
+developer needs to know for how long was a certain condition true (or
+false). For example, imagine the following scenario, attributed to
+Andrew Witkowski from Oracle and illustrated in figure
+\ref{fig:factory}: a factory has several rooms, every room has at
+least one humidity sensor and one temperature sensor. Furthermore,
+products contain a RFID tag that is read by RFID sensors placed at the
+entrance of each room. All these sensors send their readings to a DSMS
+that needs to answer the following question: ``Which products stayed
+more than 10 minutes (overall, not consecutive) at more than 20
+$^{\circ}$C and 80\% of humidity?''. These products are spoiled and
+mustn't be sold.
+
+\begin{figure}[htbp]
+  \center
+  \includegraphics[width=0.6\textwidth]{factory.png}
+  \caption{The factory outline.}
+  \label{fig:factory}
+\end{figure}
+
 
 A solution for a simplification of this problem, written in Coral8
 CCL, is shown in Appendix \ref{sec:spoiled-products-solution}. This
@@ -690,7 +694,7 @@ function. When the temperature changes, we do the same thing for all
 products in that room.
 
 This solution is quite big as it is and it still doesn't solve the
-orignal problem. One may argue that this is a difficult problem and
+original problem. One may argue that this is a difficult problem and
 the solution can't be simple anyway. Nonetheless, it is a good
 exercise to analyze this piece of code to see what's wrong with it.
 
@@ -702,18 +706,18 @@ humidity reading per room, analogous to the \verb=RoomTemperature=
 window for temperatures. When the humidity changes, we need to
 generate new events with the identifier of the room and its old
 humidity, just like we do now when a product switches rooms or when
-the temperature changes. When an event arrives on this stream, we
+the temperature changes. When an event arrives in this stream, we
 check if the previous humidity was greater than 80\% and if the
 current temperature is above 20 degrees. If both conditions hold, we
 may finally proceed to update the product's counter as well as its
 last updated timestamp. Unfortunately, we are not done yet: it is also
-necessary to modify the other queries that are triggered when the
+necessary to modify the other queries, that are triggered when the
 temperature changes or when the product switches rooms, to take the
 current humidity level into consideration. Thus, adding new sensors
 implies not only writing new queries, but also modifying existing
 ones. Clearly, this approach does not scale\footnote{``scale'' here
   refers to the source code, not to the performance of the solution.}
-as extensive rewrites are necessary everytime the requirements are
+as extensive rewrites are necessary every time the requirements are
 modified. Software engineering best-practices dictate that, if
 something like this happens, then the code is not modular enough or is
 using the wrong abstractions.
@@ -763,7 +767,7 @@ simulate all these kinds of constructs, but they're just not the right
 tool for \emph{every} job.
 
 
-\section{What was the $<$result$>$ while $<$condition$>$ hold?}
+\section{Semantic windows}
 \label{sec:result-while}
 
 Suppose that ACME actions were worth more than \$70 during some
@@ -791,18 +795,40 @@ prices and a temporary count of the number of events received. These
 two numbers are enough to generate the average and thus, the events
 themselves could be discarded immediately.
 
-In the previous section \ref{sec:spoiled-products} we concluded that
-the evolution of stock prices could be seen as a continuous
-function. Then, conceptually, solving this problem should be as easy
-as writing a continuous query that calculates the average \emph{while}
-the price is greater than \$70.
+A better way to solve this last problem is through \emph{semantic}
+windows \cite{semantic-windows}. These are windows whose endpoints are
+fixed by events, instead of being defined by time or number of
+elements. Currently, no product supports this type of windows. Using
+semantic windows, we could instruct the engine to open the window when
+the price ascends above \$70 and close it when it finally descends
+below that mark. The advantage of this approach is that all windows
+are closed eventually --- i.e., if the opening pattern is found, then
+we are sure that there will be a corresponding closing event. Thus,
+the engine knows a priori that there will be a successful match for
+this window and may begin calculating the average right away, while
+saving space by discarding the events that will be no longer
+needed. Note that this approach does not work for everything. For
+example, calculating a standard deviation incrementally would be
+inefficient because, when a new event arrives, the average changes and
+everything would have to be recomputed again.
 
+Regarding the first problem --- detecting the moment the price passes
+the threshold in either direction ---, notice that stock prices belong
+to the state-changes class of problems discussed in section
+\ref{sec:acme-problem}. Hence, the price evolution of ACME stocks may
+be plotted using a continuous step-function over time, similar to the
+one in figure \ref{fig:outside-window}. Our problem then becomes a
+simple matter of cutting the plot horizontally where price equals 70,
+ignoring the values below that value, and calculating the average for
+the remaining plot. All of this could be done by the engine behind the
+scenes, but only if it is smart enough to distinguish between pulse and
+state-changes semantics.
 
-\section{Variable windows}
+\section{Sub-windows}
 
 We've seen before that ESP systems provide many windowing facilities
-on top of regular SQL -- sliding windows, jumping windows, windows per
-groups, etc. However, all these windows share a common limitation:
+on top of regular SQL --- sliding windows, jumping windows, windows
+per groups, etc. However, all these windows share a common limitation:
 their sizes are fixed. Suppose you have a new stream whose events
 represent requests to calculate the average price of the last N stock
 updates for some company. Usually, this would be solved by creating a
@@ -812,28 +838,40 @@ how many events to use in the calculation ---, with the restriction
 that it must be smaller than some arbitrary number (otherwise it would
 be necessary to keep everything in memory). Unfortunately, we don't
 know of any way to solve this using SQL dialects in existing products,
-because its not possible to create variable-sized windows even if they
-are contained inside a bigger window.
+because its not possible to create dynamically-sized windows, even if
+they are inside bigger windows.
 
 Some may argue that this is not event processing at all because it
 involves requests that are better handled by a traditional
 DBMS. Still, these scenarios may be more frequent than one thinks and
 it doesn't seem like it's complex to implement anyway.
 
-\section{A different perspective}
+\section{Summary}
 
 In this chapter we have shown that there are problems where existing
 languages perform poorly. We believe this happens because these
 languages work at a very low level which forbids the developer to
-think in terms of higher abstractions. For example, the sliding window
-discussed in section \ref{sec:acme-problem} only knows about events and
-ignores their meaning. The \verb=JOIN=s and \verb=GROUP BY=s employed
-in the resolution of the spoiled products problem are necessary
-because there is no way to keep related information together. In
-section \ref{sec:result-while} we discussed that, in order to identify
-the moment the stock price passes some threshold, it is necessary to
-look at past events. Meanwhile, thinking of the evolution of price as
-a continuous function would give a much simpler answer.
+think in terms of higher abstractions. In summary, the issues found
+were:
+
+\begin{itemize}
+\item The pulse semantics, adopted by all engines, are unsuitable for
+  many problems where the events represent state-changes of some kind;
+\item It is difficult to abstract dependencies in such a way that
+  introducing a new feature does not require rewriting part of the
+  existing code;
+\item Related data may be scattered across several streams and
+  windows, forcing the developer to perform SQL operations --- in
+  particular \verb=JOIN=s and \verb=GROUP BY=s ---, to join it
+  together. We believe most of these queries could be made simpler by
+  structuring the data in a different way, using objects;
+\item In these languages, streams and windows are the only data
+  structures available, while many algorithms would benefit from a
+  wider choice;
+\item Some problems require new types of windows --- semantic windows
+  and sub-windows.
+
+\end{itemize}
 
 It's not our purpose to claim that SQL, in general, is not well-suited
 for ESP applications. However, we believe that ESP problems have their
@@ -841,11 +879,10 @@ own needs that require the availability of new data types, new
 operators and different semantics, to the point where the resulting
 language can hardly be called a SQL dialect anymore. Still, SQL has
 benefits. For simple things, its declarative nature makes it very
-expressive. After all, queries represent, almost in English, the
-intention of the developer. Also, SQL querying capabilities are very
-powerful and excel in many data processing tasks. It is understandable
-then, that a new language should take some inspiration from SQL and
-borrow some features to provide equally powerful constructs.
+expressive. Also, SQL querying capabilities are very powerful and
+excel in many data processing tasks. It is understandable then, that a
+new language should take some inspiration from SQL and borrow some
+features to provide equally powerful constructs.
 
 \chapter{The EzQL query language}
 \label{chap:ezql}
@@ -869,7 +906,7 @@ outlined in the previous chapter. Its main features are:
 \begin{itemize}
 \item The language integrates both pulse and state-changes semantics,
   discussed in the previous chapter. Thus, \emph{EzQL does not lose
-    any hability offered by current systems}\footnote{At least in
+    any ability offered by current systems}\footnote{At least in
     theory. In practice some things may not be implemented due to the
     lack of time.}, while it also adds new capabilities;
 \item Includes a simple \emph{object-model} where real-world entities
@@ -918,8 +955,8 @@ To manipulate raw streams of data, EzQL supports the basic constructs
 that can be found in other languages. As such, we will discuss these
 features very briefly.
 
-Suppose you have a stream called \verb=stocks= that receives events
-with two fields --- \verb=:symbol= and \verb=:price= ---, that
+Suppose you have a stream called \verb=stocks=, whose events contain
+two fields --- \verb=:symbol= and \verb=:price= ---, and this stream
 receives the following events at the given timestamps:
 
 \begin{tabular}{ |l|l|r| }
@@ -1061,15 +1098,15 @@ automatically create new \verb=Room= instances when previously unseen
 \verb=room_id=s show up in either \verb=temp_readings= or
 \verb=hum_readings= streams.
 
-In addition, this annotation adds the stream fields to
-the class. This way, every Room instance ends up with three
-attributes: \verb=room_id=, \verb=temperature= and
-\verb=humidity=. These attributes are automatically filled and updated
-by the system as new events arrive, so that the developer doesn't have
-to worry with these details. Naturally, the values of these attributes
-are independent from object to object. That is, an event with
-\verb=room_id= equal to 2 will only affect the \verb=Room= instance
-with \verb=room_id= equal to 2 and not the others.
+In addition, this annotation adds the stream fields to the class. This
+way, every Room instance ends up with three attributes:
+\verb=room_id=, \verb=temperature= and \verb=humidity=. These
+attributes are automatically filled and updated by the system as new
+events arrive, so that the developer doesn't have to worry with such
+details. Naturally, the values of these attributes are independent
+from object to object. That is, an event with \verb=room_id= equal to
+2 will only affect the \verb=Room= instance with \verb=room_id= equal
+to 2 and not the others.
 
 Having set up this apparatus, we can now run the simulation and see
 the objects being created for us automatically. All the \verb=Room=
@@ -1093,7 +1130,7 @@ and if \verb=hum_readings= receives:
 
 \begin{tabular}{ |l|l|c| }
   \hline
-  Timestamp & \verb=:room_id= & \verb=:temperature= \\
+  Timestamp & \verb=:room_id= & \verb=:humidity= \\
   \hline
   11:00:30 am & \verb="B"= & 0.60 \\
   11:01:30 am & \verb="A"= & 0.62 \\
@@ -1195,8 +1232,8 @@ list.
 
 All these attributes created automatically are managed by the engine
 without any additional effort required from the programmer. Thus, when
-product X enters room B, its \verb=room= attribute will now point to
-room B and the room's \verb=products= list will contain a reference to
+product X enters room B, its \verb=room= attribute will point to room
+B and the room's \verb=products= list will contain a reference to
 product X.
 
 This may seem like a bit of hidden magic at first, but it's really
@@ -1229,7 +1266,7 @@ just a simple convention:
 
 Just as you may query windows containing old events, you may reference
 old attribute values in your queries. For example, you can calculate
-the maximum temperature of room A over the last 5 minutes using the
+the maximum temperature in room A over the last 5 minutes using the
 \verb=temperature= attribute from the \verb=Room= class as follows:
 
 \begin{verbatim}
@@ -1245,41 +1282,34 @@ in chapter \ref{sec:stream-operations}, without creating objects:
   select max(ev.temperature)
 \end{lstlisting}
 
-Surprisingly though, the results may differ. To see why, note that
-this is just another instance of the ACME problem --- ``Were ACME
-stocks above \$70 during any moment of the last 5 minutes?'' ---
-discussed in section \ref{sec:acme-problem}: the temperature could have
-been at its maximum 5 minutes ago\footnote{Once again, we assume
-  temperatures remain constant between updates.}, but the notification
-for this reading might have happened a little earlier and thus, a
-regular sliding window applied to a stream would not consider it when
-calculating the maximum.
-
-Objects, on the other hand, behave differently. As mentioned in
-section \ref{sec:objects}, an object's attribute retains its value
-until a new event changes it. One could plot the evolution of an
-attribute over time as a step function that changes when new events
-arrive, as figure [something] illustrates for hypothetical values of
-the \verb=Room.all["A"].temperature= attribute. As the plot shows, the
-temperature is at its maximum when the window opens and keeps its
-value until it drops a few minutes later, well inside the 5 minutes
-window. Thus, querying the attribute for its maximum value over the
-last 5 minutes would consider all the values the attribute possessed
-during that time --- even if the corresponding event came earlier ---
-and would give the correct result.
-
-[TODO Picture]
+Surprisingly though, the results would differ. To see why, note that
+this is just another instance of the pulse vs state-changes problem
+discussed in section \ref{sec:acme-problem}: the temperature could
+have been at its maximum 5 minutes ago, but the notification for this
+reading might have happened a little earlier\footnote{We are assuming
+  temperature remains constant between updates, which is wrong in the
+  real world, but may be good enough for most applications.} and thus,
+a regular sliding window applied to a stream would not consider it
+when calculating the maximum. Objects, on the other hand, behave
+differently. As mentioned in section \ref{sec:objects}, an object's
+attribute retains its value until a new event changes it. Thus,
+querying the attribute for its maximum value over the last 5 minutes
+would consider all the values the attribute possessed during that time
+--- even if the corresponding event came earlier --- and would give
+the correct result.
 
 This is surprising because objects were introduced with the intention
 of simplifying queries. But objects also introduce state and this
 seemingly innocuous change has profound implications. In essence,
 events are discrete while attributes are continuous --- i.e., their
-value is always defined. With objects, writing many state related
-queries --- like the one in this example --- becomes easier than using
-only regular stream operations.
+value is always defined. With objects and continuous values, we can
+now support the state-changes semantics discussed in chapter
+\ref{chap:simple-questions-complex-answers} while retaining support
+for pulse semantics by using regular stream operations.
 
-Just for the sake of completeness, here is the solution to the window
-problem written in EzQL:
+Just for the sake of completeness, here is the solution to the ACME
+stocks problem --- ``what was the maximum value over the last 20
+minutes?'' ---, written in EzQL:
 
 \begin{lstlisting}
   # Companies are created when new symbols appear
@@ -1287,14 +1317,8 @@ problem written in EzQL:
   class Company
   end
 
-  above_70 = Company.all["ACME"].price[5 min].max() > 70
+  max_ACME = Company.all["ACME"].price[20 min].max()
 \end{lstlisting}
-
-% TODO: Complete, write this in other places
-Notice that, with objects and continuous values, we can now support
-the state-changes semantics discussed in chapter
-\ref{chap:simple-questions-complex-answers} while retaining support
-for pulse semantics by using regular stream operations.
 
 Attributes belong to a broader class of expressions called
 \emph{continuous values}, which we may define as expressions whose
@@ -1303,7 +1327,7 @@ past values the expressions evaluated to, but also the time interval
 in which they did. Continuous values provide an elegant way to solve
 many time related queries, as we will see next.
 
-\subsection{Aggregators over continuous values}
+\subsection{Aggregations over continuous values}
 
 The fact that continuous values retain their previous values allows
 one to compute aggregations over those values as we saw
@@ -1349,7 +1373,7 @@ This expression it will return either \verb=true= or \verb=false=. But
 what happens if the expression is used as part of a continuous query?
 Continuous queries are always running and producing results. Hence,
 the query should produce \verb=true= when the temperature reaches 25
-degrees and \verb=false= when it descendes below 25. That is, in the
+degrees and \verb=false= when it descends below 25. That is, in the
 continuous context, the entire expression has a value every time the
 continuous attribute, \verb=Room.all["A"].temperature=, is
 defined. The following table shows this correspondence for some
@@ -1409,11 +1433,10 @@ sequence of events arriving into the \verb=entries= stream:
   \hline
 \end{tabular}
 
-That is, the product X enters room A at 10 am, 10 minutes later it
-enters room B and finally, at 10:17 am it enters room C. After all
-these events are received, the attribute
-\verb=Product.all["X"].room_id= will be a continuous value with the
-following history:
+That is, product X enters room A at 10 am, 10 minutes later it enters
+room B and finally, at 10:17 am it enters room C. After all these
+events are received, the attribute \verb=Product.all["X"].room_id=
+will be a continuous value with the following history:
 
 \begin{tabular}{ |l|r| }
   \hline
@@ -1428,8 +1451,6 @@ following history:
 Suppose we enrich our \verb=Product= instances with a temperature
 attribute which gets its value from the temperature of the room the
 product is in:
-
-% TODO: New lines should come in bold
 
 \begin{lstlisting}
   @createFrom(entries, onNew = :product_id)
@@ -1482,16 +1503,15 @@ product's temperature was below 15 degrees with:
   (Product.all["X"].temperature < 15).sumIntervals()
 \end{lstlisting}
 
-Under the previous values, this expression would return 10 minutes.
+Given the previous values, this expression would return 10 minutes.
 
-Even though the current temperature of the product equals the current
+Even though the product's current temperature equals the current
 temperature of its room, the history of temperatures of the product
 does not equal the history of temperatures of its \emph{current}
 room. The engine knows that the product switches rooms and is smart
 enough to obtain the temperatures from the correct places. Note that
 this behavior is embodied in the semantics of the \verb=.= (dot)
-operator used in the definition of the \verb=temperature=
-attribute.
+operator used in the definition of the \verb=temperature= attribute.
 
 \subsection{Aggregators as continuous values}
 \label{sec:aggregators-continuous-values}
@@ -1499,7 +1519,7 @@ attribute.
 If you remember from section \ref{sec:stream-operations}, the value of
 an aggregator may change in response to a new event or simply as time
 passes. Also, aggregators are like attributes in that they retain
-their values until one of these conditions make them change. Thus,
+their values until one of those conditions make them change. Thus,
 like attributes, aggregators may be seen as another kind of continuous
 values.
 
@@ -1512,13 +1532,9 @@ contains the ACME stock data we want to analyze, we could write:
   (acme_stocks.avg(:price) > THRESHOLD).sumIntervals()
 \end{lstlisting}
 
-% TODO: Solve MACD
-
 We are now in a condition to solve the spoiled products detection of
 section \ref{sec:spoiled-products}. The complete solution in EzQL is
 transcribed below:
-
-% TODO: Again, bold lines for new stuff
 
 \begin{lstlisting}
   @createFrom(temp_readings, onNew = :room_id)
@@ -1553,15 +1569,53 @@ aggregator maintains an implicit counter for each product, with the
 amount of time the product spent under the given conditions, that we
 had to manage manually in the CCL.
 
-\chapter{Future work}
+\chapter{Planning and future work}
 \label{chap:future-work}
 
-% TODO
+The first semester of this thesis was spent on getting acquainted with
+existing languages, finding their problems and thinking of
+solutions. This work resulted in an initial specification of the EzQL
+language. To make further progress, a prototype shall be implemented
+and this will be the main focus of the second semester. This effort
+will be divided into two main milestones:
 
-\chapter{Conclusion}
-\label{chap:conclusion}
+\begin{itemize}
+\item By May, the prototype should support most stream operations,
+  objects, relationships and continuous values. In particular, it
+  should be able to run all the sample queries transcribed in the
+  previous chapter;
+\item During June we plan to implement semantic windows and
+  sub-windows and integrate them into the EzQL specification.
+\end{itemize}
 
-% TODO
+The major goal of the prototype is to prove that EzQL, as a concept,
+is feasible. For instance, if it turns out that objects and continuous
+values incur a tremendous overhead, then EzQL becomes unusable. The
+prototype should be smart enough to figure out which data is no longer
+needed and discard it.
+
+Testing and writing documentation should be done in parallel with
+those tasks.
+
+The following matters are outside the scope of this thesis:
+
+\begin{itemize}
+\item Building a fast runtime environment. This thesis is about
+  designing new streaming languages, not creating optimized engines;
+\item Detecting complex patterns of events using pattern matching. One
+  could integrate a pattern language such as SASE+ \cite{SASE+}
+  directly into EzQL, but this is not a central issue to this work;
+\item Integrating EzQL with databases. This is a serious drawback
+  because not all information comes from events. For instance, when a
+  costumer places an order, an event may be generated for the system
+  to process. But what if the application needs to know the name of
+  the costumer? Should it be part of the event? What about the
+  address? What about the previous orders the costumer placed?  This
+  information should already be available in the database and thus it
+  is redundant to enlarge events with it;
+\item Out-of-order events: still an ongoing research topic. EzQL
+  assumes all events are received in order.
+\end{itemize}
 
 \bibliography{thesis}
 \bibliographystyle{plain}
