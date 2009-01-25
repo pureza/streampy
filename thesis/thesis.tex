@@ -6,6 +6,8 @@
 \usepackage{color}
 \usepackage[small,bf]{caption}
 \usepackage{listings}
+\usepackage{cite}
+\usepackage{url}
 
 \lstdefinelanguage{EzQL}
 {
@@ -121,16 +123,17 @@ applications have their own needs and a satisfactory end-user query
 language for them is yet to be found.
 
 To make matters worse, the semantics on many of these products
-disagree in fundamental ways. In [ref], researchers analyzed how two
-of the most prominent products from Oracle and StreamBase reacted in
-the presence of simultaneous events. Surprisingly, they found that in
-some scenarios, not only do their results diverge between them, but
-they also differ from the expected answer. Furthermore, they concluded
-that this disparity may be blamed on the semantics employed by each
-product. It also happens that many products consistently implement
-semantics that, despite working correcly for most problems, turn out
-to be innapropriate for others, making some queries difficult, if not
-impossible, to write. Will will analyze a few examples in chapter
+disagree in fundamental ways. In \cite{towards_stream_sql_standard},
+researchers analyzed how two of the most prominent products from
+Oracle and StreamBase reacted in the presence of simultaneous
+events. Surprisingly, they found that in some scenarios, not only do
+their results diverge between them, but they also differ from the
+expected answer. Furthermore, they concluded that this disparity may
+be blamed on the semantics employed by each product. It also happens
+that many products consistently implement semantics that, despite
+working correcly for most problems, turn out to be innapropriate for
+others, making some queries difficult, if not impossible, to
+write. Will will analyze a few examples in chapter
 \ref{chap:simple-questions-complex-answers}.
 
 Nonetheless, more and more organizations are adopting DSMS and relying
@@ -167,24 +170,24 @@ The rest of this thesis is organized as follows:
 \label{chap:soa}
 
 This chapter will begin by analyzing SQL dialects present in some
-industry products for event processing --- Coral8 [ref], StreamBase
-[ref] and Esper [ref]. As far as we know, there isn't any ESP language
-being actively researched, although there are efforts to provide more
-powerful languages to detect complex patterns of events, such as SASE+
-[ref]. Pattern detection is outside the scope of this thesis, because
-we are interested in processing events, not detecting them. It should
-be noted, however, that these two kinds of languages --- one for
-processing and another for detecting ---, are more or less orthogonal
-to each other and may be integrated with some work. The document
-proceeds with StreamBase EventFlow --- a method for creating queries
-visually through a boxes and arrows interface. Despite not involving
-programming languages, it's important to study these alternatives
-because, after all, they're trying to address the same problem. Next
-comes Oracle Rules Manager with its rule-based paradigm for complex
-event processing. Finally, we will conclude this chapter analyzing
-MonitorScript, a procedural language developed by Progress Apama with
-the intention of overcoming the limitations imposed by SQL-like
-languages.
+industry products for event processing --- Coral8 \cite{coral8},
+StreamBase [ref] and Esper [ref]. As far as we know, there isn't any
+ESP language being actively researched, although there are efforts to
+provide more powerful languages to detect complex patterns of events,
+such as SASE+ [ref]. Pattern detection is outside the scope of this
+thesis, because we are interested in processing events, not detecting
+them. It should be noted, however, that these two kinds of languages
+--- one for processing and another for detecting ---, are more or less
+orthogonal to each other and may be integrated with some work. The
+document proceeds with StreamBase EventFlow --- a method for creating
+queries visually through a boxes and arrows interface. Despite not
+involving programming languages, it's important to study these
+alternatives because, after all, they're trying to address the same
+problem. Next comes Oracle Rules Manager with its rule-based paradigm
+for complex event processing. Finally, we will conclude this chapter
+analyzing MonitorScript, a procedural language developed by Progress
+Apama with the intention of overcoming the limitations imposed by
+SQL-like languages.
 
 \section{SQL-based languages}
 \label{sec:sql}
@@ -1553,6 +1556,10 @@ had to manage manually in the CCL.
 \label{chap:conclusion}
 
 % TODO
+
+\bibliography{thesis}
+\bibliographystyle{plain}
+
 
 \appendix
 \chapter{Solutions to a few problems}
