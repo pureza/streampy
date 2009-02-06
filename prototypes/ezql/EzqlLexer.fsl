@@ -1,0 +1,56 @@
+{
+#light
+
+open System
+open System.Collections
+open EzqlParser
+open Lexing
+
+let ids = Map.of_list [("and",   AND);
+                       ("or",    OR)];
+
+let tokenize text =
+  if ids.ContainsKey(text)
+      then ids.[text]
+      else ID text
+}
+
+let num        = ['0'-'9']+
+let alpha      = ['a'-'z' 'A'-'Z']
+let identifier = alpha+ (alpha | ['_'])*
+let integer    = '-'? num
+let whitespace = ' ' | '\t'
+let newline    = '\n'
+
+rule token = parse
+    | whitespace { token lexbuf }
+    | newline    { (lexbuf:lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
+    | "("        { LPAREN }
+    | ")"        { RPAREN }
+    | "["        { LBRACKET }
+    | "]"        { RBRACKET }
+    | "{"        { LBRACE }
+    | "}"        { RBRACE }
+    | "="        { ASSIGN }
+    | "+"        { PLUS }
+    | "-"        { MINUS }
+    | "/"        { DIV }
+    | "*"        { TIMES }
+    | ">"        { GT }
+    | ">="       { GTE }
+    | "=="       { EQ }
+    | "!="       { DIFF }
+    | "<="       { LTE }
+    | "<"        { LT }
+    | "!"        { NOT }
+    | ","        { COMMA }
+    | "."        { DOT }
+    | ":"        { COLON }
+    | "->"       { ARROW }
+    | ";"        { SEMICOLON }
+    | identifier { tokenize (lexeme lexbuf) }
+    | integer    { INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
+    | eof        { EOF }
+
+
+

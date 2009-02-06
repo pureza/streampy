@@ -1,0 +1,4 @@
+hot = tempreadings
+        .where(t -> t.temperature > 20);
+
+blah = hot.select(t -> { :temp = t.temperature, :blah = 3 + 5 * 6 });

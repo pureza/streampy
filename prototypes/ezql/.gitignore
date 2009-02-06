@@ -1,0 +1,4 @@
+*.exe
+EzqlLexer.fs
+EzqlParser.fs
+EzqlParser.fsi
