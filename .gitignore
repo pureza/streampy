@@ -6,4 +6,5 @@
 *.snm
 *.toc
 *.vrb
-
+*.bbl
+*.blg
