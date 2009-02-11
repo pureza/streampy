@@ -7,7 +7,9 @@ open EzqlParser
 open Lexing
 
 let ids = Map.of_list [("and",   AND);
-                       ("or",    OR)];
+                       ("or",    OR);
+                       ("min",   MIN);
+                       ("sec",   SEC)];
 
 let tokenize text =
   if ids.ContainsKey(text)

@@ -31,7 +31,7 @@
     <WarningLevel>3</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <StartArguments>test/trivial.sty</StartArguments>
+    <StartArguments>"C:\Documents and Settings\pureza\My Documents\192.168.1.5\prototypes\ezql\ezql\test\trivial.sty"</StartArguments>
   </PropertyGroup>
   <ItemGroup>
     <FsLex Include="EzqlLexer.fsl" />
@@ -39,7 +39,10 @@
     <Compile Include="EzqlAst.fs" />
     <Compile Include="EzqlParser.fs" />
     <Compile Include="EzqlLexer.fs" />
+    <Compile Include="EventQueue.fs" />
     <Compile Include="Stream.fs" />
+    <Compile Include="Window.fs" />
+    <Compile Include="Types.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Ezql.fs" />
   </ItemGroup>
