@@ -9,6 +9,7 @@ open EzqlAst
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE ASSIGN
 %token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV COMMA
 %token GT GTE EQ DIFF LTE LT AND OR NOT
+%token SEC MIN
 %token EOF
 
 %nonassoc SEMICOLON
@@ -49,6 +50,7 @@ expr:
     | ID ASSIGN expr                                     { Assign (Identifier $1, $3) }
     | ID                                                 { Id (Identifier $1) }
     | symbol                                             { SymbolExpr $1 }
+    | INTEGER_LITERAL timeUnit                           { Time (Integer $1, $2) }
     | INTEGER_LITERAL                                    { Integer $1 }
 
 binaryExpr:
@@ -103,3 +105,7 @@ args:
 more_args:
     |                                                    { [] }
     | COMMA expr more_args                               { $2::$3 }
+
+timeUnit:
+    | SEC                                                { Sec }
+    | MIN                                                { Min }

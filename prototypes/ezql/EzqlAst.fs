@@ -11,6 +11,7 @@ and expr =
   | Assign of id * expr
   | Record of (symbol * expr) list
   | Integer of int
+  | Time of expr * timeUnit
   | SymbolExpr of symbol
   | Id of id
 
@@ -27,6 +28,8 @@ and op =
   | Minus
   | Times
   | Div
+  
+and timeUnit = Min | Sec  
 
 and id = Identifier of string
 

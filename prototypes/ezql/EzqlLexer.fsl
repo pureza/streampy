@@ -7,7 +7,9 @@ open EzqlParser
 open Lexing
 
 let ids = Map.of_list [("and",   AND);
-                       ("or",    OR)];
+                       ("or",    OR);
+                       ("min",   MIN);
+                       ("sec",   SEC)];
 
 let tokenize text =
   if ids.ContainsKey(text)
@@ -20,7 +22,7 @@ let alpha      = ['a'-'z' 'A'-'Z']
 let identifier = alpha+ (alpha | ['_'])*
 let integer    = '-'? num
 let whitespace = ' ' | '\t'
-let newline    = '\n'
+let newline    = '\n' | '\r' '\n'
 
 rule token = parse
     | whitespace { token lexbuf }

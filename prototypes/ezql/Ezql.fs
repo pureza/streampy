@@ -1,10 +1,14 @@
 #light
 
+open System
 open System.IO
 open System.Text
+open System.Collections.Generic
 open EzqlLexer
 open EzqlParser
 open EzqlAst
+open Eval
+open Types
 
 let parse file =
     let lexbuf = Lexing.from_text_reader Encoding.ASCII file
@@ -14,29 +18,35 @@ let parse file =
         let pos = lexbuf.EndPos
         failwithf "Error near line %d, character %d\n" pos.Line pos.Column
 
+
 let printTokens file =
     let lexbuf = Lexing.from_text_reader Encoding.ASCII file
     while not lexbuf.IsPastEndOfStream do
         printfn "%A" (EzqlLexer.token lexbuf)
 
-let rec printProg = function
-  | Prog queries -> List.iter printQuery queries
-
-and printQuery = function
-  | MethodCall (target, Identifier methodName, args) -> printfn "method %s" methodName
-                                                        List.iter printArgs args
-  | _ -> printfn "Something else"
-
-and printArgs = function
-  | Lambda (parameters, expr) -> printfn "Lambda %A" parameters
-  | _ -> printfn "Something else"
-
 let file = File.OpenText(Sys.argv.[1])
-let result = parse file
-printProg result
-printfn "%A" result
+let ast = parse file
 
-printTokens(File.OpenText(Sys.argv.[1]))
+// Initial environment
+let env = [("tempreadings", value.Stream (Stream.Stream ()))]
+let res = 
+  match ast with
+  | Prog exprs -> List.map (eval env) exprs
+  
+let tempreadings = 
+    match lookup env "tempreadings" with
+    | Stream stream -> stream
+    | _ -> failwithf "error"
+
+tempreadings |> Stream.print
+
+let anEvent = (new Types.Event ()) :> IEvent
+anEvent.Timestamp <- DateTime.Now
+anEvent.["temperature"] <- Integer 30
+
+tempreadings.Add anEvent
+
+System.Console.ReadLine() |> ignore
 
 
 
