@@ -4,7 +4,6 @@ open System
 open EzqlAst
 open System.Collections.Generic
 open Stream
-open Window
 open System.Text
 
 type context = (string * value) list
@@ -14,17 +13,17 @@ and value =
     | Boolean of bool
     | Sym of symbol
     | Time of int * timeUnit
-    | Stream of Stream.Stream<IEvent>
-    | Window of Window<IEvent>
+    | Stream of IStream<IEvent>
+    | Window of IStream<IEvent>
     | Closure of context * expr
     | Event of IEvent
-    
+
 and IEvent =
     abstract Timestamp : DateTime
         with get, set
     abstract Item : string -> value
         with get, set
-        
+
 and Event() =
     let fields = Dictionary<string, value>()
     let mutable timestamp = DateTime.Now
@@ -32,9 +31,9 @@ and Event() =
         member self.Timestamp
             with get() = timestamp and
                  set v = timestamp <- v
-        member self.Item 
-            with get field = fields.[field] and 
-                 set field v = fields.[field] <- v   
+        member self.Item
+            with get field = fields.[field] and
+                 set field v = fields.[field] <- v
     override self.ToString() =
         let mutable buffer = StringBuilder("{ @ ")
         buffer <- buffer.Append(timestamp.TimeOfDay)
@@ -45,4 +44,4 @@ and Event() =
 let toSeconds value unit =
     match unit with
     | Sec -> value
-    | Min -> value * 60          
+    | Min -> value * 60

@@ -4,7 +4,7 @@ FSLEX=mono $(FS_BIN)/fslex.exe
 FSYACC=mono $(FS_BIN)/fsyacc.exe
 REFS=FSharp.PowerPack.dll
 FS_FILES=EzqlAst.fs EzqlParser.fs EzqlLexer.fs EventQueue.fs
-FS_FILES+=Stream.fs Window.fs Types.fs Eval.fs Ezql.fs
+FS_FILES+=Stream.fs Types.fs Eval.fs Ezql.fs
 
 all: Ezql
 
@@ -15,7 +15,7 @@ EzqlParser.fs:
 	$(FSYACC) EzqlParser.fsy
 
 Ezql: EzqlLexer.fs EzqlParser.fs
-	$(FSC) $(FS_FILES) -r $(REFS)
+	$(FSC) -i $(FS_FILES) -r $(REFS)
 
 clean:
 	rm -f EzqlLexer.fs EzqlParser.fs *.exe

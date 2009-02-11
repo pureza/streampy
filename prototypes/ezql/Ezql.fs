@@ -38,7 +38,7 @@ let tempreadings =
     | Stream stream -> stream
     | _ -> failwithf "error"
 
-tempreadings |> Stream.print
+//tempreadings |> Stream.print
 
 let anEvent = (new Types.Event ()) :> IEvent
 anEvent.Timestamp <- DateTime.Now
