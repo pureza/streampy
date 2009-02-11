@@ -1,5 +1,6 @@
 #light
 
+open System
 open System.IO
 open System.Text
 open System.Collections.Generic
@@ -7,6 +8,7 @@ open EzqlLexer
 open EzqlParser
 open EzqlAst
 open Eval
+open Types
 
 let parse file =
     let lexbuf = Lexing.from_text_reader Encoding.ASCII file
@@ -26,7 +28,7 @@ let file = File.OpenText(Sys.argv.[1])
 let ast = parse file
 
 // Initial environment
-let env = [("tempreadings", Stream EzQL.Stream.empty)]
+let env = [("tempreadings", value.Stream (Stream.Stream ()))]
 let res = 
   match ast with
   | Prog exprs -> List.map (eval env) exprs
@@ -36,13 +38,13 @@ let tempreadings =
     | Stream stream -> stream
     | _ -> failwithf "error"
 
-tempreadings.OnUpdate printEvent
+tempreadings |> Stream.print
 
-let anEvent = Dictionary<string, value>()
-anEvent.["timestamp"] <- Integer 0
+let anEvent = (new Types.Event ()) :> IEvent
+anEvent.Timestamp <- DateTime.Now
 anEvent.["temperature"] <- Integer 30
-tempreadings.add anEvent
 
+tempreadings.Add anEvent
 
 System.Console.ReadLine() |> ignore
 

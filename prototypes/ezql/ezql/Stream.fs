@@ -1,36 +1,25 @@
 ﻿#light
 
-module EzQL.Stream
+module Stream
 
     open System
     open System.Collections.Generic
-
-(*
-    type Stocks = { Timestamp:DateTime
-                    Company:string
-                    Price:int }   
-                    
-    type StocksX2 = { Timestamp:DateTime
-                      PriceX2:int }                 
-*)    
+ 
     type 'a Stream() =
-        let triggerUpdate, update = Event.create()
-        member self.OnUpdate = update.Add
-        member self.add (item:'a) = triggerUpdate item
+        let triggerAdd, addEvent = Event.create()
+        member self.OnAdd = addEvent.Add
+        member self.Add(item:'a) = triggerAdd item
+        member self.Where(predicate) =
+            let result = Stream ()
+            self.OnAdd (fun t -> if predicate t then result.Add t)
+            result
+        member self.Select(projector) =
+            let result = Stream ()
+            self.OnAdd (fun t -> result.Add (projector t))
+            result
+                                 
 
-    let empty<'a> = Stream<'a> ()
-           
-    let where (stream: Stream<'a>) predicate =
-        let result = Stream ()
-        stream.OnUpdate (fun t -> if predicate t then result.add t)
-        result
-        
-    let select (stream: Stream<'a>) projector =
-        let result = Stream ()
-        stream.OnUpdate (fun t -> result.add (projector t))
-        result
-
-    let print str (stream: Stream<'a>) = stream.OnUpdate (fun t -> printfn "(%s) -> %A" str t)      
+    let print (stream: Stream<'a>) = stream.OnAdd (fun t -> printfn "%A" t)      
     
     (*
     let s = Stream ()
