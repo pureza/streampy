@@ -32,6 +32,11 @@ let env = [("tempreadings", value.Stream (Stream.Stream ()))]
 let res = 
   match ast with
   | Prog exprs -> List.map (eval env) exprs
+
+List.iter (fun v -> match v with
+                    | Stream stream -> stream |> Stream.print
+                    | _ -> failwith "The result of a query must be a IStream")
+          res
   
 let tempreadings = 
     match lookup env "tempreadings" with

@@ -61,15 +61,10 @@ and evalOp oper v1 v2 =
 and evalMethod target name parameters =
     match target with
     | Stream stream ->
-        let result =
-            match name with
-            | "where" -> evalStreamWhere stream parameters
-            | "select" -> evalStreamSelect stream parameters
-            | _ -> failwithf "Unknown method %s" name
-        match result with
-        | Stream stream' -> stream' |> Stream.print
-        | _ -> failwith "Won't happen"
-        result
+        match name with
+        | "where" -> evalStreamWhere stream parameters
+        | "select" -> evalStreamSelect stream parameters
+        | _ -> failwithf "Unknown method %s" name
     | _ -> failwith "This type has no methods?"
 
 and evalStreamWhere stream parameters =
