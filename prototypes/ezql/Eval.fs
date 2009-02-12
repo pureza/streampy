@@ -37,7 +37,7 @@ let rec eval env = function
         let target' = eval env target
         let index' = eval env index
         match (target', index') with
-        | (Stream stream, Time (v, unit)) -> value.Window (Window.FromStream(stream, (toSeconds v unit)))
+        | (Stream stream, Time (v, unit)) -> value.Stream (Window.FromStream(stream, (toSeconds v unit)))
         | _ -> failwith "Can only index streams"
     | BinaryExpr (oper, expr1, expr2) ->
         let value1 = eval env expr1
@@ -66,19 +66,9 @@ and evalMethod target name parameters =
             | "where" -> evalStreamWhere stream parameters
             | "select" -> evalStreamSelect stream parameters
             | _ -> failwithf "Unknown method %s" name
-//        match result with
-//        | Stream stream' -> stream' |> Stream.print
-//        | _ -> failwith "Won't happen"
-        result
-    | Window window ->
-        let result =
-            match name with
-            | "where" -> evalWindowWhere window parameters
-            | "select" -> evalWindowSelect window parameters
-            | _ -> failwithf "Unknown method %s" name
-//        match result with
-//        | Window window' -> window' |> Stream.printWindow
-//        | _ -> failwith "Won't happen"
+        match result with
+        | Stream stream' -> stream' |> Stream.print
+        | _ -> failwith "Won't happen"
         result
     | _ -> failwith "This type has no methods?"
 
@@ -94,23 +84,6 @@ and evalStreamSelect stream parameters =
     match parameters with
     | [(Closure (env, expr)) as closure] ->
         Stream (stream.Select(fun ev -> match (evalClosure closure) [ev] with
-                                        | Event v -> v.Timestamp <- ev.Timestamp
-                                                     v
-                                        | _ -> failwith "wrong"))
-    | _ -> failwith "Invalid parameter"
-
-and evalWindowWhere window parameters =
-    match parameters with
-    | [(Closure (env, expr)) as closure] ->
-        Window (window.Where(fun ev -> match (evalClosure closure) [ev] with
-                                       | Boolean b -> b
-                                       | _ -> failwith "wrong"))
-    | _ -> failwith "Invalid parameter"
-
-and evalWindowSelect window parameters =
-    match parameters with
-    | [(Closure (env, expr)) as closure] ->
-        Window (window.Select(fun ev -> match (evalClosure closure) [ev] with
                                         | Event v -> v.Timestamp <- ev.Timestamp
                                                      v
                                         | _ -> failwith "wrong"))

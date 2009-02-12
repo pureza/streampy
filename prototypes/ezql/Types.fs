@@ -14,7 +14,6 @@ and value =
     | Sym of symbol
     | Time of int * timeUnit
     | Stream of IStream<IEvent>
-    | Window of IStream<IEvent>
     | Closure of context * expr
     | Event of IEvent
 

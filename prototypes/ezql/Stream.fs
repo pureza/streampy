@@ -15,7 +15,7 @@ module Stream
         let triggerAdd, addEvent = Event.create()
 
         interface 'a IStream with
-            member self.Add(item:'a) = triggerAdd item
+            member self.Add(item) = triggerAdd item
             member self.Where(predicate) =
                 let result = Stream () :> 'a IStream
                 (self :> 'a IStream).OnAdd (fun t -> if predicate t then result.Add(t))
@@ -26,45 +26,40 @@ module Stream
                 result
             member self.OnAdd(action) = addEvent.Add(action)
 
-//    let print (stream: Stream<'a>) = stream.OnAdd (fun t -> printfn "%A" t)
-
-
-    type 'a Window(interval:int option) =
+    type 'a Window(interval:int) =
         let triggerAdd, addEvent = Event.create()
         let triggerExpire, expireEvent = Event.create()
+        let mutable shouldKeep = true
         member self.OnExpire = expireEvent.Add
         member self.Expire = triggerExpire
 
         interface 'a IStream with
-            member self.Add (item:'a) =
-                match interval with
-                | None -> ()
-                | Some value -> EventQueue.instance.Register(DateTime.Now.AddSeconds(float value),
-                                                             fun () -> triggerExpire item)
+            member self.Add(item) =
+                if shouldKeep then 
+                    EventQueue.instance.Register(DateTime.Now.AddSeconds(float interval),
+                                                 fun () -> triggerExpire item)                                                 
                 triggerAdd item
-
             member self.Where(predicate) =
-                let result = Window (None)
-                (self :> 'a IStream).OnAdd (fun t -> if predicate t then (result :> 'a IStream).Add t)
-                self.OnExpire (fun t -> if predicate t then result.Expire t)
-                result :> 'a IStream
-
+                let result = Window (interval) :> 'a IStream
+                shouldKeep <- false
+                (self :> 'a IStream).OnAdd (fun t -> if predicate t then result.Add(t))
+                result
             member self.Select(projector) =
-                let result = Window(None)
-                (self :> 'a IStream).OnAdd(fun t -> (result :> 'b IStream).Add(projector t))
-                self.OnExpire(fun t -> result.Expire(projector t))
-                result :> IStream<'b>
+                let result = Window(interval) :> 'b IStream
+                shouldKeep <- false
+                (self :> 'a IStream).OnAdd(fun t -> result.Add(projector t))
+                result
 
             member self.OnAdd(action) = addEvent.Add(action)
 
 
         static member FromStream(stream: 'a IStream, interval) =
-            let result = Window(Some interval)
-            stream.OnAdd (fun ev -> (result :> 'a IStream).Add ev)
+            let result = Window(interval) :> 'a IStream
+            stream.OnAdd (fun ev -> result.Add ev)
             result
 
-(*
-    let printWindow (window: Window<'a>) =
-        window.OnAdd (fun t -> printfn "+ %A" t)
-        window.OnExpire (fun t -> printfn "- %A" t)
-*)
+    let print (stream: IStream<'a>) =
+        stream.OnAdd (fun t -> printfn "%A" t)
+        match stream with
+        | :? Window<'a> -> (stream :?> 'a Window).OnExpire (fun t -> printfn "%A" t)
+        | _ -> ()
