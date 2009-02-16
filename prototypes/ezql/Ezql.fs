@@ -28,13 +28,14 @@ let file = File.OpenText(Sys.argv.[1])
 let ast = parse file
 
 // Initial environment
-let env = [("tempreadings", value.Stream (Stream.Stream ()))]
+let env = [("tempreadings", value.Stream (Stream.stream ()))]
 let res = 
   match ast with
   | Prog exprs -> List.map (eval env) exprs
 
 List.iter (fun v -> match v with
                     | Stream stream -> stream |> Stream.print
+                    | ContinuousValue value -> value |> Stream.print
                     | _ -> failwith "The result of a query must be a IStream")
           res
   
@@ -51,6 +52,13 @@ anEvent.["temperature"] <- Integer 30
 
 tempreadings.Add anEvent
 
+(*
+let anotherEvent = (new Types.Event ()) :> IEvent
+anotherEvent.Timestamp <- DateTime.Now
+anotherEvent.["temperature"] <- Integer 50
+
+tempreadings.Add anotherEvent
+*)
 System.Console.ReadLine() |> ignore
 
 

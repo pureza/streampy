@@ -64,6 +64,11 @@ and evalMethod target name parameters =
         match name with
         | "where" -> evalStreamWhere stream parameters
         | "select" -> evalStreamSelect stream parameters
+        | "asContValue" -> evalAsContValue stream parameters
+        | _ -> failwithf "Unknown method %s" name
+    | ContinuousValue cv ->
+        match name with
+        | "sum" -> evalSum cv parameters    
         | _ -> failwithf "Unknown method %s" name
     | _ -> failwith "This type has no methods?"
 
@@ -84,6 +89,22 @@ and evalStreamSelect stream parameters =
                                         | _ -> failwith "wrong"))
     | _ -> failwith "Invalid parameter"
 
+and evalAsContValue stream parameters =
+    match parameters with
+    | [Sym (Symbol name)] ->
+        ContinuousValue (ContValue.CreateFrom(stream, (fun (self, item) -> item.[name])))
+    | _ -> failwith "Invalid parameter"
+
+
+and evalSum cv parameters =
+    match parameters with
+    | [] ->
+        ContinuousValue (ContValue.CreateFrom(cv, (fun (self, item) -> match item, self.Current with
+                                                                       | Integer v, None -> Integer v
+                                                                       | Integer v, Some (Integer t) -> Integer (v + t)
+                                                                       | _ -> failwith "Wrong type")))
+    | _ -> failwith "Invalid parameter"
+    
 and evalClosure = function
     | Closure (env, expr) ->
         match expr with
@@ -95,3 +116,4 @@ and evalClosure = function
                 eval env' body)
         | _ -> failwith "Wrong type"
     | _ -> failwith "This is not a closure"
+

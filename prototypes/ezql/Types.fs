@@ -14,6 +14,7 @@ and value =
     | Sym of symbol
     | Time of int * timeUnit
     | Stream of IStream<IEvent>
+    | ContinuousValue of ContValue<value>
     | Closure of context * expr
     | Event of IEvent
 
