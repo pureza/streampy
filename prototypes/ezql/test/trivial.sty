@@ -1,6 +1,7 @@
-hot = tempreadings[3 sec]
-        .where(t -> t.temperature > 20)
-        .select(t -> { :temp = t.temperature, :blah = 3 + 5 * 6 });
+//hot = tempreadings[3 sec]
+//        .where(t -> t.temperature > 20)
+//        .select(t -> { :temp = t.temperature, :blah = 3 + 5 * 6 });
+//
+//currentTemp = tempreadings.asContValue(:temperature).sum()[3 sec].sum();
 
-
-currentTemp = tempreadings.asContValue(:temperature).sum();
+currentTemp = tempreadings[3 sec].sum(:temperature);

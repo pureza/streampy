@@ -40,7 +40,6 @@
     <Compile Include="EzqlParser.fs" />
     <Compile Include="EzqlLexer.fs" />
     <Compile Include="EventQueue.fs" />
-    <Compile Include="Stream.fs" />
     <Compile Include="Types.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Ezql.fs" />

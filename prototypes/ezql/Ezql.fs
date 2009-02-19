@@ -4,6 +4,7 @@ open System
 open System.IO
 open System.Text
 open System.Collections.Generic
+open System.Threading
 open EzqlLexer
 open EzqlParser
 open EzqlAst
@@ -28,37 +29,34 @@ let file = File.OpenText(Sys.argv.[1])
 let ast = parse file
 
 // Initial environment
-let env = [("tempreadings", value.Stream (Stream.stream ()))]
+let env = [("tempreadings", VStream (Stream ()))]
 let res = 
   match ast with
   | Prog exprs -> List.map (eval env) exprs
 
 List.iter (fun v -> match v with
-                    | Stream stream -> stream |> Stream.print
-                    | ContinuousValue value -> value |> Stream.print
+                    | VStream stream -> stream |> printStream
+                    | VContinuousValue v -> v |> printContValue
                     | _ -> failwith "The result of a query must be a IStream")
           res
   
 let tempreadings = 
     match lookup env "tempreadings" with
-    | Stream stream -> stream
+    | VStream stream -> stream
     | _ -> failwithf "error"
 
-tempreadings |> Stream.print
+tempreadings |> printStream
 
-let anEvent = (new Types.Event ()) :> IEvent
-anEvent.Timestamp <- DateTime.Now
-anEvent.["temperature"] <- Integer 30
+let anEvent = (new Types.Event (DateTime.Now, Map.of_list [("temperature", VInteger 30)])) :> IEvent
 
 tempreadings.Add anEvent
 
-(*
-let anotherEvent = (new Types.Event ()) :> IEvent
-anotherEvent.Timestamp <- DateTime.Now
-anotherEvent.["temperature"] <- Integer 50
+Thread.Sleep(1000)
+
+let anotherEvent = (new Types.Event (DateTime.Now, Map.of_list [("temperature", VInteger 50)])) :> IEvent
 
 tempreadings.Add anotherEvent
-*)
+
 System.Console.ReadLine() |> ignore
 
 
