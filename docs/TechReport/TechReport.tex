@@ -13,7 +13,7 @@
 
 \addtolength{\parskip}{\baselineskip}
 
-\chapter{Architecture}
+\chapter{The prototype}
 
 My goal is to develop a stand-alone interpreter that receives the name
 of an EzQL file in the command-line, as well as some configuration for
@@ -59,6 +59,7 @@ language would necessarily have less features. I prefer to prove that
 the language can do many things well compared to what's in the state
 of the art. Optimization comes later, if this is ever going to be used
 in production.
+
 
 \chapter{Execution model}
 
@@ -182,29 +183,36 @@ Should it keep their data too, or is it smart enough to figure out, by
 looking at the code, that only segment s1 will be necessary?
 
 \chapter{Language paradigm}
-The way I see it, you have:
+The way I see it, the paradigm is event-driven with a topping of
+procedural, declarative and OOP programming.
 
-\begin{itemize}
-\item Classes (with fields and methods) to model entities;
-\item Function definitions;
-\item Continuous queries;
-\item when blocks for sequential programming
-\end{itemize}
+In EzQL you say what to do when an event arrives and that's it. If
+there are no events, nothing is executed. There is no \verb=main= and
+no global \verb=while(true)=. Of course, you can have dummy events
+created by the system so that the application has something to do even
+when there are no external events.
 
-\section{Classes}
+Another big difference is that code is not executed in a sequential
+way. When an event arrives, a set of queries may be triggered into
+execution, but these do not need to be declared next to each other in
+the source code. The only place where the execution is guaranteed to
+be sequential is inside \verb=when= blocks and functions (more on this
+below).
 
-\begin{itemize}
-\item Should we allow user defined classes for things besides
-  entities? What about inheritance, polymorphism...?
-\end{itemize}
+I believe that having continuous queries and \verb=when= blocks should
+be enough to handle most problems in a practical
+way\footnote{Actually, I'm still skeptic, but I'm yet to see a problem
+  that can't be easily solved using these constructs.}.
 
-\section{Functions}
+You may define and use functions and classes. The following sections
+discuss this.
 
-Functions are just like regular functions from other programming
-languages, with a few rules. First, you cannot call a function from
-the top-level (i.e., \verb=main()= in Java). Actually, there doesn't
-even exist a top-level in EzQL. To see why, consider the following
-code:
+\section{Procedural programming in EzQL}
+
+EzQL supports functions just like other programming languages, but
+with a few rules. First, you cannot call a function from the top-level
+(i.e., \verb=main()= in Java). Actually, there doesn't even exist a
+top-level in EzQL. To see why, consider the following code:
 
 \begin{verbatim}
 def f()
@@ -265,6 +273,46 @@ low priority stuff though and would require much more time than I
 possess (besides, it is difficult to convince people that the standard
 operators are not enough).
 
+\section{Classes}
+
+\begin{itemize}
+\item Should we allow user defined classes for things besides
+  entities? What about inheritance, polymorphism...?
+\item Write something about \textbf{pulse};
+\item Mention that attributes are, by default, continuous values;
+\end{itemize}
+
+
+\section{Dummy events}
+
+\begin{itemize}
+\item When an attribute changes, generates an event;
+\item When an object is created, an event is generated;
+\item When an object enters or leaves a dictionary, an event may be
+  generated;
+\end{itemize}
+
+
+\begin{verbatim}
+@createFrom(...)
+class Segment
+    ...
+    when toll.updated()
+        print "The toll of segment " +  this + " has been changed"
+end
+
+
+cheap_tolls =
+  from s in all Segment
+  where s.toll < 10
+  select s
+
+
+when cheap_tolls.removed(s)
+    print "segment " + s + " has been removed from cheap_tolls
+\end{verbatim}
+
+
 \chapter{Data types}
 
 The difficult question. So, you have:
@@ -304,8 +352,178 @@ The difficult question. So, you have:
 Should we allow other types for sequential programming? Lists,
 hash-tables, trees, bags, sets, heaps...?
 
-TODO: Allowed operations between data types
+\section{Allowed operations}
 
-\chapter{Abstractions}
+\subsection{Continuous values}
+
+Continuous values are completely transparent until you start to use
+fancy operations. However, if you simply want to access the current
+value, you just need to access it as if was a regular variable:
+
+\begin{verbatim}
+price_doubled = apple.price * 2
+\end{verbatim}
+
+\verb=price_doubled= will be a new continuous value. Its value will
+change whenever Apple's price changes.
+
+Then you can create windows:
+
+\begin{verbatim}
+apple.price[5 min]  # Contains the evolution of apple's price
+                    # over the last 5 minutes.
+\end{verbatim}
+
+One may also create aggregates on these values:
+
+\begin{verbatim}
+apple.price.max()   # The all-time maximum price of apple stocks.
+\end{verbatim}
+
+The result of an aggregate is also a continuous value. Thus, one may
+easily find the maximum average of the last 5 minutes, for example.
+
+\subsection{Streams}
+
+\begin{itemize}
+\item \verb=where= receives a stream, a predicate and returns a stream;
+\item \verb=select= receives a stream, a mapping function and returns
+  a stream;
+\item \verb=join=s are applied between one stream and one
+  window. Return a new stream;
+\item \verb=group by=, in its simplest version, receives a stream, a
+  mapping function to assign groups to events and an aggregate
+  operation to apply to each group, and returns a dictionary. Example:
+
+\begin{verbatim}
+max_per_company =
+  from ev in stocks
+  group by ev.symbol
+  select max(ev.price)
+\end{verbatim}
+
+\item Aggregates over streams (i.e., \verb=stocks.max(:price)=) return
+  continuous values;
+\item Windows may be created using the \verb=[]= operator. Should we
+  allow ranges -- \verb=stocks[5 min .. 2 min]=? I think so;
+\item A special operation -- \verb=asContValue= --, transforms some
+  field of an event into a continuous value. For example,
+  \verb=apple_stocks.asContValue(:price)= results in a continuous
+  value that always contains the value of the latest Apple price
+  report.
+\end{itemize}
+
+\subsection{Windows}
+
+Same as streams. May also support \verb=order by=.
+
+There should also be a set of operators to transform windows into
+streams, much like \verb=istream= and \verb=rstream= in Esper.
+
+\subsection{Dictionaries}
+
+Dictionaries are the result of \verb=group by= operations and are also
+used to store objects. Like regular dictionaries, items are kept as
+pairs of keys and values. One may get the desired value through its
+key:
+
+\begin{verbatim}
+max_per_company["ACME"]
+\end{verbatim}
+
+\chapter{Architecture}
+
+The interpreter is just a standard evaluator. On start up, the scanner
+tokenizes the source code and the parser creates an abstract syntax
+tree representation of this code. A first pass evaluation of this tree
+is then performed to initialize the required data structures --
+streams, windows, dictionaries and so on. For example, consider the
+following code:
+
+\begin{verbatim}
+hot =
+  from ev in temp_readings
+  where ev.temperature > 35
+  select ev
+\end{verbatim}
+
+Given the code above, the interpreter will create a stream that goes
+by the name \verb=hot= and stores it in a regular table of
+symbols. This stream receives the events in \verb=temp_readings= that
+pass the filter condition. To achieve this, the interpreter creates a
+callback that is executed when a new event arrives into
+\verb=temp_readings=. This callback calls the interpreter to evaluate
+the filter predicate -- \verb=ev.temperature > 35=, and, if it passes,
+adds the event to the \verb=hot= stream.
+
+Callbacks are used everywhere in the interpreter. On a lower level,
+they signal the reception of new events and the expiration of old
+ones. When a new event arrives, several callbacks may process this
+event and store the results in other streams. Other callbacks may be
+listening on these other streams for further processing. On a
+higher-level, callbacks may also create objects, update their internal
+state, destroy objects, etc. One must be careful about the order in
+which these callbacks are called. For example, if object A depends on
+objects B and C and object B depends on object C, we must make sure
+that object B is updated before object A. A simple dependency graph
+created while analyzing the code should be enough to handle these
+complications.
+
+An important module is what I call the \verb=Scheduler=. This module
+is responsible for the scheduling of future actions. For example, when
+an event arrives into a 5 minutes window, the \verb=Scheduler= sets up
+a timer to expire in 5 minutes. When this timer expires, a callback
+that handles the deletion of the event from the 5 minutes window is
+called.
+
+\section{Internal representation of values}
+
+As mentioned above, objects are accessible through a table of
+symbols. This subsection discusses how are objects represented
+internally.
+
+First of all, all values in this system are tagged with their
+respective types. For example, the value \verb=123= will be tagged
+with the type \verb=integer=. The same goes for streams, windows,
+events, objects and everything else. For example, the value of
+\verb=temp_readings= will include the tag \verb=stream=.
+
+Events are represented internally as dictionaries. The event
+attributes are kept in the dictionary keys and the event values are
+stored as dictionary values. Events are immutable.
+
+Streams are represented internally as simple collections that receive
+events but do not keep them (we have windows for that). These
+collections support the analogous operations that an EzQL Stream
+supports -- \verb=Where=, \verb=Select=, \verb=Add=, etc. They also
+support an \verb=OnAdd= operation where callbacks may be registered.
+
+Windows are treated similarly to streams except their internal
+representation supports two additional operations --
+\verb=GetContents= and \verb=OnExpire=, whose names should be
+self-explanatory.
+
+Objects shall be represented just like events -- as dictionaries.
+
+
+\chapter{A word about syntax}
+
+In the examples I wrote in this document, I used a SQL like
+syntax. However, I don't plan to support this syntax in early versions
+of the interpreter. Instead, queries will be written using simple
+method calls:
+
+\begin{verbatim}
+cheap_tolls = Segment.all.where(s -> s.toll < 10)
+\end{verbatim}
+
+Remember, \verb=s -> s.toll < 10= is our syntax for lambda
+functions.
+
+Supporting the SQL like syntax is easy, but it is something I'd prefer
+to do only once, in the end, to avoid the need to change it every time
+a new operator is added.
+
+Besides, I prefer the method-call syntax :)
 
 \end{document}
