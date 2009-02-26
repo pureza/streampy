@@ -10,54 +10,74 @@ open EzqlParser
 open EzqlAst
 open Eval
 open Types
+open Adapters
 
-let parse file =
-    let lexbuf = Lexing.from_text_reader Encoding.ASCII file
-    try
-        EzqlParser.start EzqlLexer.token lexbuf
-    with e ->
-        let pos = lexbuf.EndPos
-        failwithf "Error near line %d, character %d\n" pos.Line pos.Column
+module Engine =
+
+    open Scheduler
+    open Clock
+
+    let clock = Scheduler.sched.clock
+
+    let parse code =
+        // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
+        let lexbuf = Lexing.from_string code
+        try
+            EzqlParser.start EzqlLexer.token lexbuf
+        with e ->
+            let pos = lexbuf.EndPos
+            failwithf "Error near line %d, character %d\n" pos.Line pos.Column
+
+    let compile code =
+        let ast = parse code
+
+        // Initial environment
+        let mutable env = Map.of_list [("stream", VType "stream")]
+        env <- match ast with
+               | Prog stmts -> List.fold_left eval env stmts
+        
+        // Return just the streams
+        Map.fold_left (fun (m:Map<string, IStream>) k v ->
+                           match v with
+                           | VStream stream -> m.Add(k, stream)
+                           | _ -> m) 
+                      (Map.empty<string, IStream>)
+                      env
+            
+    let init =      
+        Scheduler.init clock
 
 
-let printTokens file =
-    let lexbuf = Lexing.from_text_reader Encoding.ASCII file
-    while not lexbuf.IsPastEndOfStream do
-        printfn "%A" (EzqlLexer.token lexbuf)
+module Main =
 
-let file = File.OpenText(Sys.argv.[1])
-let ast = parse file
+    open DateTimeExtensions
 
-// Initial environment
-let env = [("tempreadings", VStream (Stream ()))]
-let res = 
-  match ast with
-  | Prog exprs -> List.map (eval env) exprs
+    let printStream (stream: IStream) name = 
+        stream.OnAdd (fun t -> printfn "[%A] + %s: %A" Engine.clock.Now.TotalSeconds name t)
+        stream.OnExpire (fun t -> printfn "[%A] - %s: %A" Engine.clock.Now.TotalSeconds name t)
 
-List.iter (fun v -> match v with
-                    | VStream stream -> stream |> printStream
-                    | VContinuousValue v -> v |> printContValue
-                    | _ -> failwith "The result of a query must be a IStream")
-          res
-  
-let tempreadings = 
-    match lookup env "tempreadings" with
-    | VStream stream -> stream
-    | _ -> failwithf "error"
+    let printContValue (cv: IContValue) name =
+        cv.OnSet (fun t -> printfn "[%A] + %s: %A" Engine.clock.Now.TotalSeconds name t) 
+        cv.OnExpire (fun t -> printfn "[%A] - %s: %A" Engine.clock.Now.TotalSeconds name t) 
+        
 
-tempreadings |> printStream
-
-let anEvent = (new Types.Event (DateTime.Now, Map.of_list [("temperature", VInteger 30)])) :> IEvent
-
-tempreadings.Add anEvent
-
-Thread.Sleep(1000)
-
-let anotherEvent = (new Types.Event (DateTime.Now, Map.of_list [("temperature", VInteger 50)])) :> IEvent
-
-tempreadings.Add anotherEvent
+    Engine.init |> ignore
+    let inputs = File.ReadAllText(Sys.argv.[1]) |> Engine.compile
+    
+  //  printStream inputs.["temp_readings"] "temp_readings"
+ //   printContValue inputs.["currentTemp"] "currentTemp"
+    
+    let adapter = CSVAdapter.FromString(inputs.["temp_readings"],
+                                            @"Timestamp, temperature
+                                                      0,          30
+                                                     10,          50")
+    
+    let virtualClock = Engine.clock :?> Clock.VirtualClock
+    while virtualClock.HasNext () do
+        virtualClock.Step ()
 
 System.Console.ReadLine() |> ignore
+
 
 
 

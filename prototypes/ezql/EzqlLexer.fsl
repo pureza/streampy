@@ -19,7 +19,7 @@ let tokenize text =
 
 let num        = ['0'-'9']+
 let alpha      = ['a'-'z' 'A'-'Z']
-let identifier = alpha+ (alpha | ['_'])*
+let identifier = alpha+ (alpha | ['_'] | num)*
 let integer    = '-'? num
 let whitespace = ' ' | '\t'
 let newline    = '\n' | '\r' '\n'
@@ -53,7 +53,7 @@ rule token = parse
     | identifier			{ tokenize (lexeme lexbuf) }
     | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
     | "//"  [^'\n''\r']*	{ token lexbuf  }
-    | eof        { EOF }
+    | eof				    { EOF }
 
 
 

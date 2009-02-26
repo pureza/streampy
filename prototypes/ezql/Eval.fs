@@ -5,53 +5,48 @@ open System.Collections.Generic
 open EzqlAst
 open Types
 
-let rec lookup context name =
-    match context with
-    | [] -> failwithf "%s not found in context %A" name context
-    | ((name', value)::xs) when name' = name -> value
-    | (x::xs) -> lookup xs name
+let rec eval (env:context) = function
+    | Assign (Identifier name, exp) -> let v = evalE env exp
+                                       env.Add(name, v)
 
-let rec eval env = function
-    | Assign (Identifier name, exp) -> let v = eval env exp
-                                       //env <- env.Add(name, v)
-                                       v
+and evalE env = function
     | MethodCall (expr, (Identifier name), paramExps) ->
-        let target = eval env expr
-        let paramVals = List.map (eval env) paramExps
+        let target = evalE env expr
+        let paramVals = List.map (evalE env) paramExps
         evalMethod target name paramVals
+    | FuncCall (expr, paramExps) ->
+        let fn = evalE env expr
+        let paramVals = List.map (evalE env) paramExps
+        evalFunction fn paramVals        
     | MemberAccess (expr, Identifier name) ->
-        let target = eval env expr
+        let target = evalE env expr
         match target with
         | VEvent ev -> ev.[name]
         | _ -> failwith "Not an event!"
     | Lambda (args, body) as fn -> VClosure (env, fn)
     | Record fields ->
-        // Copy the timestamp of the original event
-        let timestamp = match snd(env.Head) with
-                        | value.VEvent ev -> ev.Timestamp
-                        | _ -> failwith "Not an event!"
-        let fields = Map.of_list (List.map (fun (Symbol (name), expr) ->
-                                             (name, eval env expr))
-                                           fields)
-        VEvent (Event (timestamp, fields) :> IEvent)
+        VRecord (Map.of_list (List.map (fun (Symbol (name), expr) ->
+                                         (name, evalE env expr))
+                                       fields))
     | ArrayIndex (target, index) ->
-        let target' = eval env target
-        let index' = eval env index
+        let target' = evalE env target
+        let index' = evalE env index
         match (target', index') with
         | (VStream stream, VTime (v, unit)) -> VStream (Window (toSeconds v unit, stream))
         | (VContinuousValue cv, VTime (v, unit)) -> VContinuousValue (ContValueWindow.FromContValue(cv, (toSeconds v unit)))
         | _ -> failwith "Can only index streams"
-    | BinaryExpr (oper, expr1, expr2) ->
-        let value1 = eval env expr1
-        let value2 = eval env expr2
+    | BinaryExpr (oper, expr1, expr2) ->        
+        let value1 = evalE env expr1
+        let value2 = evalE env expr2
         evalOp oper value1 value2
     | expr.Time (exp, unit) ->
-        match (eval env exp) with
+        match (evalE env exp) with
         | VInteger v -> VTime (v, unit)
         | _ -> failwith "Time expression must evaluate to an integer"
     | expr.Integer v -> VInteger v
     | SymbolExpr v -> VSym v
-    | Id (Identifier name) -> lookup env name
+    | Id (Identifier name) -> 
+        env.[name]
 
 and evalOp oper v1 v2 =
     match oper, v1, v2 with
@@ -87,7 +82,7 @@ and evalStreamSelect stream parameters =
     match parameters with
     | [(VClosure (env, expr)) as closure] ->
         VStream (stream.Select(fun ev -> match (evalClosure closure) [ev] with
-                                         | VEvent v -> v
+                                         | VRecord r -> r
                                          | _ -> failwith "wrong"))
     | _ -> failwith "Invalid parameter"
 
@@ -116,8 +111,14 @@ and evalClosure = function
             (fun args ->
                 let ids' = List.map (fun (Identifier name) -> name) ids
                 let args' = List.map VEvent args
-                let env' = (List.zip ids' args')@env
-                eval env' body)
+                let env' = List.fold_left (fun (e:context) (n, v) -> e.Add(n, v)) 
+                                          env (List.zip ids' args')
+                evalE env' body)
         | _ -> failwith "Wrong type"
     | _ -> failwith "This is not a closure"
 
+and evalFunction fn paramVals =
+    match fn with
+    | VType name when name = "stream" -> VStream (Stream ())
+    | _ -> failwith "Calling functions not yet implemented"
+    

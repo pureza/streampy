@@ -4,8 +4,9 @@ open System
 open EzqlAst
 open System.Collections.Generic
 open System.Text
+open DateTimeExtensions
 
-type context = (string * value) list
+type context = Map<string, value>
 
 and value =
     | VInteger of int
@@ -16,6 +17,8 @@ and value =
     | VContinuousValue of IContValue
     | VClosure of context * expr
     | VEvent of IEvent
+    | VRecord of Map<string, value>
+    | VType of string
     
     static member (+)(left:value, right:value) =
         match left, right with
@@ -39,12 +42,12 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
             with get(field) = fields.[field]
             
     override self.ToString() =
-       "{ @ " + timestamp.TimeOfDay.ToString() + " " + 
+       "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
             (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %A " pair.Key pair.Value ])
              + "}"
 
 (*
- * All IStreams have an OnAdd and an OnExpire. This is not incorrect from a
+ * All IStreams have an OnAdd and an OnExpire. This is not correct from a
  * modelling point of view (because events in streams don't expire -- in fact
  * they are never added to begin with) but it unifies the handling of
  * streams and windows.
@@ -52,7 +55,7 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
 and IStream =
     abstract Add : IEvent -> unit
     abstract Where : (IEvent -> bool) -> IStream
-    abstract Select : (IEvent -> IEvent) -> IStream
+    abstract Select : (IEvent -> Map<string, value>) -> IStream
     abstract OnAdd : (IEvent -> unit) -> unit
     abstract OnExpire : (IEvent -> unit) -> unit
 
@@ -75,7 +78,7 @@ type Stream() =
             result
         member self.Select(projector) =
             let result = Stream() :> IStream
-            (self :> IStream).OnAdd(fun item -> result.Add(projector item))
+            (self :> IStream).OnAdd(fun item -> result.Add(Event(item.Timestamp, projector item)))
             result
         member self.OnAdd(action) = addEvent.Add(action)
         member self.OnExpire(action) = () // Events in a stream don't expire
@@ -92,8 +95,9 @@ and Window(interval:int, istream:IStream) as self =
     interface IStream with
         member self.Add(item) =
             if shouldKeep 
-                then EventQueue.instance.Register(DateTime.Now.AddSeconds(float(interval)),
-                                                  fun () -> triggerExpire(item))
+                then Scheduler.scheduleOffset (TimeSpan(0, 0, interval))
+                                              (fun () -> triggerExpire(item))
+                
         member self.Where(predicate) =
             shouldKeep <- false
             Window (interval, istream.Where(predicate)) :> IStream
@@ -132,10 +136,10 @@ and ContValueWindow(interval:int) =
             cv.SetCurrent(time, value)  
             history.Add(time, value)
             if history.Count > 1 then
-                EventQueue.instance.Register(time.AddSeconds(float(interval)),
-                    fun () -> let (prevTime, prevValue) = (history.Keys.[0], history.Values.[0])
-                              history.RemoveAt(0) |> ignore
-                              triggerExpire(prevTime, prevValue))
+                Scheduler.scheduleOffset (TimeSpan(0, 0, interval))
+                                         (fun () -> let (prevTime, prevValue) = (history.Keys.[0], history.Values.[0])
+                                                    history.RemoveAt(0) |> ignore
+                                                    triggerExpire(prevTime, prevValue))
         member self.OnSet(action) = cv.OnSet(action)
         member self.OnExpire(action) = expireEvent.Add(action)
       
@@ -164,16 +168,7 @@ and ContValueSum(onSet, onExpire) as self =
     static member FromStream(stream: IStream, field) =
         ContValueSum ((fun action -> stream.OnAdd(fun item -> action(item.Timestamp, Some item.[field]))),
                       (fun action -> stream.OnExpire(fun item -> action(item.Timestamp, Some item.[field]))))
-
-                
-let printStream (stream: IStream) = 
-    stream.OnAdd (fun t -> printfn "+ %A" t)
-    stream.OnExpire (fun t -> printfn "- %A" t)
-
-let printContValue (cv: IContValue) =
-    cv.OnSet (fun t -> printfn "new cv value: %A" t) 
-    cv.OnExpire (fun t -> printfn "expired cv value: %A" t) 
-        
+       
 let toSeconds value unit =
     match unit with
     | Sec -> value

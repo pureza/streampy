@@ -31,16 +31,19 @@
     <WarningLevel>3</WarningLevel>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
-    <StartArguments>"C:\Documents and Settings\pureza\My Documents\192.168.1.5\prototypes\ezql\test\trivial.sty"</StartArguments>
+    <StartArguments>"C:\streampy\prototypes\ezql\test\trivial.sty"</StartArguments>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Extensions.fs" />
     <FsLex Include="EzqlLexer.fsl" />
     <FsYacc Include="EzqlParser.fsy" />
     <Compile Include="EzqlAst.fs" />
     <Compile Include="EzqlParser.fs" />
     <Compile Include="EzqlLexer.fs" />
-    <Compile Include="EventQueue.fs" />
+    <Compile Include="Clock.fs" />
+    <Compile Include="Scheduler.fs" />
     <Compile Include="Types.fs" />
+    <Compile Include="Adapters.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Ezql.fs" />
   </ItemGroup>
