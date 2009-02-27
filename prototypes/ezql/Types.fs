@@ -33,19 +33,7 @@ and value =
 and IEvent =
     abstract Timestamp : DateTime with get
     abstract Item : string -> value with get
-
-and Event(timestamp:DateTime, fields:Map<string, value>) =
-    interface IEvent with
-        member self.Timestamp
-            with get() = timestamp
-        member self.Item
-            with get(field) = fields.[field]
-            
-    override self.ToString() =
-       "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
-            (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %A " pair.Key pair.Value ])
-             + "}"
-
+    abstract Fields : Map<string, value>
 (*
  * All IStreams have an OnAdd and an OnExpire. This is not correct from a
  * modelling point of view (because events in streams don't expire -- in fact
@@ -65,6 +53,27 @@ and IContValue =
     abstract SetCurrent : DateTime * value option -> unit
     abstract OnSet : (DateTime * value option -> unit) -> unit
     abstract OnExpire : (DateTime * value option -> unit) -> unit
+    abstract ToStream : unit -> IStream
+
+
+type Event(timestamp:DateTime, fields:Map<string, value>) =
+    interface IEvent with
+        member self.Timestamp
+            with get() = timestamp
+        member self.Item
+            with get(field) = fields.[field]
+        member self.Fields = fields
+
+    override self.Equals(otherObj:obj) =
+        let other = unbox<IEvent>(otherObj)
+        let selfI = self :> IEvent
+        other.Timestamp = selfI.Timestamp && other.Fields = selfI.Fields
+        
+    override self.ToString() =
+       "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
+            (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %A " pair.Key pair.Value ])
+             + "}"
+
 
 type Stream() =
     let triggerAdd, addEvent = Event.create()
@@ -84,7 +93,7 @@ type Stream() =
         member self.OnExpire(action) = () // Events in a stream don't expire
 
 
-and Window(interval:int, istream:IStream) as self =  
+type Window(interval:int, istream:IStream) as self =  
     let triggerExpire, expireEvent = Event.create()     
     // Should this window keep its contents?
     // Be default -- yes. But if another window is created from this one,
@@ -108,7 +117,7 @@ and Window(interval:int, istream:IStream) as self =
         member self.OnExpire(action) = expireEvent.Add(action)
 
 
-and ContValue() =
+type ContValue() =
     let triggerSet, setEvent = Event.create()
     let mutable current = (DateTime.MinValue, None)
     interface IContValue with
@@ -119,13 +128,20 @@ and ContValue() =
                                               triggerSet(time, value)
         member self.OnSet(action) = setEvent.Add(action)
         member self.OnExpire(action) = () // Continuous values don't expire
+        member self.ToStream() =
+            let result = Stream () :> IStream
+            (self :> IContValue).OnSet (fun (time, value) ->
+                                            match value with
+                                            | Some v -> result.Add(Event (time, Map.of_list [("value", v)]))
+                                            | _ -> failwithf "value is None")
+            result                                            
 
     static member FromStream(stream:IStream, field) =
         let result = ContValue () :> IContValue
         stream.OnAdd (fun item -> result.SetCurrent(item.Timestamp, Some item.[field]))
         result
            
-and ContValueWindow(interval:int) =
+type ContValueWindow(interval:int) =
     let cv = ContValue () :> IContValue
     let triggerExpire, expireEvent = Event.create()
     let history = SortedList<DateTime, value option>()
@@ -142,13 +158,15 @@ and ContValueWindow(interval:int) =
                                                     triggerExpire(prevTime, prevValue))
         member self.OnSet(action) = cv.OnSet(action)
         member self.OnExpire(action) = expireEvent.Add(action)
+        member self.ToStream() =
+            Window (interval, cv.ToStream()) :> IStream 
       
     static member FromContValue(cv: IContValue, interval:int) =
         let window = ContValueWindow(interval) :> IContValue
         cv.OnSet (fun (time, value) -> window.SetCurrent(time, value))
         window
 
-and ContValueSum(onSet, onExpire) as self =
+type ContValueSum(onSet, onExpire) as self =
     inherit ContValue()
     do let selfC = self :> IContValue 
        onSet(fun (time, value) ->

@@ -45,6 +45,7 @@
     <Compile Include="Types.fs" />
     <Compile Include="Adapters.fs" />
     <Compile Include="Eval.fs" />
+    <Compile Include="Engine.fs" />
     <Compile Include="Ezql.fs" />
   </ItemGroup>
   <ItemGroup>

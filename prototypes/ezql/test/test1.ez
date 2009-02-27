@@ -1,0 +1,18 @@
+temp_readings = stream (:room_id, :temperature);
+
+hot = temp_readings[3 sec]
+        .where(t -> t.temperature > 20)
+        .select(t -> { :temp = t.temperature, :blah = 3 + 5 * 6 });
+
+currentTemp = temp_readings.asContValue(:temperature);
+      
+sumTemp = temp_readings[5 sec].sum(:temperature);
+
+pastTemps = currentTemp[5 sec];
+
+#! temp_readings
+Timestamp, temperature
+0,          30
+3,          15
+4,          50
+

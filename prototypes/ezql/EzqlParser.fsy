@@ -3,6 +3,7 @@ open EzqlAst
 %}
 
 %start start
+%start record
 
 %token <string> ID
 %token <int> INTEGER_LITERAL
@@ -26,6 +27,7 @@ open EzqlAst
 %nonassoc LPAREN RPAREN LBRACKET RBRACKET
 
 %type <prog> start
+%type <expr> record
 
 %%
 
