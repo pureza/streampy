@@ -45,8 +45,10 @@ and evalE env = function
         | _ -> failwith "Time expression must evaluate to an integer"
     | expr.Integer v -> VInteger v
     | SymbolExpr v -> VSym v
-    | Id (Identifier name) -> 
-        env.[name]
+    | Id (Identifier name) ->
+        if Map.mem name env
+            then env.[name]
+            else failwithf "Unknown variable or identifier: %s" name
 
 and evalOp oper v1 v2 =
     match oper, v1, v2 with
