@@ -2,6 +2,7 @@
 
 \usepackage{framed}
 \usepackage{alltt}
+\usepackage{graphicx}
 
 \begin{document}
 \title{Technical Report}
@@ -275,23 +276,83 @@ operators are not enough).
 
 \section{Classes}
 
-\begin{itemize}
-\item Should we allow user defined classes for things besides
-  entities? What about inheritance, polymorphism...?
-\item Write something about \textbf{pulse};
-\item Mention that attributes are, by default, continuous values;
-\end{itemize}
+In EzQL, classes are used to model entities. It is not clear, at this
+point, if we should allow the developer to use classes for other
+things like creating a \verb=LinkedList= class. Also, at this point,
+inheritance is not supported. Should it be?
 
+The attributes of an object are, by default, continuous values, which
+is another way to say that they follow the state-changes
+semantics. However, sometimes we need the pulse sematics. For example:
+
+
+\begin{verbatim}
+stocks = Stream of { :symbol, :price, :volume } # Volume is new here
+
+@createFrom(stocks, :symbol)
+class Company
+end
+
+from c in all Company
+where c.volume > 1000
+\end{verbatim}
+
+This is wrong because volume is undefined between events. It's just
+like the noise level in a street between sensor readings: there was a
+value, but the system doesn't know it. It may have been quiet or an
+ambulance may have passed. We don't know anything, so the only
+sensible thing to do is to assume the value was undefined or NULL in
+database jargon.
+
+So, what would be the correct way of writing the previous query?
+First, we declare that the \verb=volume= attribute should follow
+\emph{pulse} semantics. Then, in the query itself, we must specify
+that we want the last value received (because there is no such thing
+as a \emph{current} value).
+
+\begin{verbatim}
+stocks = Stream of { :symbol, :price, :volume }
+
+@createFrom(stocks, :symbol)
+class Company
+    pulse volume
+end
+
+from c in all Company
+where c.volume.last() > 1000
+\end{verbatim}
+
+By the way, conceptually, the \verb=volume= attribute is
+indistinguishable from a stream. It is as if it was defined by the
+following query:
+
+\begin{verbatim}
+companyX.volume =
+  from ev in stocks
+  where ev.symbol = "companyX"
+  select ev.volume
+\end{verbatim}
 
 \section{Dummy events}
 
+Being event-driven and all, EzQL extends the notion of event to
+support internal (or dummy) events. In particular, some predefined
+events are fired when certain occurrences happen during the execution
+of the program. The developer may then listen for these occurrences
+(using \verb=when= blocks) and react to them any way they want.
+
+The following internal events may be raised by the system:
+
 \begin{itemize}
-\item When an attribute changes, generates an event;
-\item When an object is created, an event is generated;
-\item When an object enters or leaves a dictionary, an event may be
-  generated;
+\item Generate an event when an attribute changes;
+\item Generate an event when an object is created or destroyed;
+\item Generate an event when an object enters or leaves a dictionary;
+\item Generate an event every 5 minutes;
+\item Generate an event at 12:30 every day.
 \end{itemize}
 
+The following example shows how the user can listen to these events to
+increase the functionality of the application:
 
 \begin{verbatim}
 @createFrom(...)
@@ -308,8 +369,14 @@ cheap_tolls =
   select s
 
 
+when Segment.new(s)
+    print "segment " + s + " has been created"
+
 when cheap_tolls.removed(s)
     print "segment " + s + " has been removed from cheap_tolls
+
+when timer.at("12:30")
+    print "it's 12:30!"
 \end{verbatim}
 
 
@@ -475,6 +542,13 @@ an event arrives into a 5 minutes window, the \verb=Scheduler= sets up
 a timer to expire in 5 minutes. When this timer expires, a callback
 that handles the deletion of the event from the 5 minutes window is
 called.
+
+\begin{figure}[htbp]
+  \centering
+  \includegraphics[width=\textwidth]{stupid_diagram}
+  \caption{Major modules of the prototype}
+\end{figure}
+
 
 \section{Internal representation of values}
 
