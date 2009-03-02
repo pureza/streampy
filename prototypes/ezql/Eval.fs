@@ -32,8 +32,13 @@ and evalE env = function
         let target' = evalE env target
         let index' = evalE env index
         match (target', index') with
-        | (VStream stream, VTime (v, unit)) -> VStream (Window (toSeconds v unit, stream))
-        | (VContinuousValue cv, VTime (v, unit)) -> VContinuousValue (ContValueWindow.FromContValue(cv, (toSeconds v unit)))
+        | (VStream istream, VTime (v, unit)) ->
+            let rstream = Stream () :> IStream
+            istream.OnAdd (fun ev -> Scheduler.scheduleOffset (toSeconds v unit)
+                                                              (fun () -> rstream.Add(ev)))
+            VStream (Window (istream, rstream))
+        | (VContinuousValue cv, VTime (v, unit)) ->
+            VContinuousValue (ContValueWindow.FromContValue(cv, (toSeconds v unit)))
         | _ -> failwith "Can only index streams"
     | BinaryExpr (oper, expr1, expr2) ->        
         let value1 = evalE env expr1

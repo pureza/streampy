@@ -10,6 +10,8 @@ sumTemp = temp_readings[5 sec].sum(:temperature);
 
 pastTemps = currentTemp[5 sec];
 
+sumPastTemps = pastTemps.sum();
+
 #! temp_readings
 Timestamp, temperature
 0,          30

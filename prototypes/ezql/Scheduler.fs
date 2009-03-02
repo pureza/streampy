@@ -10,11 +10,15 @@ type Scheduler =
     { clock:IClock
       queue:SortedList<DateTime, callback list> }
 
-let init clock =
-    { clock = clock
+let init () =
+    { clock = VirtualClock ()
       queue = SortedList<DateTime, callback list>() }
 
-let sched = init (VirtualClock ())
+let sched = ref (init ())
+
+let reset () = sched := init ()
+
+let clock () = (!sched).clock
 
 let rec reSchedule sched =
     let queue = sched.queue
@@ -25,14 +29,14 @@ let rec reSchedule sched =
                                            reSchedule sched)
                                            
 let schedule time action =
-    let queue = sched.queue
+    let queue = (!sched).queue
     if queue.ContainsKey(time)
         then queue.[time] <- queue.[time] @ [action]
         else queue.[time] <- [action]
-    reSchedule sched
+    reSchedule (!sched)
 
 let scheduleOffset offset action =
-    schedule (sched.clock.Now + offset) action
+    schedule ((!sched).clock.Now + TimeSpan(0, 0, offset)) action
     
     
   

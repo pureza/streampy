@@ -6,8 +6,6 @@ open EzqlAst
 open Types
 open Eval
 
-let scheduler = Scheduler.sched
-
 let parse code =
     // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
     let lexbuf = Lexing.from_string code
@@ -24,13 +22,13 @@ let compile code =
     let env = Map.of_list [("stream", VType "stream")]
     match ast with
     | Prog stmts -> List.fold_left eval env stmts  
-        
+   
 let mainLoop () = 
-    let virtualClock = (!scheduler).clock :?> VirtualClock
+    let virtualClock = Scheduler.clock () :?> VirtualClock
     while virtualClock.HasNext () do
         virtualClock.Step ()
               
 let reset () =
     Scheduler.reset ()
     
-let now () = (!scheduler).clock.Now
+let now () = Scheduler.clock().Now

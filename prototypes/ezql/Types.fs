@@ -92,29 +92,17 @@ type Stream() =
         member self.OnAdd(action) = addEvent.Add(action)
         member self.OnExpire(action) = () // Events in a stream don't expire
 
-
-type Window(interval:int, istream:IStream) as self =  
+type Window(istream:IStream, rstream:IStream) as self =  
     let triggerExpire, expireEvent = Event.create()     
-    // Should this window keep its contents?
-    // Be default -- yes. But if another window is created from this one,
-    // then we should not keep contents here.
-    let mutable shouldKeep = true  
-    do istream.OnAdd(fun item -> (self :> IStream).Add(item)) // Register with istream
        
     interface IStream with
-        member self.Add(item) =
-            if shouldKeep 
-                then Scheduler.scheduleOffset (TimeSpan(0, 0, interval))
-                                              (fun () -> triggerExpire(item))
-                
+        member self.Add(item) = failwith "Events should be added to the istream, not the window."             
         member self.Where(predicate) =
-            shouldKeep <- false
-            Window (interval, istream.Where(predicate)) :> IStream
+            Window (istream.Where(predicate), rstream.Where(predicate)) :> IStream
         member self.Select(projector) =
-            shouldKeep <- false
-            Window (interval, istream.Select(projector)) :> IStream
+            Window (istream.Select(projector), rstream.Select(projector)) :> IStream
         member self.OnAdd(action) = istream.OnAdd(action)
-        member self.OnExpire(action) = expireEvent.Add(action)
+        member self.OnExpire(action) = rstream.OnAdd(action)
 
 
 type ContValue() =
@@ -131,9 +119,7 @@ type ContValue() =
         member self.ToStream() =
             let result = Stream () :> IStream
             (self :> IContValue).OnSet (fun (time, value) ->
-                                            match value with
-                                            | Some v -> result.Add(Event (time, Map.of_list [("value", v)]))
-                                            | _ -> failwithf "value is None")
+                                            result.Add(Event (time, Map.of_list [("value", value.Value)])))
             result                                            
 
     static member FromStream(stream:IStream, field) =
@@ -152,14 +138,16 @@ type ContValueWindow(interval:int) =
             cv.SetCurrent(time, value)  
             history.Add(time, value)
             if history.Count > 1 then
-                Scheduler.scheduleOffset (TimeSpan(0, 0, interval))
+                Scheduler.scheduleOffset interval
                                          (fun () -> let (prevTime, prevValue) = (history.Keys.[0], history.Values.[0])
                                                     history.RemoveAt(0) |> ignore
                                                     triggerExpire(prevTime, prevValue))
         member self.OnSet(action) = cv.OnSet(action)
         member self.OnExpire(action) = expireEvent.Add(action)
         member self.ToStream() =
-            Window (interval, cv.ToStream()) :> IStream 
+            let rstream = Stream () :> IStream
+            (self :> IContValue).OnExpire (fun (time, value) -> rstream.Add(Event (time, Map.of_list [("value", value.Value)])))
+            Window (cv.ToStream(), rstream) :> IStream 
       
     static member FromContValue(cv: IContValue, interval:int) =
         let window = ContValueWindow(interval) :> IContValue
@@ -175,10 +163,11 @@ type ContValueSum(onSet, onExpire) as self =
                                        | None, Some v -> Some v
                                        | _ -> None))
        onExpire(fun (time, value) ->
-                selfC.SetCurrent(time, match selfC.Current, value with
-                                       | Some t, Some v -> Some (t - v)
-                                       | None, Some v -> Some v
-                                       | _ -> None))
+                let now = (!Scheduler.sched).clock.Now 
+                selfC.SetCurrent(now, match selfC.Current, value with
+                                      | Some t, Some v -> Some (t - v)
+                                      | None, Some v -> Some v
+                                      | _ -> None))
     
     static member FromContValue(cv: IContValue) =
         ContValueSum (cv.OnSet, cv.OnExpire) :> IContValue

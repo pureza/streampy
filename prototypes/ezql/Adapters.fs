@@ -23,13 +23,15 @@ type CSVAdapter(stream:IStream, reader:TextReader) =
         
     let readLine (columns: string list) =
         let line = reader.ReadLine()
-        let timestamp, values =
-            match Array.to_list (line.Split [|','|]) with
-            | timestamp::values when values.Length = columns.Length -> (Int64.Parse(timestamp)), values
-            | _ -> failwith "error"
-        let values' = List.map tryParse values
-        let fields = Map.of_list (List.zip columns values')
-        Event(DateTime.MinValue.AddSeconds(float(timestamp)), fields) :> IEvent
+        if line.Length = 0 
+            then None
+            else let timestamp, values =
+                     match Array.to_list (line.Split [|','|]) with
+                     | timestamp::values when values.Length = columns.Length -> (Int64.Parse(timestamp)), values
+                     | _ -> failwith "error"
+                 let values' = List.map tryParse values
+                 let fields = Map.of_list (List.zip columns values')
+                 Some (Event(DateTime.MinValue.AddSeconds(float(timestamp)), fields) :> IEvent)
         
     let read(reader) =
         seq { let columns = readColumns
@@ -38,8 +40,9 @@ type CSVAdapter(stream:IStream, reader:TextReader) =
     
     let events = read(reader)
     do for ev in events do
-           Scheduler.schedule ev.Timestamp
-                              (fun _ -> stream.Add(ev))
+           match ev with
+           | Some event -> Scheduler.schedule event.Timestamp (fun _ -> stream.Add(event))
+           | _ -> ()
         
     static member FromString(stream, string) =
         CSVAdapter (stream, new StringReader (string))

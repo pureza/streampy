@@ -13,14 +13,17 @@ type VirtualClock() =
     let mutable nextEvent = None
     
     interface IClock with
-        member self.Schedule(time, action) = nextEvent <- Some (time, action)
+        member self.Schedule(time, action) = 
+            if time < now then failwith "Scheduling a past event"
+            nextEvent <- Some (time, action)
         member self.Now = now
         
     member self.Step () =
         match nextEvent with
-        | Some (time, action) -> nextEvent <- None
-                                 now <- time
-                                 action()
+        | Some (time, action) -> 
+            nextEvent <- None
+            now <- time
+            action()
         | None -> failwithf "nextEvent was None"
         
     member self.HasNext () =
