@@ -15,6 +15,7 @@ and value =
     | VTime of int * timeUnit
     | VStream of IStream
     | VContinuousValue of IContValue
+    | VMap of IMap
     | VClosure of context * expr
     | VEvent of IEvent
     | VRecord of Map<string, value>
@@ -44,9 +45,9 @@ and IStream =
     abstract Add : IEvent -> unit
     abstract Where : (IEvent -> bool) -> IStream
     abstract Select : (IEvent -> Map<string, value>) -> IStream
+    abstract GroupBy : string * (IStream -> IContValue) -> IMap
     abstract OnAdd : (IEvent -> unit) -> unit
     abstract OnExpire : (IEvent -> unit) -> unit
-
 
 and IContValue =
     abstract Current : value option with get
@@ -55,6 +56,10 @@ and IContValue =
     abstract OnExpire : (DateTime * value option -> unit) -> unit
     abstract ToStream : unit -> IStream
 
+and IMap =
+    abstract Add : IEvent -> unit
+    abstract Item : value -> IContValue with get
+    abstract Where : (IContValue -> bool) -> IMap
 
 type Event(timestamp:DateTime, fields:Map<string, value>) =
     interface IEvent with
@@ -73,6 +78,9 @@ type Event(timestamp:DateTime, fields:Map<string, value>) =
        "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
             (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %A " pair.Key pair.Value ])
              + "}"
+             
+    static member WithValue(timestamp, value) =
+        Event(timestamp, Map.of_list [("value", value)])
 
 
 type Stream() =
@@ -89,18 +97,66 @@ type Stream() =
             let result = Stream() :> IStream
             (self :> IStream).OnAdd(fun item -> result.Add(Event(item.Timestamp, projector item)))
             result
+        member self.GroupBy(field, fn) =
+            let map = ParentMap(field, fn) :> IMap
+            (self :> IStream).OnAdd(fun item -> map.Add(item))
+            map
+            
         member self.OnAdd(action) = addEvent.Add(action)
         member self.OnExpire(action) = () // Events in a stream don't expire
 
-type Window(istream:IStream, rstream:IStream) as self =  
-    let triggerExpire, expireEvent = Event.create()     
-       
+and ParentMap(field:string, fn:(IStream -> IContValue)) =
+    let istream = Stream () :> IStream
+    let rstream = Stream () :> IStream
+    let substreams = Dictionary<value, IStream>()
+    let results = Dictionary<value, IContValue>()
+    let addKey key =
+        if not (substreams.ContainsKey(key)) then
+            let stream = Stream ()
+            substreams.Add(key, stream)
+            results.Add(key, fn stream)
+
+    interface IMap with
+        member self.Add(item) = 
+            let key = item.[field]
+            addKey key
+            substreams.[key].Add(item)
+            results.[key].ToStream().OnAdd(fun ev -> istream.Add(Event (ev.Timestamp, ev.Fields.Add("key", VContinuousValue results.[key]))))
+        member self.Item 
+            with get(key) =
+                if not (results.ContainsKey(key))
+                    then addKey key
+                results.[key]
+        member self.Where(predicate) =
+            let childIstream = istream.Where(fun ev -> (predicate (match ev.Fields.["key"] with
+                                                                   | VContinuousValue cv -> cv
+                                                                   | _ -> failwith "error" )))
+            ChildMap (childIstream) :> IMap
+
+and ChildMap(istream) =
+    do istream.OnAdd (fun ev -> printfn "Adicionado %A no pai" ev)
+    interface IMap with
+        member self.Add(item) = 
+            ()
+        member self.Item
+            with get(key) =
+                failwith "ni"
+        member self.Where(predicate) =
+            failwith "ni"
+
+    
+
+type Window(istream:IStream, rstream:IStream) = 
     interface IStream with
         member self.Add(item) = failwith "Events should be added to the istream, not the window."             
         member self.Where(predicate) =
             Window (istream.Where(predicate), rstream.Where(predicate)) :> IStream
         member self.Select(projector) =
             Window (istream.Select(projector), rstream.Select(projector)) :> IStream
+        member self.GroupBy(field, fn) =
+            let map = ParentMap(field, fn) :> IMap
+            (self :> IStream).OnAdd(fun item -> map.Add(item))
+            map
         member self.OnAdd(action) = istream.OnAdd(action)
         member self.OnExpire(action) = rstream.OnAdd(action)
 
@@ -119,7 +175,7 @@ type ContValue() =
         member self.ToStream() =
             let result = Stream () :> IStream
             (self :> IContValue).OnSet (fun (time, value) ->
-                                            result.Add(Event (time, Map.of_list [("value", value.Value)])))
+                                            result.Add(Event.WithValue(time, value.Value)))
             result                                            
 
     static member FromStream(stream:IStream, field) =
@@ -146,7 +202,7 @@ type ContValueWindow(interval:int) =
         member self.OnExpire(action) = expireEvent.Add(action)
         member self.ToStream() =
             let rstream = Stream () :> IStream
-            (self :> IContValue).OnExpire (fun (time, value) -> rstream.Add(Event (time, Map.of_list [("value", value.Value)])))
+            (self :> IContValue).OnExpire (fun (time, value) -> rstream.Add(Event.WithValue (time, value.Value)))
             Window (cv.ToStream(), rstream) :> IStream 
       
     static member FromContValue(cv: IContValue, interval:int) =

@@ -74,16 +74,19 @@ let AssertThat(entity, onAdd, onExpire, facts) =
 
     onAdd    (checkBuilder EventAdded)
     onExpire (checkBuilder EventExpired)
+    queue
 
 (* A Test *)
 
 type Test =
-    { code:string; env:Map<string, value> }
+    { code:string; env:Map<string, value>; queues:ICollection<testQueue> }
     member self.AssertThat((entity, facts)) =
-        match self.env.[entity] with
-        | VStream stream -> AssertThat(entity, stream.OnAdd, stream.OnExpire, facts)
-        | VContinuousValue cv -> AssertThat(entity, cv.ToStream().OnAdd, cv.ToStream().OnExpire, facts)
-        | _ -> failwith "entity is neither stream nor continuous value"
+        let entityExpr = (EzqlParser.expr EzqlLexer.token (Lexing.from_string entity))
+        self.queues.Add(match (evalE self.env entityExpr) with
+                        | VStream stream -> AssertThat(entity, stream.OnAdd, stream.OnExpire, facts)
+                        | VContinuousValue cv -> AssertThat(entity, cv.ToStream().OnAdd, cv.ToStream().OnExpire, facts)
+                        | VMap assoc -> failwith "assert for assocs not implemented"
+                        | _ -> failwith "entity is neither stream nor continuous value")
     
 
 let init code inputs =
@@ -92,8 +95,10 @@ let init code inputs =
         match env.[inputStream] with
         | VStream stream -> CSVAdapter.FromString(stream, events) |> ignore
         | _ -> failwith "Input is not a stream" 
-    { code = code; env = env }
+    { code = code; env = env; queues = LinkedList<testQueue>() }
 
+let testsLeft test =
+    Seq.to_list (Seq.concat [ for queue in test.queues -> queue.Values ])
 
 (* TestCases *)
 
@@ -115,18 +120,33 @@ type TestCaseAttribute(srcFile:string) =
         let code, inputs = parseTestFile (@"C:\streampy\prototypes\ezql\test\" + srcFile)
         init code inputs
 
-let runTests () =                       
-    let asm = Assembly.LoadFrom(Assembly.GetExecutingAssembly().GetName().Name + ".exe")
-    for typ in asm.GetTypes() do
+let currentAssembly = Assembly.LoadFrom(Assembly.GetExecutingAssembly().GetName().Name + ".exe")
+
+let findTests () =
+    let asm = currentAssembly
+    [ for typ in asm.GetTypes() do
         if typ.IsClass then
             let typ' = asm.GetType(typ.FullName)
-            let tests = Array.filter (fun (m:MethodInfo) ->
-                                          Array.exists (fun (a:obj) -> a :? TestCaseAttribute) 
-                                                       (m.GetCustomAttributes(true)))
-                                     (typ'.GetMethods(BindingFlags.Static ||| BindingFlags.Public))
-            for m in tests do
-                let attr = m.GetCustomAttributes(true).[0] :?> TestCaseAttribute
-                Engine.reset ()
-                m.Invoke(null, [|box (attr.CreateTest())|]) |> ignore
-                Engine.mainLoop ()
-                printf "."
+            yield! [ for m in typ'.GetMethods(BindingFlags.Static ||| BindingFlags.Public) do
+                       if Array.exists (fun (a:obj) -> a :? TestCaseAttribute) (m.GetCustomAttributes(true))
+                         then yield m ] ]
+
+let findTest testName =
+    List.find (fun (t:MethodInfo) -> t.Name = testName) (findTests ())
+                         
+let runTests (testMethods:MethodInfo list) =
+    for testMethod in testMethods do
+        let attr = testMethod.GetCustomAttributes(true).[0] :?> TestCaseAttribute
+        let test = attr.CreateTest()
+        let testName = testMethod.Name
+        try
+            testMethod.Invoke(null, [|box test|]) |> ignore
+        with
+        | err -> printfn "%A" err
+        Engine.mainLoop ()
+        let left = testsLeft test
+        if left.IsEmpty
+            then printf "."
+            else printfn "[%s] test(s) left: %A" testName left
+
+        Engine.reset ()

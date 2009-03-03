@@ -22,7 +22,7 @@ and evalE env = function
         let target = evalE env expr
         match target with
         | VEvent ev -> ev.[name]
-        | _ -> failwith "Not an event!"
+        | _ -> failwith "eval MemberAccess: Not an event!"
     | Lambda (args, body) as fn -> VClosure (env, fn)
     | Record fields ->
         VRecord (Map.of_list (List.map (fun (Symbol (name), expr) ->
@@ -39,7 +39,8 @@ and evalE env = function
             VStream (Window (istream, rstream))
         | (VContinuousValue cv, VTime (v, unit)) ->
             VContinuousValue (ContValueWindow.FromContValue(cv, (toSeconds v unit)))
-        | _ -> failwith "Can only index streams"
+        | (VMap assoc, index) -> VContinuousValue assoc.[index]
+        | _ -> failwith "eval ArrayIndex: Can only index streams."
     | BinaryExpr (oper, expr1, expr2) ->        
         let value1 = evalE env expr1
         let value2 = evalE env expr2
@@ -53,14 +54,18 @@ and evalE env = function
     | Id (Identifier name) ->
         if Map.mem name env
             then env.[name]
-            else failwithf "Unknown variable or identifier: %s" name
+            else failwithf "eval: Unknown variable or identifier: %s" name
 
 and evalOp oper v1 v2 =
     match oper, v1, v2 with
     | GreaterThan, VInteger v1, VInteger v2 -> VBoolean (v1 > v2)
+    | GreaterThan, VContinuousValue v1, VInteger v2 -> 
+        match v1.Current.Value with
+        | VInteger v1' -> VBoolean (v1' > v2)
+        | _ -> failwith "evalOp: Wrong continuous value type"
     | Plus, VInteger v1, VInteger v2 -> VInteger (v1 + v2)
     | Times, VInteger v1, VInteger v2 -> VInteger (v1 * v2)
-    | _ -> failwithf "Wrong type oper = %A" oper
+    | _ -> failwithf "evalOp: Wrong type oper = %A" oper
 
 and evalMethod target name parameters =
     match target with
@@ -68,6 +73,7 @@ and evalMethod target name parameters =
         match name with
         | "where" -> evalStreamWhere stream parameters
         | "select" -> evalStreamSelect stream parameters
+        | "groupby" -> evalStreamGroupBy stream parameters
         | "asContValue" -> evalAsContValue stream parameters
         | "sum" -> evalStreamSum stream parameters
         | _ -> failwithf "Unknown method %s" name
@@ -75,53 +81,71 @@ and evalMethod target name parameters =
         match name with
         | "sum" -> evalSum cv parameters    
         | _ -> failwithf "Unknown method %s" name
+    | VMap assoc ->
+        match name with
+        | "where" -> evalAssocWhere assoc parameters
+        | _ -> failwith "Unknown method %s" name
     | _ -> failwith "This type has no methods?"
 
 and evalStreamWhere stream parameters =
     match parameters with
     | [(VClosure (env, expr)) as closure] ->
-        VStream (stream.Where(fun ev -> match (evalClosure closure) [ev] with
+        VStream (stream.Where(fun ev -> match (evalClosure closure) [VEvent ev] with
                                         | VBoolean b -> b
-                                        | _ -> failwith "wrong"))
-    | _ -> failwith "Invalid parameter"
+                                        | _ -> failwith "where: wrong result"))
+    | _ -> failwith "where: Invalid parameter"
 
 and evalStreamSelect stream parameters =
     match parameters with
     | [(VClosure (env, expr)) as closure] ->
-        VStream (stream.Select(fun ev -> match (evalClosure closure) [ev] with
+        VStream (stream.Select(fun ev -> match (evalClosure closure) [VEvent ev] with
                                          | VRecord r -> r
-                                         | _ -> failwith "wrong"))
-    | _ -> failwith "Invalid parameter"
+                                         | _ -> failwith "select: wrong result"))
+    | _ -> failwith "select: Invalid parameter"
+
+and evalStreamGroupBy stream parameters =
+    match parameters with
+    | [VSym (Symbol field); (VClosure (env, expr)) as closure] ->
+        VMap (stream.GroupBy(field, (fun group -> match (evalClosure closure) [VStream group] with
+                                                    | VContinuousValue v -> v
+                                                    | _ -> failwith "groupby: wrong result")))
+    | _ -> failwith "groupby: Invalid parameters"
 
 and evalAsContValue stream parameters =
     match parameters with
     | [VSym (Symbol field)] ->
         VContinuousValue (ContValue.FromStream (stream, field))
-    | _ -> failwith "Invalid parameter"
+    | _ -> failwith "asContValue: Invalid parameter"
 
+and evalAssocWhere assoc parameters =
+    match parameters with
+    | [(VClosure (env, expr)) as closure] ->
+        VMap (assoc.Where(fun cv -> match (evalClosure closure) [VContinuousValue cv] with
+                                      | VBoolean b -> b
+                                      | _ -> failwith "where: wrong result"))
+    | _ -> failwith "select: Invalid parameter"
 
 and evalSum cv parameters =
     match parameters with
     | [] -> VContinuousValue (ContValueSum.FromContValue(cv))
-    | _ -> failwith "Invalid parameter"
+    | _ -> failwith "sum: Invalid parameter"
 
 and evalStreamSum stream parameters =
     match parameters with
     | [VSym (Symbol field)] ->
         VContinuousValue (ContValueSum.FromStream (stream, field))
-    | _ -> failwith "Invalid parameter"
-    
+    | _ -> failwith "sum: Invalid parameter"
+   
 and evalClosure = function
     | VClosure (env, expr) ->
         match expr with
         | Lambda (ids, body) ->
             (fun args ->
                 let ids' = List.map (fun (Identifier name) -> name) ids
-                let args' = List.map VEvent args
                 let env' = List.fold_left (fun (e:context) (n, v) -> e.Add(n, v)) 
-                                          env (List.zip ids' args')
+                                          env (List.zip ids' args)
                 evalE env' body)
-        | _ -> failwith "Wrong type"
+        | _ -> failwith "evalClosure: Wrong type"
     | _ -> failwith "This is not a closure"
 
 and evalFunction fn paramVals =
