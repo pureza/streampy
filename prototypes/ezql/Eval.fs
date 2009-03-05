@@ -38,7 +38,15 @@ and evalE env = function
                                                               (fun () -> rstream.Add(ev)))
             VStream (Window (istream, rstream))
         | (VContinuousValue cv, VTime (v, unit)) ->
-            VContinuousValue (ContValueWindow.FromContValue(cv, (toSeconds v unit)))
+            let rstream = Stream () :> IStream
+            let window = ContValueWindow(cv.InsStream, rstream)
+            (window :> IContValue).OnSet (fun (t, _) -> 
+                                            if window.Previous.IsSome then 
+                                                let prevT, prevV = window.Previous.Value
+                                                Scheduler.scheduleOffset (toSeconds v unit)
+                                                                         (fun () -> rstream.Add(Event.WithValue(prevT, prevV))))   
+            
+            VContinuousValue window
         | (VMap assoc, index) -> VContinuousValue assoc.[index]
         | _ -> failwith "eval ArrayIndex: Can only index streams."
     | BinaryExpr (oper, expr1, expr2) ->        
@@ -60,7 +68,7 @@ and evalOp oper v1 v2 =
     match oper, v1, v2 with
     | GreaterThan, VInteger v1, VInteger v2 -> VBoolean (v1 > v2)
     | GreaterThan, VContinuousValue v1, VInteger v2 -> 
-        match v1.Current.Value with
+        match v1.Current with
         | VInteger v1' -> VBoolean (v1' > v2)
         | _ -> failwith "evalOp: Wrong continuous value type"
     | Plus, VInteger v1, VInteger v2 -> VInteger (v1 + v2)
@@ -127,13 +135,14 @@ and evalAssocWhere assoc parameters =
 
 and evalSum cv parameters =
     match parameters with
-    | [] -> VContinuousValue (ContValueSum.FromContValue(cv))
+    | [] -> VContinuousValue (sum (cv.InsStream, cv.RemStream))
     | _ -> failwith "sum: Invalid parameter"
 
 and evalStreamSum stream parameters =
     match parameters with
     | [VSym (Symbol field)] ->
-        VContinuousValue (ContValueSum.FromStream (stream, field))
+        let mappedStream = stream.Select (fun ev -> Map.of_list [("value", ev.[field])])
+        VContinuousValue (sum (mappedStream.InsStream, mappedStream.RemStream))
     | _ -> failwith "sum: Invalid parameter"
    
 and evalClosure = function
@@ -152,4 +161,13 @@ and evalFunction fn paramVals =
     match fn with
     | VType name when name = "stream" -> VStream (Stream ())
     | _ -> failwith "Calling functions not yet implemented"
-    
+   
+and sum(addStream:IStream, expireStream:IStream) =
+    let insStream = Stream () :> IStream
+    let cv = ContValue(insStream, VInteger 0) :> IContValue
+   
+    addStream.OnAdd (fun ev -> insStream.Add(Event.WithValue(ev.Timestamp, cv.Current + ev.["value"])))
+    expireStream.OnAdd (fun ev -> 
+        let now = (Scheduler.clock ()).Now
+        insStream.Add(Event.WithValue(now, cv.Current - ev.["value"])))
+    cv

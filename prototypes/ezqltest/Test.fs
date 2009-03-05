@@ -57,7 +57,7 @@ let In entity (facts:(DateTime * fact) list) =
         | _ -> facts
     (entity, facts')
 
-let AssertThat(entity, onAdd, onExpire, facts) =
+let AssertThat(entity, (istream:IStream), (rstream:IStream), facts) =
     let queue = SortedList<DateTime, fact>(Map.of_list facts)
     let checkBuilder factType = 
         (fun ev ->
@@ -72,8 +72,8 @@ let AssertThat(entity, onAdd, onExpire, facts) =
                 then if queue.[now] = fact then queue.Remove(now) |> ignore
                 else printfn "[%s] Warning: Non-predicted fact '%A' occurred at %A" entity fact now.TotalSeconds)
 
-    onAdd    (checkBuilder EventAdded)
-    onExpire (checkBuilder EventExpired)
+    istream.OnAdd (checkBuilder EventAdded)
+    rstream.OnAdd (checkBuilder EventExpired)
     queue
 
 (* A Test *)
@@ -83,9 +83,9 @@ type Test =
     member self.AssertThat((entity, facts)) =
         let entityExpr = (EzqlParser.expr EzqlLexer.token (Lexing.from_string entity))
         self.queues.Add(match (evalE self.env entityExpr) with
-                        | VStream stream -> AssertThat(entity, stream.OnAdd, stream.OnExpire, facts)
-                        | VContinuousValue cv -> AssertThat(entity, cv.ToStream().OnAdd, cv.ToStream().OnExpire, facts)
-                        | VMap assoc -> failwith "assert for assocs not implemented"
+                        | VStream stream -> AssertThat(entity, stream.InsStream, stream.RemStream, facts)
+                        | VContinuousValue cv -> AssertThat(entity, cv.InsStream, cv.RemStream, facts)
+                        | VMap assoc -> AssertThat(entity, assoc.InsStream, assoc.RemStream, facts)
                         | _ -> failwith "entity is neither stream nor continuous value")
     
 

@@ -21,6 +21,11 @@ and value =
     | VRecord of Map<string, value>
     | VType of string
     
+    member self.ContValue () =
+        match self with
+        | VContinuousValue cv -> cv
+        | _ -> failwith "Not a continuous value!"
+    
     static member (+)(left:value, right:value) =
         match left, right with
         | VInteger l, VInteger r -> VInteger (l + r)
@@ -48,18 +53,21 @@ and IStream =
     abstract GroupBy : string * (IStream -> IContValue) -> IMap
     abstract OnAdd : (IEvent -> unit) -> unit
     abstract OnExpire : (IEvent -> unit) -> unit
+    abstract InsStream : IStream
+    abstract RemStream : IStream
 
 and IContValue =
-    abstract Current : value option with get
-    abstract SetCurrent : DateTime * value option -> unit
-    abstract OnSet : (DateTime * value option -> unit) -> unit
-    abstract OnExpire : (DateTime * value option -> unit) -> unit
-    abstract ToStream : unit -> IStream
+    abstract Current : value with get
+    abstract OnSet : (DateTime * value -> unit) -> unit
+    abstract OnExpire : (DateTime * value -> unit) -> unit
+    abstract InsStream : IStream
+    abstract RemStream : IStream
 
 and IMap =
-    abstract Add : IEvent -> unit
     abstract Item : value -> IContValue with get
     abstract Where : (IContValue -> bool) -> IMap
+    abstract InsStream : IStream
+    abstract RemStream : IStream
 
 type Event(timestamp:DateTime, fields:Map<string, value>) =
     interface IEvent with
@@ -98,140 +106,121 @@ type Stream() =
             (self :> IStream).OnAdd(fun item -> result.Add(Event(item.Timestamp, projector item)))
             result
         member self.GroupBy(field, fn) =
-            let map = ParentMap(field, fn) :> IMap
-            (self :> IStream).OnAdd(fun item -> map.Add(item))
-            map
+            ParentMap(self, field, fn) :> IMap
             
         member self.OnAdd(action) = addEvent.Add(action)
         member self.OnExpire(action) = () // Events in a stream don't expire
+        member self.InsStream = self :> IStream
+        member self.RemStream = Stream.NullStream
+        
+    static member NullStream = Stream () :> IStream
 
-and ParentMap(field:string, fn:(IStream -> IContValue)) =
+and ParentMap(stream:IStream, field:string, fn:(IStream -> IContValue)) =
+    // Will contain the keys of new or updated elements
     let istream = Stream () :> IStream
+    // Will contain the keys of removed elements
     let rstream = Stream () :> IStream
     let substreams = Dictionary<value, IStream>()
-    let results = Dictionary<value, IContValue>()
-    let addKey key =
+    let resultSet = Dictionary<value, IContValue>()
+
+    let checkAndAddKey key =
         if not (substreams.ContainsKey(key)) then
             let stream = Stream ()
             substreams.Add(key, stream)
-            results.Add(key, fn stream)
+            resultSet.Add(key, fn stream)
+            resultSet.[key].OnSet (fun (timestamp, _) -> istream.Add(Event.WithValue (timestamp, key)))
+    let add (ev:IEvent) =
+        let key = ev.[field]
+        checkAndAddKey key
+        substreams.[key].Add(ev)
 
-    interface IMap with
-        member self.Add(item) = 
-            let key = item.[field]
-            addKey key
-            substreams.[key].Add(item)
-            results.[key].ToStream().OnAdd(fun ev -> istream.Add(Event (ev.Timestamp, ev.Fields.Add("key", VContinuousValue results.[key]))))
+    do stream.OnAdd (fun ev ->
+                        add ev
+                        istream.Add (Event.WithValue(ev.Timestamp, ev.[field])))
+
+    interface IMap with            
         member self.Item 
             with get(key) =
-                if not (results.ContainsKey(key))
-                    then addKey key
-                results.[key]
+                if not (resultSet.ContainsKey(key)) then checkAndAddKey key
+                resultSet.[key]
         member self.Where(predicate) =
-            let childIstream = istream.Where(fun ev -> (predicate (match ev.Fields.["key"] with
-                                                                   | VContinuousValue cv -> cv
-                                                                   | _ -> failwith "error" )))
-            ChildMap (childIstream) :> IMap
+            let realPred = fun (ev:IEvent) -> predicate resultSet.[ev.["value"]]
+            let childistream = istream.Where(fun ev -> realPred ev)
+            let childrstream = istream.Where(fun ev -> not (realPred ev))
+            ChildMap (resultSet, childistream, childrstream) :> IMap
+        member self.InsStream = istream
+        member self.RemStream = Stream.NullStream
 
-and ChildMap(istream) =
-    do istream.OnAdd (fun ev -> printfn "Adicionado %A no pai" ev)
+and ChildMap(resultSet, pistream, prstream) =
+    let istream = Stream () :> IStream
+    let rstream = Stream () :> IStream
+    let liveSet = Dictionary<value, IContValue>()
+    do pistream.OnAdd (fun ev -> 
+                         let key = ev.["value"]
+                         if not (liveSet.ContainsKey(key)) then
+                             liveSet.[key] <- resultSet.[key]
+                             istream.Add(ev))
+       prstream.OnAdd (fun ev -> 
+                         let key = ev.["value"]
+                         if (liveSet.ContainsKey(key)) then 
+                             liveSet.Remove(key) |> ignore
+                             rstream.Add(ev))
     interface IMap with
-        member self.Add(item) = 
-            ()
         member self.Item
-            with get(key) =
-                failwith "ni"
-        member self.Where(predicate) =
-            failwith "ni"
+            with get(key) = resultSet.[key]
+        member self.Where(predicate) = failwith "ni"
+        member self.InsStream = istream
+        member self.RemStream = rstream
 
-    
-
-type Window(istream:IStream, rstream:IStream) = 
+and Window(istream:IStream, rstream:IStream) = 
     interface IStream with
         member self.Add(item) = failwith "Events should be added to the istream, not the window."             
         member self.Where(predicate) =
             Window (istream.Where(predicate), rstream.Where(predicate)) :> IStream
         member self.Select(projector) =
             Window (istream.Select(projector), rstream.Select(projector)) :> IStream
-        member self.GroupBy(field, fn) =
-            let map = ParentMap(field, fn) :> IMap
-            (self :> IStream).OnAdd(fun item -> map.Add(item))
-            map
+        member self.GroupBy(field, fn) = ParentMap(self, field, fn) :> IMap
         member self.OnAdd(action) = istream.OnAdd(action)
         member self.OnExpire(action) = rstream.OnAdd(action)
+        member self.InsStream = istream
+        member self.RemStream = rstream
 
+and ContValue(istream:IStream, ?defaultValue:value) =
+    let mutable current = defaultValue
+    do istream.OnAdd (fun ev -> current <- Some ev.["value"])
 
-type ContValue() =
-    let triggerSet, setEvent = Event.create()
-    let mutable current = (DateTime.MinValue, None)
     interface IContValue with
         member self.Current
-            with get() = snd(current)
-            
-        member self.SetCurrent(time, value) = current <- (time, value)
-                                              triggerSet(time, value)
-        member self.OnSet(action) = setEvent.Add(action)
+            with get() = current.Value
+        member self.OnSet(action) = istream.OnAdd (fun ev -> action(ev.Timestamp, ev.["value"]))
         member self.OnExpire(action) = () // Continuous values don't expire
-        member self.ToStream() =
-            let result = Stream () :> IStream
-            (self :> IContValue).OnSet (fun (time, value) ->
-                                            result.Add(Event.WithValue(time, value.Value)))
-            result                                            
+        member self.InsStream = istream   
+        member self.RemStream = Stream.NullStream                                       
+
+    override self.ToString() = sprintf "« %A »" (self :> IContValue).Current
 
     static member FromStream(stream:IStream, field) =
-        let result = ContValue () :> IContValue
-        stream.OnAdd (fun item -> result.SetCurrent(item.Timestamp, Some item.[field]))
-        result
-           
-type ContValueWindow(interval:int) =
-    let cv = ContValue () :> IContValue
-    let triggerExpire, expireEvent = Event.create()
-    let history = SortedList<DateTime, value option>()
+        ContValue (stream.Select (fun ev -> Map.of_list [("value", ev.[field])])) :> IContValue
+
+type ContValueWindow(istream:IStream, rstream:IStream) =
+    let cv = ContValue (istream) :> IContValue
+    let history = SortedList<DateTime, value>()
+    do istream.OnAdd (fun ev -> history.Add(ev.Timestamp, ev.["value"]))
+       rstream.OnAdd (fun ev -> history.RemoveAt(0))
     
     interface IContValue with
         member self.Current with get() = cv.Current
-        member self.SetCurrent(time, value) =
-            cv.SetCurrent(time, value)  
-            history.Add(time, value)
-            if history.Count > 1 then
-                Scheduler.scheduleOffset interval
-                                         (fun () -> let (prevTime, prevValue) = (history.Keys.[0], history.Values.[0])
-                                                    history.RemoveAt(0) |> ignore
-                                                    triggerExpire(prevTime, prevValue))
         member self.OnSet(action) = cv.OnSet(action)
-        member self.OnExpire(action) = expireEvent.Add(action)
-        member self.ToStream() =
-            let rstream = Stream () :> IStream
-            (self :> IContValue).OnExpire (fun (time, value) -> rstream.Add(Event.WithValue (time, value.Value)))
-            Window (cv.ToStream(), rstream) :> IStream 
-      
-    static member FromContValue(cv: IContValue, interval:int) =
-        let window = ContValueWindow(interval) :> IContValue
-        cv.OnSet (fun (time, value) -> window.SetCurrent(time, value))
-        window
+        member self.OnExpire(action) = rstream.OnAdd (fun ev -> action(ev.Timestamp, ev.["value"]))
+        member self.InsStream = istream
+        member self.RemStream = rstream
+         
+    member self.Previous = 
+        let index = history.Count - 2
+        if index >= 0
+            then Some (history.Keys.[index], history.Values.[index])
+            else None
 
-type ContValueSum(onSet, onExpire) as self =
-    inherit ContValue()
-    do let selfC = self :> IContValue 
-       onSet(fun (time, value) ->
-                selfC.SetCurrent(time, match selfC.Current, value with
-                                       | Some t, Some v -> Some (t + v)
-                                       | None, Some v -> Some v
-                                       | _ -> None))
-       onExpire(fun (time, value) ->
-                let now = (!Scheduler.sched).clock.Now 
-                selfC.SetCurrent(now, match selfC.Current, value with
-                                      | Some t, Some v -> Some (t - v)
-                                      | None, Some v -> Some v
-                                      | _ -> None))
-    
-    static member FromContValue(cv: IContValue) =
-        ContValueSum (cv.OnSet, cv.OnExpire) :> IContValue
-
-    static member FromStream(stream: IStream, field) =
-        ContValueSum ((fun action -> stream.OnAdd(fun item -> action(item.Timestamp, Some item.[field]))),
-                      (fun action -> stream.OnExpire(fun item -> action(item.Timestamp, Some item.[field]))))
-       
 let toSeconds value unit =
     match unit with
     | Sec -> value
