@@ -68,8 +68,8 @@ let AssertThat(entity, (istream:IStream), (rstream:IStream), facts) =
                 queue.RemoveAt(0) |> ignore
             
             let fact = (factType ev)
-            if queue.Count > 0 && queue.Keys.[0] = now
-                then if queue.[now] = fact then queue.Remove(now) |> ignore
+            if queue.Count > 0 && queue.Keys.[0] = now && queue.[now] = fact
+                then queue.Remove(now) |> ignore
                 else printfn "[%s] Warning: Non-predicted fact '%A' occurred at %A" entity fact now.TotalSeconds)
 
     istream.OnAdd (checkBuilder EventAdded)

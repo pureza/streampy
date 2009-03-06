@@ -66,13 +66,11 @@ and evalE env = function
 
 and evalOp oper v1 v2 =
     match oper, v1, v2 with
-    | GreaterThan, VInteger v1, VInteger v2 -> VBoolean (v1 > v2)
-    | GreaterThan, VContinuousValue v1, VInteger v2 -> 
-        match v1.Current with
-        | VInteger v1' -> VBoolean (v1' > v2)
-        | _ -> failwith "evalOp: Wrong continuous value type"
-    | Plus, VInteger v1, VInteger v2 -> VInteger (v1 + v2)
-    | Times, VInteger v1, VInteger v2 -> VInteger (v1 * v2)
+    | GreaterThan, VInteger v1', VInteger v2' -> VBoolean (v1' > v2')
+    | GreaterThan, VContinuousValue v1', VInteger v2' -> VContinuousValue (v1'.op_GreaterThan(v2))
+    | Plus, VInteger v1', VInteger v2' -> VInteger (v1' + v2')
+    | Plus, VContinuousValue v1', _ -> VContinuousValue (v1'.op_Addition(v2))
+    | Times, VInteger v1', VInteger v2' -> VInteger (v1' * v2')
     | _ -> failwithf "evalOp: Wrong type oper = %A" oper
 
 and evalMethod target name parameters =
@@ -87,7 +85,8 @@ and evalMethod target name parameters =
         | _ -> failwithf "Unknown method %s" name
     | VContinuousValue cv ->
         match name with
-        | "sum" -> evalSum cv parameters    
+        | "sum" -> evalSum cv parameters
+        | "any" -> evalAny cv parameters
         | _ -> failwithf "Unknown method %s" name
     | VMap assoc ->
         match name with
@@ -115,8 +114,8 @@ and evalStreamGroupBy stream parameters =
     match parameters with
     | [VSym (Symbol field); (VClosure (env, expr)) as closure] ->
         VMap (stream.GroupBy(field, (fun group -> match (evalClosure closure) [VStream group] with
-                                                    | VContinuousValue v -> v
-                                                    | _ -> failwith "groupby: wrong result")))
+                                                  | VContinuousValue v -> v
+                                                  | _ -> failwith "groupby: wrong result")))
     | _ -> failwith "groupby: Invalid parameters"
 
 and evalAsContValue stream parameters =
@@ -129,8 +128,8 @@ and evalAssocWhere assoc parameters =
     match parameters with
     | [(VClosure (env, expr)) as closure] ->
         VMap (assoc.Where(fun cv -> match (evalClosure closure) [VContinuousValue cv] with
-                                      | VBoolean b -> b
-                                      | _ -> failwith "where: wrong result"))
+                                    | VContinuousValue cv' -> cv'
+                                    | _ -> failwith "where: wrong result"))
     | _ -> failwith "select: Invalid parameter"
 
 and evalSum cv parameters =
@@ -138,6 +137,11 @@ and evalSum cv parameters =
     | [] -> VContinuousValue (sum (cv.InsStream, cv.RemStream))
     | _ -> failwith "sum: Invalid parameter"
 
+and evalAny cv parameters =
+    match parameters with
+    | [] -> VContinuousValue (any (cv.InsStream, cv.RemStream))
+    | _ -> failwith "sum: Invalid parameter"
+    
 and evalStreamSum stream parameters =
     match parameters with
     | [VSym (Symbol field)] ->
@@ -171,3 +175,38 @@ and sum(addStream:IStream, expireStream:IStream) =
         let now = (Scheduler.clock ()).Now
         insStream.Add(Event.WithValue(now, cv.Current - ev.["value"])))
     cv
+
+and count(addStream:IStream, expireStream:IStream) =
+    let insStream = Stream () :> IStream
+    let cv = ContValue(insStream, VInteger 0) :> IContValue
+   
+    addStream.OnAdd (fun ev -> insStream.Add(Event.WithValue(ev.Timestamp, cv.Current + VInteger 1)))
+    expireStream.OnAdd (fun ev -> 
+        let now = (Scheduler.clock ()).Now
+        insStream.Add(Event.WithValue(now, cv.Current - VInteger 1)))
+    cv
+
+and any(addStream:IStream, expireStream:IStream) =
+    let insStream = Stream () :> IStream
+    let cv = ContValue(insStream, VBoolean false) :> IContValue
+    let trueCount = ref 0
+   
+    addStream.OnAdd (fun ev -> 
+                        let value = ev.["value"]
+                        match value with
+                        | VBoolean true -> trueCount := !trueCount + 1
+                        | _ -> ()
+                        if cv.Current = VBoolean false && !trueCount > 0 then
+                            insStream.Add(Event.WithValue(ev.Timestamp, VBoolean true)))
+                            
+    expireStream.OnAdd (fun ev -> 
+                          let value = ev.["value"]
+                          match value with
+                          | VBoolean true -> trueCount := max (!trueCount - 1) 0
+                          | _ -> ()
+                          if cv.Current = VBoolean true && !trueCount = 0 then
+                              let now = (Scheduler.clock ()).Now
+                              insStream.Add(Event.WithValue(now, VBoolean false)))
+
+    cv  
+      

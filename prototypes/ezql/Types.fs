@@ -35,6 +35,11 @@ and value =
         match left, right with
         | VInteger l, VInteger r -> VInteger (l - r)
         | _ -> failwith "Invalid types in -"
+        
+    static member op_GreaterThan(left:value, right:value) =
+        match left, right with
+        | VInteger l, VInteger r -> VBoolean (l > r)
+        | _ -> failwith "Invalid types in +"
 
 and IEvent =
     abstract Timestamp : DateTime with get
@@ -62,10 +67,12 @@ and IContValue =
     abstract OnExpire : (DateTime * value -> unit) -> unit
     abstract InsStream : IStream
     abstract RemStream : IStream
+    abstract (+) : value -> IContValue
+    abstract op_GreaterThan : value -> IContValue
 
 and IMap =
     abstract Item : value -> IContValue with get
-    abstract Where : (IContValue -> bool) -> IMap
+    abstract Where : (IContValue -> IContValue) -> IMap
     abstract InsStream : IStream
     abstract RemStream : IStream
 
@@ -123,51 +130,53 @@ and ParentMap(stream:IStream, field:string, fn:(IStream -> IContValue)) =
     let substreams = Dictionary<value, IStream>()
     let resultSet = Dictionary<value, IContValue>()
 
-    let checkAndAddKey key =
-        if not (substreams.ContainsKey(key)) then
-            let stream = Stream ()
-            substreams.Add(key, stream)
-            resultSet.Add(key, fn stream)
-            resultSet.[key].OnSet (fun (timestamp, _) -> istream.Add(Event.WithValue (timestamp, key)))
+    let addKey key =
+        let stream = Stream ()
+        substreams.Add(key, stream)
+        resultSet.Add(key, fn stream)
+
     let add (ev:IEvent) =
         let key = ev.[field]
-        checkAndAddKey key
-        substreams.[key].Add(ev)
+        if not (substreams.ContainsKey(key)) then
+            addKey key
+            // This line must come before the following to give ChildMaps
+            // the chance to create their continuous values for the
+            // where expressions
+            istream.Add (Event.WithValue(ev.Timestamp, ev.[field]))
+        substreams.[key].Add(ev)   
 
-    do stream.OnAdd (fun ev ->
-                        add ev
-                        istream.Add (Event.WithValue(ev.Timestamp, ev.[field])))
+    do stream.OnAdd (fun ev -> add ev)                    
 
     interface IMap with            
         member self.Item 
             with get(key) =
-                if not (resultSet.ContainsKey(key)) then checkAndAddKey key
+               // if not (resultSet.ContainsKey(key)) then addKey key |> ignore
                 resultSet.[key]
-        member self.Where(predicate) =
-            let realPred = fun (ev:IEvent) -> predicate resultSet.[ev.["value"]]
-            let childistream = istream.Where(fun ev -> realPred ev)
-            let childrstream = istream.Where(fun ev -> not (realPred ev))
-            ChildMap (resultSet, childistream, childrstream) :> IMap
+        member self.Where(predicate) = ChildMap(self, predicate) :> IMap
         member self.InsStream = istream
         member self.RemStream = Stream.NullStream
-
-and ChildMap(resultSet, pistream, prstream) =
+        
+and ChildMap(parent:IMap, predicate) =
     let istream = Stream () :> IStream
     let rstream = Stream () :> IStream
     let liveSet = Dictionary<value, IContValue>()
-    do pistream.OnAdd (fun ev -> 
-                         let key = ev.["value"]
-                         if not (liveSet.ContainsKey(key)) then
-                             liveSet.[key] <- resultSet.[key]
-                             istream.Add(ev))
-       prstream.OnAdd (fun ev -> 
-                         let key = ev.["value"]
-                         if (liveSet.ContainsKey(key)) then 
-                             liveSet.Remove(key) |> ignore
-                             rstream.Add(ev))
+    do parent.InsStream.OnAdd 
+        (fun ev -> 
+             let key = ev.["value"]
+             let value = parent.[key]
+             let predValue = predicate value
+             predValue.OnSet (fun (t, v) -> 
+                match v with
+                | VBoolean true -> if not (liveSet.ContainsKey(key)) then
+                                       liveSet.[key] <- value
+                                       istream.Add(Event.WithValue(t, key))
+                | _ -> if liveSet.ContainsKey(key) then
+                           liveSet.Remove(key) |> ignore
+                           rstream.Add(Event.WithValue(t, key))))
+ 
     interface IMap with
         member self.Item
-            with get(key) = resultSet.[key]
+            with get(key) = liveSet.[key]
         member self.Where(predicate) = failwith "ni"
         member self.InsStream = istream
         member self.RemStream = rstream
@@ -196,12 +205,16 @@ and ContValue(istream:IStream, ?defaultValue:value) =
         member self.OnExpire(action) = () // Continuous values don't expire
         member self.InsStream = istream   
         member self.RemStream = Stream.NullStream                                       
+        member self.(+)(right) =
+            ContValue ((self :> IContValue).InsStream.Select (fun ev -> Map.of_list [("value", ev.["value"] + right)])) :> IContValue
+        member self.op_GreaterThan(right) =
+            ContValue ((self :> IContValue).InsStream.Select (fun ev -> Map.of_list [("value", value.op_GreaterThan(ev.["value"], right))])) :> IContValue
 
     override self.ToString() = sprintf "« %A »" (self :> IContValue).Current
 
     static member FromStream(stream:IStream, field) =
         ContValue (stream.Select (fun ev -> Map.of_list [("value", ev.[field])])) :> IContValue
-
+        
 type ContValueWindow(istream:IStream, rstream:IStream) =
     let cv = ContValue (istream) :> IContValue
     let history = SortedList<DateTime, value>()
@@ -214,6 +227,16 @@ type ContValueWindow(istream:IStream, rstream:IStream) =
         member self.OnExpire(action) = rstream.OnAdd (fun ev -> action(ev.Timestamp, ev.["value"]))
         member self.InsStream = istream
         member self.RemStream = rstream
+        member self.(+)(right) =
+            let selfC = self :> IContValue
+            let projector = fun (ev:IEvent) -> Map.of_list [("value", ev.["value"] + right)]
+            ContValueWindow (selfC.InsStream.Select projector,
+                             selfC.RemStream.Select projector) :> IContValue
+        member self.op_GreaterThan(right) =
+            let selfC = self :> IContValue
+            let projector = fun (ev:IEvent) -> Map.of_list [("value", value.op_GreaterThan(ev.["value"], right))]
+            ContValueWindow (selfC.InsStream.Select(projector),
+                             selfC.RemStream.Select(projector)) :> IContValue
          
     member self.Previous = 
         let index = history.Count - 2

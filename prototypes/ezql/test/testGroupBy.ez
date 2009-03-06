@@ -3,14 +3,17 @@ temp_readings = stream (:room_id, :temperature);
 sumPerRoom = temp_readings
                .groupby(:room_id, g -> g.sum(:temperature));
 
+
 sumPerRoomBiggerThan50 = sumPerRoom
                            .where(s -> s > 50);
+
+sumPerRoomBiggerThan503secs = sumPerRoom
+                                .where(s -> (s[3 sec] > 50).any());
 
 
 #! temp_readings
 Timestamp, room_id, temperature
 0,               1,          30
-3,               2,          15
 4,               1,          50
 5,               1,          -40
 
