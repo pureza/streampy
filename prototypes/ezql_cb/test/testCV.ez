@@ -1,12 +1,14 @@
 temp_readings = stream (:room_id, :temperature);
 
-currentTemp = temp_readings.asContValue(:temperature);
+currentTemp = temp_readings.last(:temperature);
 
 currTempPlus5 = currentTemp + 5; 
-      
+     
 sumTemp = temp_readings[5 sec].sum(:temperature);
 
 pastTemps = currentTemp[5 sec];
+
+pastTempsPlus5 = pastTemps + 5; 
 
 sumPastTemps = pastTemps.sum();
 

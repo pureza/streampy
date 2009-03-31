@@ -44,6 +44,11 @@ let Set expr (timestamp:DateTime) =
 
 let Del eventTimestamp expr (timestamp:DateTime) =
     Expired eventTimestamp (sprintf "{ :value = %s }" expr) timestamp
+    
+let AddKey = Set
+
+let DelKey expr (timestamp:DateTime) =
+    Expired timestamp.TotalSeconds (sprintf "{ :value = %s }" expr) timestamp    
 
 let In entity (facts:(DateTime * fact) list) =
     let interval, f = facts.Head
@@ -57,7 +62,7 @@ let In entity (facts:(DateTime * fact) list) =
         | _ -> facts
     (entity, facts')
 
-let AssertThat(entity, (istream:IStream), (rstream:IStream), facts) =
+let AssertThat(entity, (istream:IStream<IEvent>), (rstream:IStream<IEvent>), facts) =
     let queue = SortedList<DateTime, fact>(Map.of_list facts)
     let checkBuilder factType = 
         (fun ev ->
@@ -84,8 +89,11 @@ type Test =
         let entityExpr = (EzqlParser.expr EzqlLexer.token (Lexing.from_string entity))
         self.queues.Add(match (evalE self.env entityExpr) with
                         | VStream stream -> AssertThat(entity, stream.InsStream, stream.RemStream, facts)
-                        | VContinuousValue cv -> AssertThat(entity, cv.InsStream, cv.RemStream, facts)
-                        | VMap assoc -> AssertThat(entity, assoc.InsStream, assoc.RemStream, facts)
+                        | VContinuousValue cv -> 
+                            let istream = cv.InsStream.Select (fun (t, v) -> Event.WithValue(t, v))
+                            let rstream = cv.InsStream.Select (fun (t, v) -> Event.WithValue(t, v))
+                            AssertThat(entity, istream, rstream, facts)
+                      //  | VMap assoc -> AssertThat(entity, assoc.InsStream, assoc.RemStream, facts)
                         | _ -> failwith "entity is neither stream nor continuous value")
     
 

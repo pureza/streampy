@@ -35,13 +35,48 @@
       <Name>FSharp.PowerPack</Name>
       <AssemblyName>FSharp.PowerPack.dll</AssemblyName>
     </Reference>
+    <Reference Include="Microsoft.GLEE, Version=1.2.0.0, Culture=neutral, PublicKeyToken=7f84f738e1fc245c">
+      <Name>Microsoft.GLEE</Name>
+      <AssemblyName>Microsoft.GLEE.dll</AssemblyName>
+      <HintPath>..\ezql\lib\Microsoft.GLEE.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Microsoft.GLEE.Drawing, Version=1.2.0.0, Culture=neutral, PublicKeyToken=8a3d7c21d5fa1306">
+      <Name>Microsoft.GLEE.Drawing</Name>
+      <AssemblyName>Microsoft.GLEE.Drawing.dll</AssemblyName>
+      <HintPath>..\ezql\lib\Microsoft.GLEE.Drawing.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Microsoft.Glee.GraphViewerGDI, Version=1.2.0.0, Culture=neutral, PublicKeyToken=fffc27ea4058b3a1">
+      <Name>Microsoft.Glee.GraphViewerGDI</Name>
+      <AssemblyName>Microsoft.GLEE.GraphViewerGDI.dll</AssemblyName>
+      <HintPath>..\ezql\lib\Microsoft.GLEE.GraphViewerGDI.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="QuickGraph, Version=3.2.40228.0, Culture=neutral, PublicKeyToken=f3fb40175eec2af3">
+      <Name>QuickGraph</Name>
+      <AssemblyName>QuickGraph.dll</AssemblyName>
+      <HintPath>..\ezql\lib\QuickGraph.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="QuickGraph.Glee, Version=3.2.40228.0, Culture=neutral, PublicKeyToken=f3fb40175eec2af3">
+      <Name>QuickGraph.Glee</Name>
+      <AssemblyName>QuickGraph.Glee.dll</AssemblyName>
+      <HintPath>..\ezql\lib\QuickGraph.Glee.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
+    <Reference Include="System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+      <Name>System.Windows.Forms</Name>
+      <AssemblyName>System.Windows.Forms.dll</AssemblyName>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Test.fs" />
+    <Compile Include="TestCV2.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

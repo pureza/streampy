@@ -8,21 +8,21 @@ open Scheduler
 type IAdapter =
     abstract OnEvent : (Event -> unit)
 
-type CSVAdapter(stream:IStream, reader:TextReader) =
+type CSVAdapter(stream:IStream<IEvent>, reader:TextReader) =
     let tryParse value =
         match Int32.TryParse(value) with
         | s, r when s -> VInteger r
         | _ -> failwith "Unrecognized type"
 
     let readColumns =
-        let line = reader.ReadLine()       
+        let line = (reader.ReadLine().Split([|'#'|])).[0] 
         line.Split [|','|]
         |> Array.map (fun s -> s.Trim())
         |> Array.to_list
         |> List.tl
         
     let readLine (columns: string list) =
-        let line = reader.ReadLine()
+        let line = (reader.ReadLine().Split([|'#'|])).[0]
         if line.Length = 0 
             then None
             else let timestamp, values =

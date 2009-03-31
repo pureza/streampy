@@ -1,4 +1,0 @@
-- Create a stream.Partition method to avoid doing stream.Where(predicate) and stream.Where(not predicate)
-- ContValueWindow.Previous?
-- Testar o + nos COntValueWindow
-- Analisar os ev.["value"]

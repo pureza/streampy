@@ -1,0 +1,46 @@
+temp_readings = stream (:room_id, :temperature);
+
+// sum
+
+sumPerRoom = temp_readings
+               .groupby(:room_id, g -> g.sum(:temperature));
+
+
+sumPerRoomBiggerThan50 = sumPerRoom
+                           .where(s -> s > 50);
+
+sumPerRoomBiggerThan50_3secs = sumPerRoom
+                                 .where(s -> (s[3 sec] > 50).any());
+
+// max
+
+maxPerRoom = temp_readings
+               .groupby(:room_id, g -> g.max(:temperature));
+
+
+maxPerRoomBiggerThan50 = maxPerRoom
+                           .where(m -> m > 50);
+
+maxPerRoomBiggerThan50_3secs = maxPerRoom
+                                .where(m -> (m[3 sec] > 50).any());
+
+
+currentPerRoom = temp_readings
+                   .groupby(:room_id, g -> g.last(:temperature));
+
+hotRooms = currentPerRoom
+             .where (t -> t > 50);
+
+hotAndWasHotter = hotRooms
+                    .where (t -> t.max() > 60);
+  
+#! temp_readings
+Timestamp, room_id, temperature    # max    sum
+0,               1,          30    #  30     30
+4,               1,          60    #  60     90
+5,               1,         -40    #  60     50
+6,               1,          40    #  60     90
+7,               1,          70    #  70    160
+8,               1,         -70    #  70     90
+9,               1,         -70    #  70     20
+

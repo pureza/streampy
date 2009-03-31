@@ -13,7 +13,8 @@ let simpleTest (test:Test) =
  
  
 [<TestCase ("testCV.ez")>]
-let testCV (test:Test) =             
+let testCV (test:Test) =   
+        
     test.AssertThat (In "currentTemp"
                       [Set "30" (At 0)
                        Set "15" (At 3)
@@ -39,6 +40,13 @@ let testCV (test:Test) =
                        Del 0 "30" (At 8)
                        Del 3 "15" (At 9)]) 
 
+    test.AssertThat (In "pastTempsPlus5"
+                      [Set "35" (At 0)
+                       Set "20" (At 3)
+                       Set "55" (At 4)
+                       Del 0 "35" (At 8)
+                       Del 3 "20" (At 9)]) 
+
     test.AssertThat (In "sumPastTemps"
                       [Set "30" (At 0)
                        Set "45" (At 3)
@@ -62,18 +70,57 @@ let testGroupBy (test:Test) =
                        Set "40" (At 5)])
 *)
 
+
+
     test.AssertThat (In "sumPerRoomBiggerThan50"
-                      [Set "1" (At  4)
-                       Del 5 "1" (At  5)])
+                      [AddKey "1" (At  4)
+                       DelKey "1" (At  5)
+                       AddKey "1" (At  6)
+                       DelKey "1" (At  9)])
 
-    test.AssertThat (In "sumPerRoomBiggerThan503secs"
-                      [Set "1" (At  4)
-                       Del 8 "1" (At  8)])
+    test.AssertThat (In "sumPerRoomBiggerThan50_3secs"
+                      [AddKey "1" (At  4)
+                       DelKey "1" (At  12)])
+
+    test.AssertThat (In "maxPerRoomBiggerThan50"
+                      [AddKey "1" (At  4)])
+
+    test.AssertThat (In "maxPerRoomBiggerThan50_3secs"
+                      [AddKey "1" (At  4)])
+                                         
+    test.AssertThat (In "hotRooms"
+                      [AddKey "1" (At  4)
+                       DelKey "1" (At  5)
+                       AddKey "1" (At  7)
+                       DelKey "1" (At  8)])  
                        
- 
-Test.runTests (Test.findTests ())
+    test.AssertThat (In "hotAndWasHotter"
+                      [AddKey "1" (At  7)
+                       DelKey "1" (At  8)])                 
 
+
+[<TestCase ("testMERDA.ez")>]
+let testDiamond (test:Test) =             
+    test.AssertThat (In "d"
+                       [Set   "60" (At 0)
+                        Set  "120" (At 4)
+                        Set  "-80" (At 5)
+                        Set   "80" (At 6)
+                        Set  "140" (At 7)
+                        Set "-140" (At 8)]) 
+                        
+//Test.runTests (Test.findTests ())
+
+//Test.runTests [(Test.findTest "simpleTest")]
 //Test.runTests [(Test.findTest "testCV")]
 //Test.runTests [(Test.findTest "testGroupBy")]
 
+Test.runTests [(Test.findTest "testDiamond")]
+
+//Test.runTests [(Test.findTest "testCV2")]
+
+
+
+
 Console.ReadLine() |> ignore
+//let graph = edges.ToAdjacencyGraph(edges)

@@ -5,10 +5,10 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProductVersion>8.0.30703</ProductVersion>
     <SchemaVersion>2.0</SchemaVersion>
-    <ProjectGuid>{af03cfcd-93b4-4c4d-b19b-e769a7873e9f}</ProjectGuid>
+    <ProjectGuid>{d1e5d2c4-42fa-496d-82e7-e5baf0c32b81}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <RootNamespace>GraphPrototype</RootNamespace>
-    <AssemblyName>GraphPrototype</AssemblyName>
+    <RootNamespace>ezql</RootNamespace>
+    <AssemblyName>ezql</AssemblyName>
     <TargetFrameworkVersion>v3.5</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <Name>ezql</Name>
@@ -30,20 +30,42 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>3</WarningLevel>
   </PropertyGroup>
+  <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
+    <StartArguments>"C:\streampy\prototypes\ezql\test\trivial.sty"</StartArguments>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Extensions.fs" />
+    <FsLex Include="EzqlLexer.fsl" />
+    <FsYacc Include="EzqlParser.fsy" />
+    <Compile Include="EzqlAst.fs" />
+    <Compile Include="EzqlParser.fs" />
+    <Compile Include="EzqlLexer.fs" />
+    <Compile Include="Clock.fs" />
+    <Compile Include="Scheduler.fs" />
+    <Compile Include="Types.fs" />
+    <Compile Include="Adapters.fs" />
+    <Compile Include="Eval.fs" />
+    <Compile Include="Depend.fs" />
+    <Compile Include="Engine.fs" />
+  </ItemGroup>
   <ItemGroup>
     <Reference Include="FSharp.PowerPack, Version=1.9.6.2, Culture=neutral, PublicKeyToken=a19089b1c74d0809">
       <Name>FSharp.PowerPack</Name>
       <AssemblyName>FSharp.PowerPack.dll</AssemblyName>
+    </Reference>
+    <Reference Include="QuickGraph, Version=3.2.40228.0, Culture=neutral, PublicKeyToken=f3fb40175eec2af3">
+      <Name>QuickGraph</Name>
+      <AssemblyName>QuickGraph.dll</AssemblyName>
+      <HintPath>lib\QuickGraph.dll</HintPath>
+      <Private>True</Private>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
   </ItemGroup>
-  <ItemGroup>
-    <Compile Include="Program.fs" />
-  </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\FSharp\1.0\Microsoft.FSharp.Targets" />
+  <Import Project="$(MSBuildExtensionsPath)\FSharp\1.0\FSharp.PowerPack.Targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
 	     Other similar extension points exist, see Microsoft.Common.targets.
 	<Target Name="BeforeBuild">
