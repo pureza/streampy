@@ -41,6 +41,9 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Types.fs" />
+    <Compile Include="Oper.fs" />
+    <Compile Include="MapOper.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\FSharp\1.0\Microsoft.FSharp.Targets" />
