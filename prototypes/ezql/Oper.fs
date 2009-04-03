@@ -31,7 +31,7 @@ type link = changes -> changes
  *
  * The evaluation function returns:
  * - What changed during this step of the evaluation (a diff list)
- * - The list of (children, inputIndex) to spread these changes
+ * - The list of (children, inputIndex, link) to spread these changes
  *)
 [<ReferenceEquality>]
 type oper = { Eval: oper -> changes list -> (childData List * changes) option

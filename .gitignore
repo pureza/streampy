@@ -15,8 +15,8 @@
 *.dll
 obj/
 *.swp
-EzqlLexer.fs
-EzqlParser.fs
-EzqlParser.fsi
+*Lexer.fs
+*Parser.fs
+*Parser.fsi
 _region_.tex
 

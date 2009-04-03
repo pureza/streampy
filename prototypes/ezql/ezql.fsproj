@@ -35,15 +35,52 @@
       <Name>FSharp.PowerPack</Name>
       <AssemblyName>FSharp.PowerPack.dll</AssemblyName>
     </Reference>
+    <Reference Include="Microsoft.GLEE, Version=1.2.0.0, Culture=neutral, PublicKeyToken=7f84f738e1fc245c">
+      <Name>Microsoft.GLEE</Name>
+      <AssemblyName>Microsoft.GLEE.dll</AssemblyName>
+      <HintPath>lib\Microsoft.GLEE.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Microsoft.GLEE.Drawing, Version=1.2.0.0, Culture=neutral, PublicKeyToken=8a3d7c21d5fa1306">
+      <Name>Microsoft.GLEE.Drawing</Name>
+      <AssemblyName>Microsoft.GLEE.Drawing.dll</AssemblyName>
+      <HintPath>lib\Microsoft.GLEE.Drawing.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="Microsoft.Glee.GraphViewerGDI, Version=1.2.0.0, Culture=neutral, PublicKeyToken=fffc27ea4058b3a1">
+      <Name>Microsoft.Glee.GraphViewerGDI</Name>
+      <AssemblyName>Microsoft.GLEE.GraphViewerGDI.dll</AssemblyName>
+      <HintPath>lib\Microsoft.GLEE.GraphViewerGDI.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core">
       <RequiredTargetFramework>3.5</RequiredTargetFramework>
     </Reference>
+    <Reference Include="System.Drawing, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a">
+      <Name>System.Drawing</Name>
+      <AssemblyName>System.Drawing.dll</AssemblyName>
+    </Reference>
+    <Reference Include="System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089">
+      <Name>System.Windows.Forms</Name>
+      <AssemblyName>System.Windows.Forms.dll</AssemblyName>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Ast.fs" />
+    <FsYacc Include="Parser.fsy" />
+    <FsLex Include="Lexer.fsl" />
+    <Compile Include="Parser.fs" />
+    <Compile Include="Lexer.fs" />
     <Compile Include="Types.fs" />
     <Compile Include="Oper.fs" />
     <Compile Include="MapOper.fs" />
+    <Compile Include="Graph.fs" />
+    <Compile Include="Clock.fs" />
+    <Compile Include="Scheduler.fs" />
+    <Compile Include="Adapters.fs" />
+    <Compile Include="Dataflow.fs" />
+    <Compile Include="Engine.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\FSharp\1.0\Microsoft.FSharp.Targets" />

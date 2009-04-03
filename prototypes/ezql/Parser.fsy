@@ -1,0 +1,114 @@
+%{
+open Ast
+%}
+
+%start start
+%start expr
+
+%token <string> ID
+%token <int> INTEGER_LITERAL
+%token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE ASSIGN
+%token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV COMMA
+%token GT GTE EQ DIFF LTE LT AND OR NOT
+%token SEC MIN
+%token EOF
+
+%nonassoc SEMICOLON
+%nonassoc ARROW
+%right ASSIGN
+%left OR
+%left AND
+%left EQ DIFF
+%left GT GTE LTE LT
+%left PLUS MINUS
+%left TIMES DIV
+%nonassoc NOT
+%left DOT
+%nonassoc LPAREN RPAREN LBRACKET RBRACKET
+
+%type <prog> start
+%type <expr> expr
+
+%%
+
+start: prog                                              { $1 }
+
+prog: statements                                         { Prog ($1) }
+
+statements:
+    | statement                                          { [$1] }
+    | statements statement                               { $1 @ [$2] }
+
+statement:
+	| ID ASSIGN expr SEMICOLON                           { Assign (Identifier $1, $3) }
+
+expr:
+    | expr DOT ID LPAREN args RPAREN                     { MethodCall ($1, Identifier $3, $5) }
+    | expr LBRACKET expr RBRACKET                        { ArrayIndex ($1, $3) }
+    | expr DOT ID                                        { MemberAccess ($1, Identifier $3) }
+    | expr LPAREN args RPAREN                            { FuncCall ($1, $3) }
+    | parameters ARROW expr                              { Lambda ($1, $3) }
+    | LPAREN expr RPAREN                                 { $2 }
+    | binaryExpr                                         { $1 }
+    | record                                             { $1 }
+    | ID                                                 { Id (Identifier $1) }
+    | symbol                                             { SymbolExpr $1 }
+    | INTEGER_LITERAL timeUnit                           { Time (Integer $1, $2) }
+    | INTEGER_LITERAL                                    { Integer $1 }
+
+binaryExpr:
+    | expr GT    expr                                    { BinaryExpr (GreaterThan, $1, $3) }
+    | expr GTE   expr                                    { BinaryExpr (GreaterThanOrEqual, $1, $3) }
+    | expr EQ    expr                                    { BinaryExpr (Equal, $1, $3) }
+    | expr DIFF  expr                                    { BinaryExpr (NotEqual, $1, $3) }
+    | expr LTE   expr                                    { BinaryExpr (LessThanOrEqual, $1, $3) }
+    | expr LT    expr                                    { BinaryExpr (LessThan, $1, $3) }
+    | expr AND   expr                                    { BinaryExpr (And, $1, $3) }
+    | expr OR    expr                                    { BinaryExpr (Or, $1, $3) }
+    | expr PLUS  expr                                    { BinaryExpr (Plus, $1, $3) }
+    | expr MINUS expr                                    { BinaryExpr (Minus, $1, $3) }
+    | expr TIMES expr                                    { BinaryExpr (Times, $1, $3) }
+    | expr DIV   expr                                    { BinaryExpr (Div, $1, $3) }
+
+symbol: COLON ID                                         { Symbol $2 }
+
+// (), identifier or (identifier1, identifier2, ... identifierN)
+parameters:
+    | LPAREN RPAREN                                      { [] }
+    | ID                                                 { [Identifier $1] }
+    | LPAREN ID moreParams                               { (Identifier $2)::$3 }
+
+moreParams:
+    | RPAREN                                             { [] }
+    | COMMA ID moreParams                                { (Identifier $2)::$3 }
+
+record: LBRACE initList RBRACE                           { Record $2 }
+
+initList: symbol ASSIGN expr moreInits                   { ($1, $3)::$4 }
+
+moreInits:
+    |                                                    { [] }
+    | COMMA symbol ASSIGN expr moreInits                 { ($2, $4)::$5 }
+
+// Zero or more, comma-separated parameters
+//parameters:
+//    |                                                    { [] }
+//    | ID more_params                                     { (Identifier $1)::$2 }
+//
+//more_params:
+//   |                                                    { [] }
+//   | COMMA ID more_params                               { (Identifier $2)::$3 }
+
+
+// Zero or more, comma-separated expressions
+args:
+    |                                                    { [] }
+    | expr more_args                                     { $1::$2 }
+
+more_args:
+    |                                                    { [] }
+    | COMMA expr more_args                               { $2::$3 }
+
+timeUnit:
+    | SEC                                                { Sec }
+    | MIN                                                { Min }

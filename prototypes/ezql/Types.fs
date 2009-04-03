@@ -3,7 +3,7 @@
 open System
 open System.Collections.Generic
 
-type event(timestamp:DateTime, fields:Map<string, value>) =
+type Event(timestamp:DateTime, fields:Map<string, value>) =
     member self.Timestamp with get() = timestamp
     member self.Item with get(field) = fields.[field]
     member self.Fields = fields
@@ -14,7 +14,7 @@ and value =
     | VString of string
     | VRecord of Dictionary<value, value>
     | VDict of Dictionary<value, value>
-    | VEvent of event
+    | VEvent of Event
     | VNull
     
     override self.ToString() =
