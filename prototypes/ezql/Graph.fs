@@ -139,17 +139,19 @@ module Graph =
     open System.Windows.Forms
     open System.Drawing
   
-    let display graph =
+    let display graph pp =
     
       let toGleeGraph graph =
         fold (fun (acc:Microsoft.Glee.Drawing.Graph) (p, v, l, s) -> 
                 for node in p do
-                  acc.AddEdge(node.ToString(), v.ToString()) |> ignore
+                  let nodeL = (labelOf node graph).Value
+                  acc.AddEdge(pp node nodeL, pp v l) |> ignore
                 
-                acc.AddNode (v.ToString()) |> ignore
+                acc.AddNode (pp v l) |> ignore
                 
                 for node in s do
-                  acc.AddEdge(v.ToString(), node.ToString()) |> ignore
+                  let nodeL = (labelOf node graph).Value
+                  acc.AddEdge(pp v l, pp node nodeL) |> ignore
 
                 acc)
              (new Microsoft.Glee.Drawing.Graph ("graph")) graph    

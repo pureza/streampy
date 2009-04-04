@@ -157,11 +157,19 @@ let ast = Engine.parse @"
 
     x = temp_readings.last(:temp);
     y = temp_readings.last(:temp);
+    
+    z = y * (x + x[3 min].max());
+    
+    tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temp) > x);
    "
 
 match ast with
 | Prog stmts -> let g = Graph.empty()
-                let g' = List.fold_left dataflow g stmts 
-                Graph.Viewer.display g'
+                let env = Map.empty
+                let roots = []
+                let env', roots', g' = List.fold_left (fun (env', roots', g') stmt -> dataflow env' roots' g' stmt)
+                                                      (env, roots, g) stmts 
+                List.iter (printfn "%s") (Graph.Algorithms.topSort roots' g')
+                Graph.Viewer.display g' (fun k (v:NodeInfo) -> v.Name)
 
 Console.ReadLine() |> ignore
