@@ -156,13 +156,13 @@ open Dataflow
 let streams, allOps = Engine.compile @"
                             temp_readings = stream (:room_id, :temperature);
 
-                            x = temp_readings.last(:room_id);
-                            y = temp_readings.last(:temperature);
+                            //x = temp_readings.last(:room_id);
+                            //y = temp_readings.last(:temperature);
                             
                             //z = x + y * 3;
-                            hot_readings = temp_readings.where(ev -> ev.temperature > x);
+                            //hot_readings = temp_readings.where(ev -> ev.temperature > 20);
                             
-                            lastHot = hot_readings.last(:temperature);
+                            lastHot = temp_readings.last(:temperature) + temp_readings.last(:temperature);
                             
                             //a = (y - x + (x * temp_readings.last(:temperature)));
                             

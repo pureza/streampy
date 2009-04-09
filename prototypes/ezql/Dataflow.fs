@@ -62,7 +62,7 @@ let rec dataflow (env:context, (graph:DataflowGraph), roots) = function
       let n, g' = match Set.to_list deps, expr' with
                   | [dep], Id (Identifier uid) -> dep, g'
                   | x::xs, _ -> let uids = Set.map (fun n -> n.Uid) deps |> Set.to_list
-                                createNode (nextSymbol name) DynVal uids (fun uid prio -> arithm uid prio expr') graph
+                                createNode (nextSymbol name) DynVal uids (fun uid prio -> arithm uid prio expr') g'
                   | [], _ -> failwith "constant node? Not supported (yet)"
       env.Add(name, Graph.labelOf n.Uid g'), g', roots'
 
