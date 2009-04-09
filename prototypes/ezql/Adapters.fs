@@ -8,8 +8,8 @@ open Scheduler
 type IAdapter =
     abstract OnEvent : (Event -> unit)
 
-(*
-type CSVAdapter(stream:IStream<IEvent>, reader:TextReader) =
+
+type CSVAdapter(stream, reader:TextReader) =
     let tryParse value =
         match Int32.TryParse(value) with
         | s, r when s -> VInt r
@@ -18,9 +18,9 @@ type CSVAdapter(stream:IStream<IEvent>, reader:TextReader) =
     let readColumns =
         let line = (reader.ReadLine().Split([|'#'|])).[0] 
         line.Split [|','|]
-        |> Array.map (fun s -> s.Trim())
-        |> Array.to_list
-        |> List.tl
+          |> Array.map (fun s -> s.Trim())
+          |> Array.to_list
+          |> List.tl
         
     let readLine (columns: string list) =
         let line = (reader.ReadLine().Split([|'#'|])).[0]
@@ -42,9 +42,8 @@ type CSVAdapter(stream:IStream<IEvent>, reader:TextReader) =
     let events = read(reader)
     do for ev in events do
            match ev with
-           | Some event -> Scheduler.schedule event.Timestamp (fun _ -> stream.Add(event))
+           | Some event -> Scheduler.schedule event.Timestamp (fun _ -> Engine.addEvent stream event)
            | _ -> ()
         
     static member FromString(stream, string) =
         CSVAdapter (stream, new StringReader (string))
-*)

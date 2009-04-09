@@ -4,7 +4,12 @@ open Scheduler
 open Clock
 open Ast
 open Types
+open Oper
+open Graph
+open Dataflow
 
+let addEvent stream event =
+  spread [(stream, ([(0, [Added (VEvent event)])]))] |> ignore
 
 let parse code =
     // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
@@ -15,15 +20,22 @@ let parse code =
         let pos = lexbuf.EndPos
         failwithf "Error near line %d, character %d\n" (pos.Line + 1) pos.Column
 
+
 let compile code =
     let ast = parse code
-
-    // Initial environment
-   // let env = Map.of_list [("stream", VType "stream")]
-    //()
- //   match ast with
- //   | Prog stmts -> List.fold_left eval env stmts  
-    ast
+    match ast with
+    | Prog stmts -> 
+        let g = Graph.empty()
+        let env = Map.empty
+        let roots = []
+        let env', g', roots' = List.fold_left dataflow (env, g, roots) stmts
+        
+        //Graph.Viewer.display g' (fun v info -> info.Name)
+        let rootUids = List.map (fun name -> env'.[name].Uid) roots'
+        let operators = Dataflow.makeOperNetwork g' rootUids
+        let rootStreams = List.fold_left (fun acc x -> Map.add x (fun ev -> addEvent operators.[env'.[x].Uid] ev) acc) Map.empty roots'
+        let declaredOps = Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
+        rootStreams, declaredOps
    
 let mainLoop () = 
     let virtualClock = Scheduler.clock () :?> VirtualClock

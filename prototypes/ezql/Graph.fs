@@ -75,8 +75,11 @@ type Graph<'a, 'b>(contents:GraphRep<'a, 'b>) =
       | ExtractAnyPair ((v, (p, l, s)), g') -> Some (Set.to_list p, v, l, Set.to_list s), self.Remove(v)
       | _ -> (None, self)
  
-    member self.Item with get(v) = self.Extract(v) |> fst
-    member self.LabelOf(v) = Option.bind (fun (_, _, l, _) -> Some l) self.[v]
+    member self.Item with get(v) = match self.Extract(v) |> fst with
+                                   | Some ctx -> ctx
+                                   | _ -> failwithf "Node doesn't exist: %A" v
+    member self.LabelOf(v) = let _, _, l, _ = self.[v]
+                             l
 
     override self.ToString() = Map.fold_left (fun acc k v -> acc + (sprintf "%A" v)) "" contents
     static member Empty () = Graph(Map.empty)
@@ -144,13 +147,13 @@ module Graph =
       let toGleeGraph graph =
         fold (fun (acc:Microsoft.Glee.Drawing.Graph) (p, v, l, s) -> 
                 for node in p do
-                  let nodeL = (labelOf node graph).Value
+                  let nodeL = (labelOf node graph)
                   acc.AddEdge(pp node nodeL, pp v l) |> ignore
                 
                 acc.AddNode (pp v l) |> ignore
                 
                 for node in s do
-                  let nodeL = (labelOf node graph).Value
+                  let nodeL = (labelOf node graph)
                   acc.AddEdge(pp v l, pp node nodeL) |> ignore
 
                 acc)

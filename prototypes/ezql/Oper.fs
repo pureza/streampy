@@ -2,55 +2,10 @@
 
 open System
 open System.Collections.Generic
+open Microsoft.FSharp.Text.StructuredFormat
+open Ast
 open Types
-
-type diff =
-    | Added of value
-    | Expired of value
-    | DictDiff of value * diff list
-    | RecordDiff of value * diff list
-    | RemovedKey of value
-
-type changes = diff list
-type priority = float
-type link = changes -> changes
-
-(*
- * An operator is like a graph node that contains a list of parents and
- * children.
- *
- * An operator knows what to do when it is evaluated with a list of inputs.
- * This evaluation function is called with the following arguments:
- * - op: the operator itself ("this")
- * - list<diff list>: lists the differences for each input (for instance, if
- *                    the first input is a window and the second a value,
- *                    this list could be [[AddedEvent ev1; ExpiredEvent ev2]
- *                                        [Set (VInt 3)]]
- *                    If the eval needs the value of the argument and not just
- *                    the diff, it can obtain it through ParentValue(idx)
- *
- * The evaluation function returns:
- * - What changed during this step of the evaluation (a diff list)
- * - The list of (children, inputIndex, link) to spread these changes
- *)
-[<ReferenceEquality>]
-type oper = { Eval: oper -> changes list -> (childData List * changes) option
-              Children: List<childData>
-              Parents: List<oper>
-              Contents: ref<value>
-              Priority: priority
-              Name: string }
-  
-            member self.ArgCount with get = self.Parents.Count
-            member self.Value
-                with get = !self.Contents
-                and set(v) = self.Contents := v
-                
-            interface IComparable with 
-              member self.CompareTo(other) = Int32.compare (self.GetHashCode()) (other.GetHashCode())
-            static member NameOf(op) = op.Name
-
-and childData = oper * int * link
+open Eval
 
 (*
  * Connect parent with child.
@@ -110,10 +65,14 @@ let rec spread (stack:evalStack) =
         // If there are no more changes but there are still arguments to be filled...
         | [] when idx < op.ArgCount -> [ for i in [1 .. (op.ArgCount - idx)] -> [] ]
         | _ -> []
-        
+    
+//    for op, changes in stack do
+//      printfn "[%O %A]" op changes
+//    printfn ""  
     match stack with
     | [] -> ()
     | (op, parentChanges)::xs -> 
+        // printfn "*** Vou actualizar o %O" op
         let filledChanges = fillLeftArgs op parentChanges 0
         match op.Eval op filledChanges with
         | Some (children, changes) -> spread (mergeStack xs [ for child, idx, link in children -> (child, [(idx, (link changes))]) ])
@@ -122,7 +81,7 @@ let rec spread (stack:evalStack) =
 
 // Some common operators
 
-let unaryOp receiver initial prio name = 
+let unaryOp uid prio receiver initial = 
   { Eval = (fun oper inputs -> match inputs with
                                | [v] -> receiver oper v
                                | _ -> failwith "Wrong number of arguments!")
@@ -130,9 +89,9 @@ let unaryOp receiver initial prio name =
     Parents = List<_> ()
     Contents = ref initial
     Priority = prio
-    Name = name }
+    Uid = uid }
                     
-let binaryOp receiver initial prio name =
+let binaryOp uid prio receiver initial =
   { Eval = (fun oper inputs -> match inputs with
                                | [right; left] -> receiver oper right left
                                | _ -> failwith "Wrong number of arguments!")
@@ -140,34 +99,48 @@ let binaryOp receiver initial prio name =
     Parents = List<_> ()
     Contents = ref initial
     Priority = prio
-    Name = name }
+    Uid = uid }
 
-let stream prio name =
-    unaryOp (fun op changes -> match changes with
-                               | [Added (VEvent ev)] -> Some (op.Children, changes)
-                               | _ -> failwithf "Invalid input: %A" changes)
-            VNull prio name
+let stream uid prio =
+    unaryOp uid prio (fun op changes -> match changes with
+                                        | [Added (VEvent ev)] -> Some (op.Children, changes)
+                                        | _ -> failwithf "Invalid input: %A" changes)
+            VNull
 
 
-let where predicate prio name =
-    unaryOp (fun op changes -> match changes with
-                               | [Added (VEvent ev)] -> if predicate ev then Some (op.Children, changes) else None
-                               | _ -> failwithf "Invalid input: %A" changes)
-            VNull prio name
-                              
+let where uid prio predExpr =
+    let arg = match predExpr with
+                    | FuncCall (_, [Id (Identifier arg)]) -> arg
+                    | _ -> failwith "Invalid predicate to where"
 
-let last field prio name =
-    unaryOp (fun op changes -> match changes with
-                               | [Added (VEvent ev)] -> setValueAndGetChanges op ev.[field]
-                               | _ -> failwithf "Invalid input: %A" changes)
-            VNull prio name
+    { Eval = (fun op inputs -> let env = Map.of_list [ for p in op.Parents -> (p.Uid, p.Value) ]
+                                           |> Map.remove op.Parents.[0].Uid // remove the stream, because the predicate doesn't depend on it.
+                               match inputs with
+                               | [Added (VEvent ev)]::_ ->
+                                   let env' = env |> Map.add arg (VEvent ev)
+                                   match eval env' predExpr with
+                                   | VBool true -> Some (op.Children, inputs.Head)
+                                   | VBool false -> None
+                                   | _ -> failwith "Predicate was supposed to return VBool"
+                               | _ -> failwithf "Wrong number of arguments! %A" inputs)
+      Children = List<_> ()
+      Parents = List<_> ()
+      Contents = ref VNull
+      Priority = prio
+      Uid = uid }
+    
+let last uid prio field =
+    unaryOp uid prio (fun op changes -> match changes with
+                                        | [Added (VEvent ev)] -> setValueAndGetChanges op ev.[field]
+                                        | _ -> failwithf "Invalid input: %A" changes)
+            VNull
 
-let adder pri name =
-    binaryOp (fun op rightChg leftChg -> let v = op.Parents.[0].Value + op.Parents.[1].Value
-                                         setValueAndGetChanges op v)
-             VNull pri name
+let adder uid prio =
+    binaryOp uid prio (fun op rightChg leftChg -> let v = op.Parents.[0].Value + op.Parents.[1].Value
+                                                  setValueAndGetChanges op v)
+             VNull
 
-let makeRecord (fields:array<string * oper>) prio name =
+let makeRecord uid (fields:array<string * oper>) prio =
   let result = Dictionary<value, value>()
   
   let recordOp = { Eval = (fun oper allChanges -> 
@@ -184,7 +157,7 @@ let makeRecord (fields:array<string * oper>) prio name =
                    Parents = List<_> ()
                    Contents = ref (VRecord result)
                    Priority = prio
-                   Name = name }
+                   Uid = uid }
     
   for field, op in fields do
     connect op recordOp id
@@ -192,3 +165,56 @@ let makeRecord (fields:array<string * oper>) prio name =
     
   recordOp
   
+
+(*
+let constant uid prio expr =
+  let rec eval = function
+                 | BinaryExpr (oper, expr1, expr2) -> 
+                     let v1 = eval expr1
+                     let v2 = eval expr2
+                     evalOp (oper, v1, v2)
+                 | Integer i -> VInt i
+                 | other -> failwithf "This expression is supposed to contain only bin exprs and var refs, but here is %A" other
+
+  and evalOp = function
+  | Plus, v1, v2 -> v1 + v2
+  | Minus, v1, v2 -> v1 - v2
+  | Times, v1, v2 -> v1 * v2
+  | _ -> failwith "op not implemented"
+
+  { Eval = (fun _ _ -> None)
+    Children = List<_> ()
+    Parents = List<_> ()
+    Contents = ref (eval expr)
+    Priority = prio
+    Uid = uid }
+  *) 
+
+let arithm uid prio expr =
+  let rec eval env = function
+                     | BinaryExpr (oper, expr1, expr2) -> 
+                         let v1 = eval env expr1
+                         let v2 = eval env expr2
+                         evalOp (oper, v1, v2)
+                     | Integer i -> VInt i
+                     | Id (Identifier uid) -> match Map.tryfind uid env with
+                                              | Some v -> v
+                                              | _ -> failwithf "Cannot find variable %A in the environment" uid
+                     | other -> failwithf "This expression is supposed to contain only bin exprs and var refs, but here is %A" other
+  and evalOp = function
+  | Plus, v1, v2 -> v1 + v2
+  | Minus, v1, v2 -> v1 - v2
+  | Times, v1, v2 -> v1 * v2
+  | _ -> failwith "op not implemented"
+
+  { Eval = (fun oper allChanges -> 
+             let env = Map.of_list [ for p in oper.Parents -> (p.Uid, p.Value) ]
+             let result = eval env expr
+             setValueAndGetChanges oper result)
+    Children = List<_> ()
+    Parents = List<_> ()
+    Contents = ref (try eval Map.empty expr
+                    with 
+                      | _ -> VNull)
+    Priority = prio
+    Uid = uid }

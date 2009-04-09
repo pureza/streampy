@@ -11,7 +11,7 @@ let rec followCircuit (op:oper) =
       else let child, _, _ = op.Children.[0]
            followCircuit child
            
-let groupby field prio groupBuilder =
+let groupby uid prio field groupBuilder =
     let substreams = ref Map.empty
     let results = new Dictionary<value, value>()
 
@@ -38,7 +38,7 @@ let groupby field prio groupBuilder =
         Parents = List<_> ()
         Contents = ref VNull
         Priority = prio
-        Name = "groupby" }
+        Uid = uid }
         
     and dictOp =
       { Eval = (fun op changes -> 
@@ -53,7 +53,7 @@ let groupby field prio groupBuilder =
         Parents = List<_> ()
         Contents = ref (VDict results)
         Priority = prio + 0.9
-        Name = "groupby_dict" }
+        Uid = uid + "_dict" }
          
     { groupOp with 
         Children = dictOp.Children;
@@ -69,7 +69,7 @@ let groupby field prio groupBuilder =
  * - dictOp receives the changes from whereOp and the changes from each
  *   predicate and updates the results dictionary accordingly.
  *)  
-let mapWhere prio predicateBuilder =
+let mapWhere uid prio predicateBuilder =
     let predicates = ref Map.empty
     let results = Dictionary<value, value>()
     
@@ -103,7 +103,7 @@ let mapWhere prio predicateBuilder =
         Parents = List<_> ()
         Contents = ref VNull
         Priority = prio
-        Name = "where" }
+        Uid = uid }
     
     and dictOp =
       { Eval = (fun op changes ->
@@ -137,13 +137,13 @@ let mapWhere prio predicateBuilder =
         Parents = List<_> ()
         Contents = ref (VDict results)
         Priority = prio + 0.9
-        Name = "groupby_dict" }
+        Uid = uid + "_dict" }
          
     { whereOp with 
         Children = dictOp.Children;
         Contents = dictOp.Contents }
         
-let mapSelect prio projectorBuilder =
+let mapSelect uid prio projectorBuilder =
     let projectors = ref Map.empty
     let results = Dictionary<value, value>()
     
@@ -178,7 +178,7 @@ let mapSelect prio projectorBuilder =
         Parents = List<_> ()
         Contents = ref VNull
         Priority = prio
-        Name = "map/select" }
+        Uid = uid }
     
     and dictOp =
       { Eval = (fun op changes -> 
@@ -201,7 +201,7 @@ let mapSelect prio projectorBuilder =
         Parents = List<_> ()
         Contents = ref (VDict results)
         Priority = prio + 0.9
-        Name = "groupby_dict" }
+        Uid = uid + "_dict" }
          
     { selectOp with 
         Children = dictOp.Children;

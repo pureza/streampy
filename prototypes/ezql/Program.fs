@@ -152,24 +152,53 @@ open Ast
 open Graph
 open Dataflow
 
-let ast = Engine.parse @"
-    temp_readings = stream (:room_id, :temperature);
 
-    x = temp_readings.last(:temp);
-    y = temp_readings.last(:temp);
-    
-    z = y * (x + x[3 min].max());
-    
-    tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temp) > x);
-   "
+let streams, allOps = Engine.compile @"
+                            temp_readings = stream (:room_id, :temperature);
 
-match ast with
-| Prog stmts -> let g = Graph.empty()
-                let env = Map.empty
-                let roots = []
-                let env', roots', g' = List.fold_left (fun (env', roots', g') stmt -> dataflow env' roots' g' stmt)
-                                                      (env, roots, g) stmts 
-                List.iter (printfn "%s") (Graph.Algorithms.topSort roots' g')
-                Graph.Viewer.display g' (fun k (v:NodeInfo) -> v.Name)
+                            x = temp_readings.last(:room_id);
+                            y = temp_readings.last(:temperature);
+                            
+                            //z = x + y * 3;
+                            hot_readings = temp_readings.where(ev -> ev.temperature > x);
+                            
+                            lastHot = hot_readings.last(:temperature);
+                            
+                            //a = (y - x + (x * temp_readings.last(:temperature)));
+                            
+                            //y = temp_readings.last(:temperature);
+                            
+                            //z = y * (x + x[3 min].max());
+                            
+                            //tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature) > x);
+                           "
 
+
+streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 30)]))
+streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 20)]))
+
+printfn "%A" allOps.["lastHot"].Value
+
+(*
+
+let expr = Parser.expr Lexer.token (Lexing.from_string "temp_readings[5 min].last(:temp) + x * y")
+
+printfn "%A" expr
+
+let temp_readings = { Uid = "temp_readings"; Type = Stream; Name = "temp_readings"; MakeOper = fun uid prio -> failwith "not" }
+let x = { Uid = "x"; Type = DynVal; Name = "x"; MakeOper = fun uid prio -> failwith "not" }
+let y = { Uid = "y"; Type = DynVal; Name = "y"; MakeOper = fun uid prio -> failwith "not" }
+
+let graph = Graph.empty()
+              |> Graph.add ([], "x", x, [])
+              |> Graph.add ([], "y", y, [])
+              |> Graph.add ([], "temp_readings", temp_readings, [])
+              
+let env = Map.of_list [("x", x); ("y", y); ("temp_readings", temp_readings)]
+
+let deps, graph', expr' = dataflowE env graph expr
+
+printfn "%A" (Set.map (fun n -> n.Uid) deps)
+printfn "%A" expr'
+*)
 Console.ReadLine() |> ignore
