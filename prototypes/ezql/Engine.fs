@@ -30,9 +30,9 @@ let compile code =
         let roots = []
         let env', g', roots' = List.fold_left dataflow (env, g, roots) stmts
         
-        Graph.Viewer.display g' (fun v info -> info.Name)
+        //Graph.Viewer.display g' (fun v info -> info.Name)
         let rootUids = List.map (fun name -> env'.[name].Uid) roots'
-        let operators = Dataflow.makeOperNetwork g' rootUids
+        let operators = Dataflow.makeOperNetwork g' rootUids id
         let rootStreams = List.fold_left (fun acc x -> Map.add x (fun ev -> addEvent operators.[env'.[x].Uid] ev) acc) Map.empty roots'
         let declaredOps = Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
         rootStreams, declaredOps

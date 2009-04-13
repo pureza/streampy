@@ -90,7 +90,7 @@ let unaryOp uid prio receiver initial =
     Contents = ref initial
     Priority = prio
     Uid = uid }
-                    
+
 let binaryOp uid prio receiver initial =
   { Eval = (fun oper inputs -> match inputs with
                                | [right; left] -> receiver oper right left
@@ -108,27 +108,28 @@ let stream uid prio =
             VNull
 
 
-let where uid prio predExpr =
-    let arg = match predExpr with
-                    | FuncCall (_, [Id (Identifier arg)]) -> arg
-                    | _ -> failwith "Invalid predicate to where"
+let where uid prio predLambda =
+    let expr = FuncCall (predLambda, [Id (Identifier "ev")])
 
-    { Eval = (fun op inputs -> let env = Map.of_list [ for p in op.Parents -> (p.Uid, p.Value) ]
-                                           |> Map.remove op.Parents.[0].Uid // remove the stream, because the predicate doesn't depend on it.
-                               match inputs with
-                               | [Added (VEvent ev)]::_ ->
-                                   let env' = env |> Map.add arg (VEvent ev)
-                                   match eval env' predExpr with
-                                   | VBool true -> Some (op.Children, inputs.Head)
-                                   | VBool false -> None
-                                   | _ -> failwith "Predicate was supposed to return VBool"
-                               | _ -> failwithf "Wrong number of arguments! %A" inputs)
+    { Eval = (fun op inputs ->
+                let env = Map.of_list [ for p in op.Parents do
+                                          if p <> op.Parents.[0]
+                                            then yield (p.Uid, p.Value) ]
+                match inputs with
+                | [Added (VEvent ev)]::_ ->
+                    let env' = Map.add "ev" (VEvent ev) env
+                    match eval env' expr with
+                      | VBool true -> Some (op.Children, inputs.Head)
+                      | VBool false -> None
+                      | _ -> failwith "Predicate was supposed to return VBool"
+                | _ -> failwithf "Wrong number of arguments! %A" inputs)
       Children = List<_> ()
       Parents = List<_> ()
       Contents = ref VNull
       Priority = prio
       Uid = uid }
-    
+
+
 let last uid prio field =
     unaryOp uid prio (fun op changes -> match changes with
                                         | [Added (VEvent ev)] -> setValueAndGetChanges op ev.[field]
@@ -210,6 +211,8 @@ let arithm uid prio expr =
   { Eval = (fun oper allChanges -> 
              let env = Map.of_list [ for p in oper.Parents -> (p.Uid, p.Value) ]
              let result = eval env expr
+             printfn "env: %A" env
+             printfn "Resultado do eval: %A" result
              setValueAndGetChanges oper result)
     Children = List<_> ()
     Parents = List<_> ()

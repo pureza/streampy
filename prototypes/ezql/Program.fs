@@ -162,22 +162,25 @@ let streams, allOps = Engine.compile @"
                             //z = x + y * 3;
                             //hot_readings = temp_readings.where(ev -> ev.temperature > 20);
                             
-                            lastHot = temp_readings.last(:temperature) + temp_readings.last(:temperature);
+                            lastHot = temp_readings.last(:temperature);
                             
+                            
+
                             //a = (y - x + (x * temp_readings.last(:temperature)));
                             
                             //y = temp_readings.last(:temperature);
                             
                             //z = y * (x + x[3 min].max());
                             
-                            //tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature) > x);
+                            tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature) + lastHot);
                            "
 
 
 streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 30)]))
 streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 20)]))
 
-printfn "%A" allOps.["lastHot"].Value
+//printfn "%A" allOps.["lastHot"].Value
+printfn "%A" allOps.["tempPerRoom"].Value
 
 (*
 

@@ -137,6 +137,7 @@ module Graph =
                         
         dfsPostOrder(roots, graph) |> fst |> List.rev
 
+(*
   module Viewer =
   
     open System.Windows.Forms
@@ -170,4 +171,5 @@ module Graph =
       gViewer.Graph <- gleeGraph
       form.Show()
       Application.Run(form)
-                        
+                       
+*)

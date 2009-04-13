@@ -10,39 +10,45 @@ let rec followCircuit (op:oper) =
       then op
       else let child, _, _ = op.Children.[0]
            followCircuit child
-           
+
 let groupby uid prio field groupBuilder =
     let substreams = ref Map.empty
     let results = new Dictionary<value, value>()
 
-    let rec buildSubGroup key = 
-      let group = groupBuilder prio
+    let rec buildSubGroup key env =
+      let group = groupBuilder prio env
       let result = followCircuit group
       substreams := (!substreams).Add(key, group)
       connect groupOp group id
       // Connects the resulting node to the dictionary operator.
       // The diff is converted into a DictDiff before being passed to the child.
       connect result dictOp (fun changes -> [DictDiff (key, changes)])
-    
-    and groupOp = 
-      { Eval = (fun op changes ->
-                  match changes.Head with
-                  | [Added (VEvent ev)] -> let key = ev.[field]
-                                           if not (Map.mem key !substreams)
-                                             then buildSubGroup key
 
-                                           let group = (!substreams).[key]
-                                           Some (List<_>([group, 0, id]), changes.Head)
+    and groupOp =
+      { Eval = (fun op changes ->
+                  match changes with
+                  | [Added (VEvent ev)]::_ -> let key = ev.[field]
+                                              let env = Map.of_list [ for p in op.Parents do
+                                                                        if p <> op.Parents.[0]
+                                                                          then yield (p.Uid, p) ]
+
+                                              if not (Map.mem key !substreams)
+                                                then buildSubGroup key env
+
+                                              let group = (!substreams).[key]
+                                              Some (List<_>([group, 0, id]), changes.Head)
+                  | []::_ -> None
                   | other -> failwithf "Invalid arguments for groupby! %A" other)
         Children = List<_> ()
         Parents = List<_> ()
         Contents = ref VNull
         Priority = prio
         Uid = uid }
-        
+
     and dictOp =
-      { Eval = (fun op changes -> 
-                  List.iteri (fun i chg -> 
+      { Eval = (fun op changes ->
+                  printfn "ola! %A" changes
+                  List.iteri (fun i chg ->
                                 match chg with
                                 | [] -> ()
                                 | [DictDiff (key, _)] -> results.[key] <- op.Parents.[i].Value // TODO remove values that didn't change
@@ -54,8 +60,8 @@ let groupby uid prio field groupBuilder =
         Contents = ref (VDict results)
         Priority = prio + 0.9
         Uid = uid + "_dict" }
-         
-    { groupOp with 
+
+    { groupOp with
         Children = dictOp.Children;
         Contents = dictOp.Contents }
 
@@ -68,12 +74,12 @@ let groupby uid prio field groupBuilder =
  * - whereOp also sends these changes to dictOp;
  * - dictOp receives the changes from whereOp and the changes from each
  *   predicate and updates the results dictionary accordingly.
- *)  
+ *)
 let mapWhere uid prio predicateBuilder =
     let predicates = ref Map.empty
     let results = Dictionary<value, value>()
-    
-    let rec buildPredCircuit key = 
+
+    let rec buildPredCircuit key =
       let circuit = predicateBuilder prio
       let result = followCircuit circuit
       predicates := (!predicates).Add(key, circuit)
@@ -81,15 +87,15 @@ let mapWhere uid prio predicateBuilder =
       // Connects the resulting node to the dictionary operator.
       // The diff is converted into a DictDiff before being passed to the child.
       connect result dictOp (fun changes -> [DictDiff (key, changes)])
-    
-    and whereOp = 
+
+    and whereOp =
       { Eval = (fun op changes ->
                     let prntChg = changes.Head
                     let predsToEval = prntChg
                                         |> List.map (function
-                                                     | DictDiff (key, diff) -> 
+                                                     | DictDiff (key, diff) ->
                                                          if not (Map.mem key !predicates) then buildPredCircuit key
-                                                           
+
                                                          // The link between the where and the group's circuit ignores everything
                                                          // that is not related to that group.
                                                          let link = (fun changes -> [ for diff in changes do
