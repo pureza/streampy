@@ -11,7 +11,7 @@ open Eval
  * Connect parent with child.
  * fn transforms the output of oper before it is delivered to child.
  *)
-let connect (parent:oper) (child:oper) fn =
+let connect (parent:Operator) (child:Operator) fn =
     let index = child.Parents.Count
     
     // parent is the ith input of child
@@ -23,7 +23,7 @@ let connect (parent:oper) (child:oper) fn =
 
 // Changes the current value of a continuous value if the new value differs
 // from the current one. Also gets the list of changes to propagate.
-let setValueAndGetChanges (op:oper) v =
+let setValueAndGetChanges (op:Operator) v =
     if v <> op.Value
       then op.Value <- v
            Some (op.Children, [Added v])
@@ -39,7 +39,7 @@ let setValueAndGetChanges (op:oper) v =
 // This means operator b is to be evaluated because input 0 (could be either
 // 'a' or 'c') was set to 5, while the second input stayed the same.
 
-type evalStack = (oper * (int * changes) list) list
+type evalStack = (Operator * (int * changes) list) list
 
 (*
  * This is where any change is propagated throughout the graph.
@@ -56,7 +56,7 @@ let rec spread (stack:evalStack) =
                                          else Map.add k v acc) stackMap toMerge
         merged |> sortWithOrder 
         
-    let rec fillLeftArgs (op:oper) inputs idx : changes list =
+    let rec fillLeftArgs (op:Operator) inputs idx : changes list =
         match (List.sort_by fst inputs) with
         | (next, changes)::xs -> // If there were no changes for input idx, cons []
                                  if idx < next
@@ -81,66 +81,54 @@ let rec spread (stack:evalStack) =
 
 // Some common operators
 
-let unaryOp uid prio receiver initial = 
-  { Eval = (fun oper inputs -> match inputs with
-                               | [v] -> receiver oper v
-                               | _ -> failwith "Wrong number of arguments!")
-    Children = List<_> ()
-    Parents = List<_> ()
-    Contents = ref initial
-    Priority = prio
-    Uid = uid }
-
-let binaryOp uid prio receiver initial =
-  { Eval = (fun oper inputs -> match inputs with
-                               | [right; left] -> receiver oper right left
-                               | _ -> failwith "Wrong number of arguments!")
-    Children = List<_> ()
-    Parents = List<_> ()
-    Contents = ref initial
-    Priority = prio
-    Uid = uid }
-
-let stream uid prio =
-    unaryOp uid prio (fun op changes -> match changes with
-                                        | [Added (VEvent ev)] -> Some (op.Children, changes)
-                                        | _ -> failwithf "Invalid input: %A" changes)
-            VNull
+(* A stream: propagates received events *)
+let makeStream uid prio parents = 
+  let eval = fun op inputs -> match inputs with
+                              | [[Added (VEvent ev)] as changes] -> Some (op.Children, changes)
+                              | _ -> failwith "Wrong number of arguments!"
+  
+  Operator.Build(uid, prio, eval, parents)
 
 
-let where uid prio predLambda =
+(* Where: propagates events that pass a given predicate *)
+let makeWhere predLambda uid prio parents =
     let expr = FuncCall (predLambda, [Id (Identifier "ev")])
+    let eval = fun op inputs ->
+                 let env = Map.of_list [ for p in op.Parents do
+                                           if p <> op.Parents.[0]
+                                             then yield (p.Uid, p.Value) ]
+                 match inputs with
+                 | [Added (VEvent ev)]::_ ->
+                     let env' = Map.add "ev" (VEvent ev) env
+                     match eval env' expr with
+                       | VBool true -> Some (op.Children, inputs.Head)
+                       | VBool false -> None
+                       | _ -> failwith "Predicate was supposed to return VBool"
+                 | _ -> failwithf "Wrong number of arguments! %A" inputs
 
-    { Eval = (fun op inputs ->
-                let env = Map.of_list [ for p in op.Parents do
-                                          if p <> op.Parents.[0]
-                                            then yield (p.Uid, p.Value) ]
-                match inputs with
-                | [Added (VEvent ev)]::_ ->
-                    let env' = Map.add "ev" (VEvent ev) env
-                    match eval env' expr with
-                      | VBool true -> Some (op.Children, inputs.Head)
-                      | VBool false -> None
-                      | _ -> failwith "Predicate was supposed to return VBool"
-                | _ -> failwithf "Wrong number of arguments! %A" inputs)
-      Children = List<_> ()
-      Parents = List<_> ()
-      Contents = ref VNull
-      Priority = prio
-      Uid = uid }
+    Operator.Build(uid, prio, eval, parents)
 
 
-let last uid prio field =
-    unaryOp uid prio (fun op changes -> match changes with
-                                        | [Added (VEvent ev)] -> setValueAndGetChanges op ev.[field]
-                                        | _ -> failwithf "Invalid input: %A" changes)
-            VNull
+(* Last: records one field of the last event of a stream *)
+let makeLast field uid prio parents =
+  let eval = fun op inputs -> match inputs with
+                              | [[Added (VEvent ev)] as changes] -> setValueAndGetChanges op ev.[field]
+                              | _ -> failwith "Wrong number of arguments!"
+  
+  Operator.Build(uid, prio, eval, parents)
 
-let adder uid prio =
-    binaryOp uid prio (fun op rightChg leftChg -> let v = op.Parents.[0].Value + op.Parents.[1].Value
-                                                  setValueAndGetChanges op v)
-             VNull
 
+(* Evaluator: this operator evaluates some expression and records its result *)
+let makeEvaluator expr uid prio parents =
+  let operEval = fun oper allChanges -> 
+                   let env = Map.of_list [ for p in oper.Parents -> (p.Uid, p.Value) ]
+                   let result = eval env expr
+                   setValueAndGetChanges oper result
+
+  Operator.Build(uid, prio, operEval, parents)
+
+
+(*
 let makeRecord uid (fields:array<string * oper>) prio =
   let result = Dictionary<value, value>()
   
@@ -165,59 +153,7 @@ let makeRecord uid (fields:array<string * oper>) prio =
     result.[VString field] <- op.Value
     
   recordOp
-  
+ *) 
 
-(*
-let constant uid prio expr =
-  let rec eval = function
-                 | BinaryExpr (oper, expr1, expr2) -> 
-                     let v1 = eval expr1
-                     let v2 = eval expr2
-                     evalOp (oper, v1, v2)
-                 | Integer i -> VInt i
-                 | other -> failwithf "This expression is supposed to contain only bin exprs and var refs, but here is %A" other
 
-  and evalOp = function
-  | Plus, v1, v2 -> v1 + v2
-  | Minus, v1, v2 -> v1 - v2
-  | Times, v1, v2 -> v1 * v2
-  | _ -> failwith "op not implemented"
 
-  { Eval = (fun _ _ -> None)
-    Children = List<_> ()
-    Parents = List<_> ()
-    Contents = ref (eval expr)
-    Priority = prio
-    Uid = uid }
-  *) 
-
-let arithm uid prio expr =
-  let rec eval env = function
-                     | BinaryExpr (oper, expr1, expr2) -> 
-                         let v1 = eval env expr1
-                         let v2 = eval env expr2
-                         evalOp (oper, v1, v2)
-                     | Integer i -> VInt i
-                     | Id (Identifier uid) -> match Map.tryfind uid env with
-                                              | Some v -> v
-                                              | _ -> failwithf "Cannot find variable %A in the environment" uid
-                     | other -> failwithf "This expression is supposed to contain only bin exprs and var refs, but here is %A" other
-  and evalOp = function
-  | Plus, v1, v2 -> v1 + v2
-  | Minus, v1, v2 -> v1 - v2
-  | Times, v1, v2 -> v1 * v2
-  | _ -> failwith "op not implemented"
-
-  { Eval = (fun oper allChanges -> 
-             let env = Map.of_list [ for p in oper.Parents -> (p.Uid, p.Value) ]
-             let result = eval env expr
-             printfn "env: %A" env
-             printfn "Resultado do eval: %A" result
-             setValueAndGetChanges oper result)
-    Children = List<_> ()
-    Parents = List<_> ()
-    Contents = ref (try eval Map.empty expr
-                    with 
-                      | _ -> VNull)
-    Priority = prio
-    Uid = uid }

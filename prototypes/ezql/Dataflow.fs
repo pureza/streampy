@@ -16,32 +16,35 @@ type NodeType =
   | Unknown
   
 type uid = string
-type NodeInfo = { Uid:uid
-                  Type:NodeType
-                  mutable Name:string
-                  MakeOper:uid -> priority -> oper }
- 
-                  interface IComparable with 
-                    member self.CompareTo(other) =
-                      match other with
-                      | :? NodeInfo as other' -> String.compare self.Uid other'.Uid
-                      | _ -> failwith "Go away. Other is not even a NodeInfo."
+type NodeInfo =
+  { Uid:uid
+    Type:NodeType
+    mutable Name:string
+    // uid -> priority -> parents -> created operator
+    MakeOper:uid -> priority -> Operator list -> Operator
+    ParentUids:uid list }
 
-                  override self.Equals(other) =
-                    match other with
-                      | :? NodeInfo as other' -> self.Uid = other'.Uid
-                      | _ -> false
+    interface IComparable with 
+      member self.CompareTo(other) =
+        match other with
+        | :? NodeInfo as other' -> String.compare self.Uid other'.Uid
+        | _ -> failwith "Go away. Other is not even a NodeInfo."
 
-                  static member DefaultWith(uid, typ, ?name, ?makeOper) =
-                    let name' = match name with
-                                | Some n -> n
-                                | _ -> uid
-                    let makeOper' = match makeOper with
-                                    | Some m -> m
-                                    | _ -> (fun _ _ -> failwith "Won't happen!")
-                    { Uid = uid; Type = typ; Name = name'; MakeOper = makeOper' }
+    override self.Equals(other) =
+      match other with
+        | :? NodeInfo as other' -> self.Uid = other'.Uid
+        | _ -> false
 
-                  static member UidOf(nodeInfo) = nodeInfo.Uid
+    (* Creates a node with type "Unknown", no parents and an evaluation
+       function that will never be called.
+       Unknown nodes are ignored by the dataflow algorithm *)
+    static member AsUnknown(uid) =
+      let makeOper' = fun _ _ _ -> failwith "Won't happen!"
+    
+      { Uid = uid; Type = Unknown; Name = uid; MakeOper = makeOper';
+        ParentUids = [] }
+
+    static member UidOf(nodeInfo) = nodeInfo.Uid
 
 type DataflowGraph = Graph<string, NodeInfo>
 
@@ -52,9 +55,10 @@ let nextSymbol =
 
 let uid2name uid = Regex.Match(uid, "(.*)\d").Groups.[1].Value
 
-let createNode uid typ pred makeOp graph =
-  let node = { Uid = uid; Type = typ; Name = uid2name uid; MakeOper = makeOp }
-  node, Graph.add (pred, uid, node, []) graph
+let createNode uid typ parentUids makeOp graph =
+  let node = { Uid = uid; Type = typ; Name = uid2name uid;
+               MakeOper = makeOp; ParentUids = parentUids }
+  node, Graph.add (parentUids, uid, node, []) graph
 
 type context = Map<string, NodeInfo>
 
@@ -64,8 +68,8 @@ let rec dataflow (env:context, (graph:DataflowGraph), roots) = function
       let roots' = name::roots
       let n, g' = match Set.to_list deps, expr' with
                   | [dep], Id (Identifier uid) -> dep, g'
-                  | x::xs, _ -> let uids = Set.map (fun n -> n.Uid) deps |> Set.to_list
-                                createNode (nextSymbol name) DynVal uids (fun uid prio -> arithm uid prio expr') g'
+                  | x::xs, _ -> let uids = Set.map NodeInfo.UidOf deps |> Set.to_list
+                                createNode (nextSymbol name) DynVal uids (makeEvaluator expr') g'
                   | [], _ -> failwith "constant node? Not supported (yet)"
       env.Add(name, Graph.labelOf n.Uid g'), g', roots'
 
@@ -85,7 +89,7 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
       | [] -> Set.empty, g', expr'
       | _ -> failwith "The target of the window depends on more than one value"
   | FuncCall (Id (Identifier "stream"), paramExps) ->
-      let n, g' = createNode (nextSymbol "stream") Stream [] (fun uid prio -> stream uid prio) graph
+      let n, g' = createNode (nextSymbol "stream") Stream [] makeStream graph
       Set.singleton n, g', Id (Identifier n.Uid)
   | MemberAccess (expr, (Identifier name)) ->
       let deps, g', expr' = dataflowE env graph expr
@@ -113,7 +117,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                       | [SymbolExpr (Symbol name)] -> name
                                       | _ -> failwith "Invalid parameters to last"
                           let n, g' = createNode (nextSymbol methName) DynVal [target.Uid]
-                                                 (fun uid prio -> last uid prio field) graph
+                                                 (makeLast field) graph
                           Set.singleton n, g', Id (Identifier n.Uid)
               | "[]" -> let n, g' = createNode (nextSymbol "[x min]") Stream [target.Uid]
                                                (fun prio -> failwith "Windows are not supported. Do your homework.") graph
@@ -124,7 +128,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                  body,
                                  // Put the argument as an Unknown node into the environment
                                  // This way it will be ignored by the dataflow algorithm
-                                 Map.add arg (NodeInfo.DefaultWith(arg, Unknown)) env,
+                                 Map.add arg (NodeInfo.AsUnknown(arg)) env,
                                  arg
                              | _ -> failwith "Invalid parameter to where"
                            let deps, g', expr' = dataflowE env' graph pred
@@ -133,7 +137,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                            // Where depends on the stream and on the dependencies of the predicate.
                            let whereDeps = target.Uid::(List.map (fun n -> n.Uid) (Set.to_list deps))
                            let n, g'' = createNode (nextSymbol methName) Stream whereDeps
-                                                   (fun uid prio -> where uid prio expr'') g'
+                                                   (makeWhere expr'') g'
                            Set.singleton n, g'', Id (Identifier n.Uid)
               | "groupby" -> let field, expr, env', arg =
                                match paramExps with
@@ -141,7 +145,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                    field, body,
                                    // Put the argument as an Unknown node into the environment
                                    // This way it will be ignored by the dataflow algorithm
-                                   Map.add arg (NodeInfo.DefaultWith(arg, Unknown)) env,
+                                   Map.add arg (NodeInfo.AsUnknown(arg)) env,
                                    arg
                                | _ -> failwith "Invalid parameter to where"
                              let deps, g', expr' = dataflowE env' graph expr
@@ -150,175 +154,54 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                              // GroupBy depends on the stream and on the dependencies of the predicate.
                              let groupbyDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
                              let n, g'' = createNode (nextSymbol methName) Dict groupbyDeps
-                                                     (fun uid prio -> groupby uid prio field groupBuilder) g'
+                                                     (makeGroupby field groupBuilder) g'
                              Set.singleton n, g'', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method: %s" methName
   | _ -> failwith "Unknown target type"
 
+
 and makeGroupBuilder arg expr deps =
-  let argInfo = { Uid = arg; Type = Stream; MakeOper = stream; Name = arg }
-  let graph = Graph.add ([], arg, argInfo, []) (Graph.empty())
+  let mergeMaps a b = Map.fold_left (fun acc k v -> Map.add k v acc) a b
+
+  let argInfo = { Uid = arg; Type = Stream; MakeOper = makeStream; Name = arg; ParentUids = [] }
+  let graph = Graph.add ([], arg, argInfo, []) Graph.empty
   let env = Set.fold_left (fun acc n -> Map.add n.Uid n acc)
                           Map.empty deps
               |> Map.add arg argInfo
   let deps', g', expr' = dataflowE env graph expr
+  
   (fun prio env -> let fixPrio = (fun p -> prio + (p * 0.01))
-                   let operators = makeOperNetwork g' [arg] fixPrio
+                   let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) env
+                   
                    // Do we need a final operator to evaluate the expression?
+                   // If we do, deps' contains all the dependencies necessary
+                   // and we use "operators" to lookup the corresponding operators.
                    match expr' with
-                   | Id (Identifier _) -> ()
-                   | _ -> let resultOp = arithm (nextSymbol "groupResult") (fixPrio (float operators.Count) + 1.0) expr'
-                          // Add dependencies to this new node.
-                          // First we add the dependencies on arg
-                          for d in (deps' - deps) do
-                            connect operators.[d.Uid] resultOp id
-                          // And then we add the outer dependencies
-                          for pair in env do
-                            connect pair.Value resultOp id
+                   | (* No *)  Id (Identifier _) -> ()
+                   | (* Yes *) _ -> let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
+                                    makeEvaluator expr' (nextSymbol "groupResult") (fixPrio (float operators.Count) + 1.0)
+                                      resultParents |> ignore
                    operators.[arg])
 
-//let rec dataflow (env:Map<string, uid>, roots, (graph:DataflowGraph)) = function
-//  | Assign (Identifier name, exp) ->
-//      let node, g' = dataflowE env graph exp
-//      match node with
-//      | Some node' -> node'.Name <- sprintf "%s (%s)" name (uid2name node'.Uid)
-//                      let roots' = name::roots //match node'.Type with
-//                                   //| Stream -> name::roots
-//                                   //| _ -> roots
-//                      env.Add(name, node'.Uid), roots', g'
-//      | _ -> env, roots, g'
-//      (*
-//      // If this expression has no dependencies, it is a constant and we
-//             // should be able to evaluate it.
-//             let n, g' = createNode (nextSymbol "const") DynVal [] (fun uid prio -> constant uid prio exp) graph
-//             n.Name <- sprintf "%s (%s)" name (uid2name n.Uid)
-//             let roots' = name::roots
-//             env.Add(name, n.Uid), roots', g'
-//*)
-//
-//
-//and dataflowE env graph = function
-//  | MethodCall (expr, (Identifier name), paramExps) ->
-//      let target, g' = dataflowE env graph expr
-//      match target with
-//      | Some target' -> dataflowMethod target' name paramExps g'
-//      | _ -> None, g'
-//  | FuncCall (Id (Identifier "stream"), paramExps) ->
-//      let n, g' = createNode (nextSymbol "stream") Stream [] (fun uid prio -> stream uid prio) graph
-//      Some n, g'      
-//  | ArrayIndex (expr, index) ->
-//      let target, g' = dataflowE env graph expr
-//      match target with
-//      | Some target' -> let n, g'' = createNode (nextSymbol "[x min]") DynVal [target'.Uid] (fun prio -> failwith "Windows are not supported. Do your homework.") g'
-//                        Some n, g''
-//      | _ -> None, g'
-//  | BinaryExpr (oper, expr1, expr2) as expr ->
-//      let g', allDeps, expr' = dataflowBinExp oper expr1 expr2 env graph
-//      let some = [ for t in allDeps -> t.Uid ]
-//      let n, g'' = createNode (nextSymbol (sprintf "%A" oper)) DynVal some (fun uid prio -> arithm uid prio expr') g'
-//      Some n, g''
-//  | Integer i -> None, graph
-//  | Id (Identifier name) -> 
-//      let nodeInfo = Option.bind (fun v -> graph.[v]) (Map.tryfind name env)
-//      match nodeInfo with
-//      | Some (_, _, info, _) -> Some info, graph
-//      | _ -> failwithf "Identifier not found in the graph: %s" name
-//  | _ -> failwith "Expression not recognized"      
-//        
-//and dataflowMethod (target:NodeInfo) name paramExps graph =
-//  match target.Type with
-//  | Stream -> match name with
-//              | "last" -> let field = match paramExps with
-//                                      | [SymbolExpr (Symbol name)] -> name
-//                                      | _ -> failwith "Invalid parameters to last"
-//                          let n, g' = createNode (nextSymbol name) DynVal [target.Uid] (fun uid prio -> last uid prio field) graph
-//                          Some n, g'
-//              | "where" -> let pred = match paramExps with
-//                                      | [Lambda (args, body) as fn] -> eval Map.empty fn
-//                                      | _ -> failwith "Invalid parameters to where"
-//                           let pred' = (fun ev -> match evalClosure pred [VEvent ev] with
-//                                                  | VBool b -> b
-//                                                  | _ -> failwith "Where predicate is supposed to return a boolean!")
-//                           let n, g' = createNode (nextSymbol name) Stream [target.Uid] (fun uid prio -> where uid prio pred') graph
-//                           Some n, g'
-//              | "groupby" -> let n, g' = createNode (nextSymbol name) Dict [target.Uid] (fun uid prio -> failwith "groupby not supported") graph
-//                             Some n, g'
-//              | _ -> failwithf "Unkown method: %s" name
-//  | DynVal -> match name with
-//              | "max" -> let n, g' = createNode (nextSymbol name) DynVal [target.Uid] (fun uid prio -> failwith "max not supported") graph
-//                         Some n, g'
-//              | _ -> failwithf "Unkown method: %s" name
-//  | Dict -> match name with
-//              | _ -> failwithf "Unkown method: %s" name
-//
-//(*
-// * Here, we avoid creating one node per binary expression.
-// * For example, for the expression (x + y * (z + x)), we create
-// * a single node that depends on x, y and z and evaluates the entire
-// * expression when any dependency is updated.
-// *
-// * This function analyzes the entire expression and collects its
-// * dependencies. It also builds a new expression where the names of 
-// * referenved variables are replaced by their corresponding node's uid.
-// * This is important to handle more complex expressions. For example, in
-// * (x + y[3 min].max()), a node n is created specifically for y[3 min].max()
-// * and the resulting expression is (x.Uid + n.Uid).
-// *)
-//and dataflowBinExp op expr1 expr2 env graph : DataflowGraph * Set<NodeInfo> * expr =
-//  let rec findDeps expr graph =
-//    match expr with
-//    | BinaryExpr (op, expr1, expr2) -> dataflowBinExp op expr1 expr2 env graph
-//    | _ -> let n, g' = dataflowE env graph expr
-//           match n with
-//           | Some n' -> let expr' = Id (Identifier n'.Uid)
-//                        (g', Set.singleton n', expr')
-//           |_ -> (g', Set.empty, expr)
-//  
-//  let g1, deps1, expr1' = findDeps expr1 graph
-//  let g2, deps2, expr2' = findDeps expr2 g1
-//  g2, Set.union deps1 deps2, BinaryExpr (op, expr1', expr2')
-//
-//and evalClosure = function
-//    | VClosure (env, expr) ->
-//        match expr with
-//        | Lambda (ids, body) ->
-//            (fun args ->
-//                let ids' = List.map (fun (Identifier name) -> name) ids
-//                let env' = List.fold_left (fun e (n, v) -> Map.add n v e) 
-//                                           env (List.zip ids' (List.map ref args))
-//                eval env' body)
-//        | _ -> failwith "evalClosure: Wrong type"
-//    | _ -> failwith "This is not a closure"
-//
 
 (*
  * Iterate the graph and create the operators and the connections between them.
  *)
-and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio : Map<string, oper> =      
+and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio : Map<string, Operator> =      
   let order = Graph.Algorithms.topSort roots graph
   
   // Maps uids to priorities
   let orderPrio = List.fold_left (fun (acc, prio) x -> (Map.add x prio acc, prio + 1.0)) 
                                  (Map.empty, 0.0) order |> fst
 
-  // Fold the graph, returning:
-  // - Map of operators
-  // - Continuation that receives the map and created the necessary connections.  
-  let operators, connections = 
-    Graph.fold (fun acc (pred, uid, info, succ) -> 
-                  let operators, connections = acc
-                  let op = info.MakeOper uid (fixPrio orderPrio.[uid])
-                  (Map.add uid op operators, connections
-                                             @ List.mapi (fun i p -> (Map.find p operators, op, i)) pred
-                                             @ List.mapi (fun i s -> (op, Map.find s operators, i)) succ)) 
-               (Map.empty, []) graph
-
-  // Sort the list of connections by index
-  let connections' = List.sort (fun (src1, _, _) (src2, _, _) -> compare src1.Priority src2.Priority) connections
-  // Now create the connections
-  for src, dst, index in connections' do
-    //printfn "connect %A %A" src.Uid dst.Uid
-    connect src dst id
+  // Fold the graph with the right order, returning a map of all the operators 
+  let operators = 
+    Graph.foldSeq (fun acc (pred, uid, info, succ) -> 
+                     let operators = acc
+                     let parents = List.map (fun uid -> Map.find uid operators) info.ParentUids
+                     let op = info.MakeOper uid (fixPrio orderPrio.[uid]) parents
+                     Map.add uid op operators) 
+                   Map.empty graph order
 
   operators
 

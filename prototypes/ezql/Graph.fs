@@ -99,7 +99,7 @@ let (|ExtractAny|_|) (graph:Graph<'a, 'b>) =
       
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Graph =
-  let empty<'a, 'b> () : Graph<'a, 'b> = Graph<'a, 'b>.Empty()
+  let empty<'a, 'b> : Graph<'a, 'b> = Graph<'a, 'b>.Empty()
   let is_empty (gr:Graph<'a, 'b>) : bool = gr.IsEmpty
   let add (ctx:Context<'a, 'b>) (gr:Graph<'a, 'b>) : Graph<'a, 'b> = gr.Add(ctx)
   let extract (v:Node<'a>) (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.Extract(v)
@@ -116,7 +116,16 @@ module Graph =
     | ExtractAny (ctx, gr) -> fn (fold fn initial gr) ctx
     | _ -> initial
 
-  let map (fn:Context<'a, 'b> -> Context<'a, 'c>) = fold (fun acc ctx -> add (fn ctx) acc) (empty())
+  (* Fold with a given order *)
+  let rec foldSeq (fn:'state -> Context<'a, 'b> -> 'state) (acc:'state)
+                  (graph:Graph<'a, 'b>) (sequence:Node<'a> list) : 'state =
+    match sequence with
+    | x::xs -> match graph with
+               | Extract x (ctx, gr) -> foldSeq fn (fn acc ctx) gr xs
+               | _ -> failwith "Graph is smaller than the sequence!"
+    | _ -> acc
+
+  let map (fn:Context<'a, 'b> -> Context<'a, 'c>) = fold (fun acc ctx -> add (fn ctx) acc) empty
 
   module Algorithms =
     let rec dfs = function

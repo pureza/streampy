@@ -25,7 +25,7 @@ let compile code =
     let ast = parse code
     match ast with
     | Prog stmts -> 
-        let g = Graph.empty()
+        let g = Graph.empty
         let env = Map.empty
         let roots = []
         let env', g', roots' = List.fold_left dataflow (env, g, roots) stmts

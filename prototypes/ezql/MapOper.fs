@@ -5,13 +5,13 @@ open Types
 open Oper
 
 // Returns the last node of an expression (the one that contains the result)
-let rec followCircuit (op:oper) =
+let rec followCircuit (op:Operator) =
     if op.Children.Count = 0
       then op
       else let child, _, _ = op.Children.[0]
            followCircuit child
 
-let groupby uid prio field groupBuilder =
+let makeGroupby field groupBuilder uid prio parents =
     let substreams = ref Map.empty
     let results = new Dictionary<value, value>()
 
@@ -24,42 +24,35 @@ let groupby uid prio field groupBuilder =
       // The diff is converted into a DictDiff before being passed to the child.
       connect result dictOp (fun changes -> [DictDiff (key, changes)])
 
-    and groupOp =
-      { Eval = (fun op changes ->
-                  match changes with
-                  | [Added (VEvent ev)]::_ -> let key = ev.[field]
-                                              let env = Map.of_list [ for p in op.Parents do
-                                                                        if p <> op.Parents.[0]
-                                                                          then yield (p.Uid, p) ]
+    and groupOp = Operator.Build(uid, prio,
+                    (fun op changes ->
+                       match changes with
+                       | [Added (VEvent ev)]::_ -> let key = ev.[field]
+                                                   let env = Map.of_list [ for p in op.Parents do
+                                                                             if p <> op.Parents.[0]
+                                                                               then yield (p.Uid, p) ]
+ 
+                                                   if not (Map.mem key !substreams)
+                                                     then buildSubGroup key env
+ 
+                                                   let group = (!substreams).[key]
+                                                   Some (List<_>([group, 0, id]), changes.Head)
+                       | []::_ -> None
+                       | other -> failwithf "Invalid arguments for groupby! %A" other),
+                    parents)
 
-                                              if not (Map.mem key !substreams)
-                                                then buildSubGroup key env
 
-                                              let group = (!substreams).[key]
-                                              Some (List<_>([group, 0, id]), changes.Head)
-                  | []::_ -> None
-                  | other -> failwithf "Invalid arguments for groupby! %A" other)
-        Children = List<_> ()
-        Parents = List<_> ()
-        Contents = ref VNull
-        Priority = prio
-        Uid = uid }
-
-    and dictOp =
-      { Eval = (fun op changes ->
-                  printfn "ola! %A" changes
-                  List.iteri (fun i chg ->
-                                match chg with
-                                | [] -> ()
-                                | [DictDiff (key, _)] -> results.[key] <- op.Parents.[i].Value // TODO remove values that didn't change
-                                | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
-                              changes
-                  Some (op.Children, List.map_concat id changes))
-        Children = List<_> ()
-        Parents = List<_> ()
-        Contents = ref (VDict results)
-        Priority = prio + 0.9
-        Uid = uid + "_dict" }
+    and dictOp = Operator.Build(uid + "_dict", prio + 0.9, 
+                   (fun op changes ->
+                      List.iteri (fun i chg ->
+                                    match chg with
+                                    | [] -> ()
+                                    | [DictDiff (key, _)] -> results.[key] <- op.Parents.[i].Value // TODO remove values that didn't change
+                                    | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
+                                  changes
+                      Some (op.Children, List.map_concat id changes)),
+                   [], contents = VDict results)
+     
 
     { groupOp with
         Children = dictOp.Children;

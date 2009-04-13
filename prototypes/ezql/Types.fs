@@ -23,26 +23,42 @@ open Ast
  * - The list of (children, inputIndex, link) to spread these changes
  *)
 [<ReferenceEquality>]
-type oper = { Eval: oper -> changes list -> (childData List * changes) option
-              Children: List<childData>
-              Parents: List<oper>
-              Contents: ref<value>
-              Priority: priority
-              Uid: string }
-  
-            member self.ArgCount with get = self.Parents.Count
-            member self.Value
-                with get = !self.Contents
-                and set(v) = self.Contents := v
-                
-            override self.ToString() = sprintf "{ %s, child = %d }" self.Uid self.Children.Count
-                
-            interface IComparable with 
-              member self.CompareTo(other) = Int32.compare (self.GetHashCode()) (other.GetHashCode())
+type Operator =
+  { Eval: Operator -> changes list -> (ChildData List * changes) option
+    Children: List<ChildData>
+    Parents: List<Operator>
+    Contents: ref<value>
+    Priority: priority
+    Uid: string }
 
-            static member UidOf(op) = op.Uid
+  member self.ArgCount with get = self.Parents.Count
+  member self.Value
+    with get = !self.Contents
+    and set(v) = self.Contents := v
+        
+  override self.ToString() = sprintf "{ %s, child = %d }" self.Uid self.Children.Count
+        
+  interface IComparable with 
+    member self.CompareTo(other) = Int32.compare (self.GetHashCode()) (other.GetHashCode())
 
-and childData = oper * int * link
+  (* Creates an operator and connects it to its parents *)
+  static member Build(uid, prio, eval, parents, ?children, ?contents) =
+    let theChildren = match children with
+                      | Some ch -> ch
+                      | None -> List<_>()
+    let theContents = match contents with
+                      | Some v -> ref v
+                      | None -> ref VNull                  
+    let oper = { Uid = uid; Priority = prio; Eval = eval;
+                 Parents = List<_>(Seq.of_list parents);
+                 Children = theChildren; Contents = theContents }
+      
+    List.iteri (fun i parent -> parent.Children.Add((oper, i, id))) parents 
+    oper
+                        
+  static member UidOf(op) = op.Uid
+
+and ChildData = Operator * int * link
 
 and Event(timestamp:DateTime, fields:Map<string, value>) =
     member self.Timestamp with get() = timestamp
