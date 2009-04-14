@@ -138,51 +138,27 @@ let makeEvaluator expr uid prio parents =
 
 
 
-let makeRecord (fields:list<string * expr * uid list>) uid prio parents =
-  (* This could be simplified if each field had one and only one parent,
-     but that would lead to an explosion of evalOperators, which I'm trying
-     to avoid.
-  *)
-
-  // Maps dependencies to the fields that depend on them
-  let depToField =
-    [ for field, expr, deps in fields do
-        yield! [ for dep in deps -> dep, field ] ]
-      |> List.fold_left (fun acc (d, f) -> let v = if Map.mem d acc
-                                                     then f::(Map.find d acc)
-                                                     else [f]
-                                           Map.add d v acc) Map.empty
-
-  // Map fields to their corresponding expressions
-  let fieldToExpr = Map.of_list (List.map (fun (f, e, _) -> (f, e)) fields)
-  let result = fields |> List.map (fun (f, _, _) -> (VString f, ref VNull)) |> Map.of_list
+let makeRecord (fields:list<string * Operator>) uid prio parents =
+  let result = fields |> List.map (fun (f, _) -> (VString f, ref VNull)) |> Map.of_list
+  assert (parents = (List.map snd fields))
 
   let recordOp = Operator.Build(uid, prio,
                    (fun oper allChanges ->
-                      let env = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
-                      let fieldsToEval = allChanges
-                                           |> List.mapi (fun i _ ->
-                                                           let parent = oper.Parents.[i]
-                                                           depToField.[parent.Uid])
-                                           |> List.concat
-                                           |> Set.of_list |> Set.to_list
+                      let recordChanges =
+                        allChanges
+                          |> List.mapi (fun i changes ->
+                                          match changes with
+                                          | x::xs -> let field, parent = fields.[i]
+                                                     result.[VString field] := parent.Value
+                                                     [RecordDiff (VString field, changes)]
+                                          | _ -> [])
+                          |> List.concat
 
-                      let recordChanges = List.map (fun f -> let expr = fieldToExpr.[f]
-                                                             let r = eval env expr
-                                                             result.[VString f] := r
-                                                             RecordDiff (VString f, [Added r])) // TODO
-                                                   fieldsToEval
                       Some (oper.Children, recordChanges)),
-                   parents, contents = VRecord result);
+                   parents, contents = VRecord result)
 
-  // Initialize the result using the initial environment
-  let env = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
-  for field, expr, _ in fields do
-    result.[VString field] := try
-                                eval env expr
-                              with e ->
-                                VNull
-
+  for field, op in fields do
+    result.[VString field] := op.Value
 
   recordOp
 

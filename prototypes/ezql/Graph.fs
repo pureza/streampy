@@ -154,7 +154,7 @@ module Graph =
 
     open System.Windows.Forms
     open System.Drawing
-
+(*
     let display graph pp =
 
       let toGleeGraph graph =
@@ -183,5 +183,5 @@ module Graph =
       gViewer.Graph <- gleeGraph
       form.Show()
       Application.Run(form)
-
+*)
 

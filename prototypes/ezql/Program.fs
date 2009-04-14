@@ -77,7 +77,8 @@ let streams, allOps = Engine.compile @"
                             //h = hum_readings.last(:humidity);
                             tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature));
                             //hotRooms = tempPerRoom.where(t -> t > y);
-                            tempPerRoomX2 = tempPerRoom.select(t -> { :ola = temp_readings.last(:room_id) + t > 2 * t, :ole = t });
+                            tempPerRoomX2 = tempPerRoom.select(t -> { :ola = temp_readings.last(:room_id) + t > 2 * t, :ole = t, 
+                                                                      :oli = x });
 
                             blah = { :a = x * 2 + x, :b = x + 5 };
                            "

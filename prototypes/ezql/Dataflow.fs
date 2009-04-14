@@ -216,14 +216,12 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
               |> Map.add arg argInfo
   let deps', g', expr' = dataflowE env graph expr
 
-  (fun prio rtEnv -> let fixPrio = (fun p -> prio + ((p + 1.0) * 0.01))
+  (fun prio rtEnv -> let fixPrio p = prio + (p + 1.0) * 0.01
                      let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) rtEnv
 
-                     // Do we need a final operator to evaluate the expression?
-                     // If we do, deps' contains all the dependencies necessary
-                     // and we use "operators" to lookup the corresponding operators.
-                     let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
-                     let finalPrio =  fixPrio (float operators.Count + 1.0)
+                     (* Do we need a final operator to evaluate the expression?
+                        If we do, deps' contains all the dependencies necessary
+                        and we use "operators" to lookup the corresponding operators. *)
                      let final =
                        match expr' with
                        (* No additional node necessary *)
@@ -231,18 +229,30 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
 
                        (* Yes, the result is a record and we need the corresponding operator *)
                        | Record fields ->
-                           let fieldExps = List.map (fun (Symbol n', expr) ->
-                                                       // The record needs to know the dependencies per field
-                                                       // We take the opportunity to make some sanity checks...
-                                                       let deps, g'', expr' = dataflowE env g' expr
-                                                       // The call to dataflowE must not have modified the graph nor the expression
-                                                       assert (g'' = g' && expr' = expr)
-                                                       let uids = List.map NodeInfo.UidOf (Set.to_list deps)
-                                                       (n', expr, uids)) fields
-                           makeRecord fieldExps (nextSymbol ("groupRecordResult-" + arg))
-                                      finalPrio resultParents
+                           let fieldDeps = List.mapi
+                                             (fun i (Symbol field, expr) ->
+                                                (* Lets get the dependencies for just this expression *)
+                                                let deps'', g'', expr' = dataflowE env g' expr
+                                                (* Sanity check: at this point, the expression should be completely
+                                                   "continualized" and thus, the previous operation must not have
+                                                   altered the graph nor the expression itself *)
+                                                assert (g'' = g' && expr' = expr)
+
+                                                (* Do we need an evaluator just for this field? *)
+                                                match expr, Set.to_list deps'' with
+                                                | Id (Identifier name), [dep] -> (field, operators.[dep.Uid])
+                                                | Id (Identifier name), _ -> failwith "This cannot happen... but will :)"
+                                                | _ -> let parents = List.map (fun v -> operators.[v.Uid]) (Set.to_list deps'')
+                                                       let prio = fixPrio (float (i + operators.Count + 1))
+                                                       let evalOper = makeEvaluator expr (nextSymbol field) prio parents
+                                                       (field, evalOper))
+                                             fields
+                           makeRecord fieldDeps (nextSymbol ("groupRecordResult-" + arg))
+                                      (fixPrio (float (fieldDeps.Length + operators.Count + 1))) (List.map snd fieldDeps)
                        (* The result is an arbitrary expression and we need to evaluate it *)
-                       | _ -> makeEvaluator expr' (nextSymbol ("groupResult-" + arg)) finalPrio
+                       | _ -> let finalPrio = fixPrio (float operators.Count + 1.0)
+                              let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
+                              makeEvaluator expr' (nextSymbol ("groupResult-" + arg)) finalPrio
                                             resultParents
 
                      operators.[arg], final)
