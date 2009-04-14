@@ -14,7 +14,7 @@ type NodeType =
   | DynVal
   | Dict
   | Unknown
-  
+
 type uid = string
 type NodeInfo =
   { Uid:uid
@@ -24,7 +24,7 @@ type NodeInfo =
     MakeOper:uid -> priority -> Operator list -> Operator
     ParentUids:uid list }
 
-    interface IComparable with 
+    interface IComparable with
       member self.CompareTo(other) =
         match other with
         | :? NodeInfo as other' -> String.compare self.Uid other'.Uid
@@ -40,7 +40,7 @@ type NodeInfo =
        Unknown nodes are ignored by the dataflow algorithm *)
     static member AsUnknown(uid) =
       let makeOper' = fun _ _ _ -> failwith "Won't happen!"
-    
+
       { Uid = uid; Type = Unknown; Name = uid; MakeOper = makeOper';
         ParentUids = [] }
 
@@ -97,19 +97,29 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
       | [dep] -> failwith "Ver isto"//deps, g', expr'
       | [] -> Set.empty, g', MemberAccess (expr', (Identifier name))
       | _ -> failwith "The target of the method call depends on more than one value"
+  | Record fields ->
+      let deps, g', exprs =
+        List.fold_left (fun (depsAcc, g, expsAcc) (Symbol field, expr) ->
+                          let deps, g', expr' = dataflowE env g expr
+                          match expr' with
+                          | Id (Identifier uid) -> depsAcc @ (Set.to_list deps), g', expsAcc @ [(Symbol field, expr')]
+                          | _ -> depsAcc @ (Set.to_list deps), g', expsAcc @ [(Symbol field, expr')])
+                       ([], graph, []) fields
+      Set.of_list deps, g', Record exprs
   | BinaryExpr (oper, expr1, expr2) as expr ->
       let deps1, g1, expr1' = dataflowE env graph expr1
       let deps2, g2, expr2' = dataflowE env g1 expr2
       Set.union deps1 deps2, g2, BinaryExpr (oper, expr1', expr2')
-  | Id (Identifier name) -> 
+  | Id (Identifier name) ->
       let info = Map.tryfind name env
       match info with
-      | Some info' -> if info'.Type <> Unknown 
+      | Some info' -> if info'.Type <> Unknown
                         then Set.singleton info', graph, Id (Identifier info'.Uid)
                         else Set.empty, graph, expr // If the type is unknown, nothing depends on it.
       | _ -> failwithf "Identifier not found in the graph: %s" name
   | Integer i -> Set.empty, graph, expr
-    
+  | _ -> failwithf "Expression type not supported: %A" expr
+
 and dataflowMethod env graph (target:NodeInfo) methName paramExps =
   match target.Type with
   | Stream -> match methName with
@@ -122,9 +132,9 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
               | "[]" -> let n, g' = createNode (nextSymbol "[x min]") Stream [target.Uid]
                                                (fun prio -> failwith "Windows are not supported. Do your homework.") graph
                         Set.singleton n, g', Id (Identifier n.Uid)
-              | "where" -> let pred, env', arg = 
+              | "where" -> let pred, env', arg =
                              match paramExps with
-                             | [Lambda ([Identifier arg], body) as fn] -> 
+                             | [Lambda ([Identifier arg], body) as fn] ->
                                  body,
                                  // Put the argument as an Unknown node into the environment
                                  // This way it will be ignored by the dataflow algorithm
@@ -169,12 +179,29 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                            | _ -> failwith "Invalid parameter to where"
                          let deps, g', expr' = dataflowE env' graph expr
                          let expr'' = Lambda ([Identifier arg], expr')
-                         let groupBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
-                         // GroupBy depends on the stream and on the dependencies of the predicate.
-                         let groupbyDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
-                         let n, g'' = createNode (nextSymbol methName) Dict groupbyDeps
-                                                 (makeDictWhere groupBuilder) g'
+                         let predBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
+                         // Where depends on the parent dictionary and on the dependencies of the predicate.
+                         let whereDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
+                         let n, g'' = createNode (nextSymbol methName) Dict whereDeps
+                                                 (makeDictWhere predBuilder) g'
                          Set.singleton n, g'', Id (Identifier n.Uid)
+            | "select" -> let expr, env', arg =
+                            match paramExps with
+                            | [Lambda ([Identifier arg], body) as fn] ->
+                                body,
+                                // Put the argument as an Unknown node into the environment
+                                // This way it will be ignored by the dataflow algorithm
+                                Map.add arg (NodeInfo.AsUnknown(arg)) env,
+                                arg
+                            | _ -> failwith "Invalid parameter to where"
+                          let deps, g', expr' = dataflowE env' graph expr
+                          let expr'' = Lambda ([Identifier arg], expr')
+                          let projBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
+                          // Select depends on the parent dictionary and on the dependencies of the predicate.
+                          let selectDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
+                          let n, g'' = createNode (nextSymbol methName) Dict selectDeps
+                                                  (makeDictSelect projBuilder) g'
+                          Set.singleton n, g'', Id (Identifier n.Uid)
             | _ -> failwithf "Unkown method: %s" methName
   | _ -> failwith "Unknown target type"
 
@@ -189,37 +216,55 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
               |> Map.add arg argInfo
   let deps', g', expr' = dataflowE env graph expr
 
-  (fun prio env -> let fixPrio = (fun p -> prio + ((p + 1.0) * 0.01))
-                   let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) env
+  (fun prio rtEnv -> let fixPrio = (fun p -> prio + ((p + 1.0) * 0.01))
+                     let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) rtEnv
 
-                   // Do we need a final operator to evaluate the expression?
-                   // If we do, deps' contains all the dependencies necessary
-                   // and we use "operators" to lookup the corresponding operators.
-                   match expr' with
-                   | (* No *)  Id (Identifier _) -> ()
-                   | (* Yes *) _ -> let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
-                                    makeEvaluator expr' (nextSymbol ("groupResult-" + arg)) (fixPrio (float operators.Count + 1.0))
-                                      resultParents |> ignore
-                   operators.[arg])
+                     // Do we need a final operator to evaluate the expression?
+                     // If we do, deps' contains all the dependencies necessary
+                     // and we use "operators" to lookup the corresponding operators.
+                     let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
+                     let finalPrio =  fixPrio (float operators.Count + 1.0)
+                     let final =
+                       match expr' with
+                       (* No additional node necessary *)
+                       | Id (Identifier uid) -> operators.[uid]
+
+                       (* Yes, the result is a record and we need the corresponding operator *)
+                       | Record fields ->
+                           let fieldExps = List.map (fun (Symbol n', expr) ->
+                                                       // The record needs to know the dependencies per field
+                                                       // We take the opportunity to make some sanity checks...
+                                                       let deps, g'', expr' = dataflowE env g' expr
+                                                       // The call to dataflowE must not have modified the graph nor the expression
+                                                       assert (g'' = g' && expr' = expr)
+                                                       let uids = List.map NodeInfo.UidOf (Set.to_list deps)
+                                                       (n', expr, uids)) fields
+                           makeRecord fieldExps (nextSymbol ("groupRecordResult-" + arg))
+                                      finalPrio resultParents
+                       (* The result is an arbitrary expression and we need to evaluate it *)
+                       | _ -> makeEvaluator expr' (nextSymbol ("groupResult-" + arg)) finalPrio
+                                            resultParents
+
+                     operators.[arg], final)
 
 
 (*
  * Iterate the graph and create the operators and the connections between them.
  *)
-and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio : Map<string, Operator> =      
+and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio : Map<string, Operator> =
   let order = Graph.Algorithms.topSort roots graph
-  
+
   // Maps uids to priorities
-  let orderPrio = List.fold_left (fun (acc, prio) x -> (Map.add x prio acc, prio + 1.0)) 
+  let orderPrio = List.fold_left (fun (acc, prio) x -> (Map.add x prio acc, prio + 1.0))
                                  (Map.empty, 0.0) order |> fst
 
-  // Fold the graph with the right order, returning a map of all the operators 
-  let operators = 
-    Graph.foldSeq (fun acc (pred, uid, info, succ) -> 
+  // Fold the graph with the right order, returning a map of all the operators
+  let operators =
+    Graph.foldSeq (fun acc (pred, uid, info, succ) ->
                      let operators = acc
                      let parents = List.map (fun uid -> Map.find uid operators) info.ParentUids
                      let op = info.MakeOper uid (fixPrio orderPrio.[uid]) parents
-                     Map.add uid op operators) 
+                     Map.add uid op operators)
                    Map.empty graph order
 
   operators

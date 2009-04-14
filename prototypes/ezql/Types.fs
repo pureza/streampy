@@ -4,6 +4,8 @@ open System
 open System.Collections.Generic
 open Ast
 
+type uid = string
+
 (*
  * An operator is like a graph node that contains a list of parents and
  * children.
@@ -29,16 +31,16 @@ type Operator =
     Parents: List<Operator>
     Contents: ref<value>
     Priority: priority
-    Uid: string }
+    Uid: uid }
 
   member self.ArgCount with get = self.Parents.Count
   member self.Value
     with get = !self.Contents
     and set(v) = self.Contents := v
-        
+
   override self.ToString() = sprintf "{ %s, child = %d }" self.Uid self.Children.Count
-        
-  interface IComparable with 
+
+  interface IComparable with
     member self.CompareTo(other) = Int32.compare (self.GetHashCode()) (other.GetHashCode())
 
   (* Creates an operator and connects it to its parents *)
@@ -48,14 +50,14 @@ type Operator =
                       | None -> List<_>()
     let theContents = match contents with
                       | Some v -> ref v
-                      | None -> ref VNull                  
+                      | None -> ref VNull
     let oper = { Uid = uid; Priority = prio; Eval = eval;
                  Parents = List<_>(Seq.of_list parents);
                  Children = theChildren; Contents = theContents }
-      
-    List.iteri (fun i parent -> parent.Children.Add((oper, i, id))) parents 
+
+    List.iteri (fun i parent -> parent.Children.Add((oper, i, id))) parents
     oper
-                        
+
   static member UidOf(op) = op.Uid
 
 and ChildData = Operator * int * link
@@ -71,24 +73,24 @@ and value =
     | VBool of bool
     | VInt of int
     | VString of string
-    | VRecord of Dictionary<value, value>
+    | VRecord of Map<value, value ref>
     | VDict of Dictionary<value, value>
     | VClosure of context * expr
     | VEvent of Event
     | VNull
-    
+
     override self.ToString() =
       let s = match self with
               | VBool b -> b.ToString()
               | VInt v -> v.ToString()
               | VString s -> s
-              | VRecord m -> m.ToString()
+              | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %A," k (!v))) "" m))
               | VDict m -> m.ToString()
               | VClosure _ -> "..lambda.."
               | VEvent ev -> ev.ToString()
               | VNull -> "VNull"
       (sprintf "« %s »" s)
-    
+
     static member (+)(left:value, right:value) =
         match left, right with
         | VInt l, VInt r -> VInt (l + r)
@@ -98,7 +100,7 @@ and value =
         match left, right with
         | VInt l, VInt r -> VInt (l * r)
         | _ -> failwith "Invalid types in *"
-        
+
     static member (-)(left:value, right:value) =
         match left, right with
         | VInt l, VInt r -> VInt (l - r)
@@ -107,7 +109,7 @@ and value =
     static member op_GreaterThan(left:value, right:value) =
         match left, right with
         | VInt l, VInt r -> VBool (l > r)
-        | _ -> failwith "Invalid types in +"        
+        | _ -> failwith "Invalid types in +"
 
 and diff =
     | Added of value

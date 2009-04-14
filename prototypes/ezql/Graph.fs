@@ -3,10 +3,10 @@
 type 'a Node = 'a
 type 'a Adj = Node<'a> list
 type Context<'a, 'b> = Adj<'a> * Node<'a> * 'b * Adj<'a>
-    
+
 module InternalTypes =
-    
-    type 'a Adj' = Set<'a Node>    
+
+    type 'a Adj' = Set<'a Node>
     type Context'<'a, 'b> = Adj'<'a> * 'b * Adj'<'a>
     type GraphRep<'a, 'b> = Map<'a Node, Context'<'a, 'b>>
 
@@ -41,21 +41,24 @@ module private Util =
     let rec updAdj (adj:Adj'<'a>) fn (gr:GraphRep<'a, 'b>) =
       match adj with
       | EmptySet -> gr
-      | ConsSet (v, s') -> updAdj s' fn (Map.add v (fn gr.[v]) gr)
-    
+      | ConsSet (v, s') ->
+          if Map.mem v gr
+            then updAdj s' fn (Map.add v (fn gr.[v]) gr)
+            else failwithf "Map doesn't contain %A" v
+
 
 open InternalTypes
 open Util
-     
-type Graph<'a, 'b>(contents:GraphRep<'a, 'b>) =  
+
+type Graph<'a, 'b>(contents:GraphRep<'a, 'b>) =
     member self.IsEmpty = contents.IsEmpty
-  
+
     member self.Add((p, v, l, s)) =
       let p' = Set.of_list p
       let s' = Set.of_list s
       let g' = contents.Add(v, (p', l, s')) |> updAdj p' (addSucc v) |> updAdj s' (addPred v)
       Graph g'
-      
+
     member self.Remove(v) =
       match contents with
       | ExtractPair v ((_, (p, l, s)), g') ->
@@ -64,7 +67,7 @@ type Graph<'a, 'b>(contents:GraphRep<'a, 'b>) =
           let gr = g' |> updAdj s' (clearPred v) |> updAdj p' (clearSucc v)
           Graph gr
       | _ -> self
-    
+
     member self.Extract(v) : Option<Context<'a, 'b>> * Graph<'a, 'b> =
       match contents with
       | ExtractPair v ((_, (p, l, s)), g') -> Some (Set.to_list p, v, l, Set.to_list s), self.Remove(v)
@@ -74,7 +77,7 @@ type Graph<'a, 'b>(contents:GraphRep<'a, 'b>) =
       match contents with
       | ExtractAnyPair ((v, (p, l, s)), g') -> Some (Set.to_list p, v, l, Set.to_list s), self.Remove(v)
       | _ -> (None, self)
- 
+
     member self.Item with get(v) = match self.Extract(v) |> fst with
                                    | Some ctx -> ctx
                                    | _ -> failwithf "Node doesn't exist: %A" v
@@ -94,9 +97,9 @@ let (|Extract|_|) v (graph:Graph<'a, 'b>) =
 let (|ExtractAny|_|) (graph:Graph<'a, 'b>) =
   match graph.ExtractAny() with
   | (None, _) -> None
-  | (Some ctx, g') -> Some (ctx, g')      
+  | (Some ctx, g') -> Some (ctx, g')
 
-      
+
 [<CompilationRepresentation(CompilationRepresentationFlags.ModuleSuffix)>]
 module Graph =
   let empty<'a, 'b> : Graph<'a, 'b> = Graph<'a, 'b>.Empty()
@@ -133,9 +136,9 @@ module Graph =
       | v::vs, g -> match g with
                     | Extract v (ctx, g') -> v::(dfs ((suc v g)@vs, g'))
                     | _ -> dfs (vs, g)
-                    
-    
-    let topSort roots graph =              
+
+
+    let topSort roots graph =
         let rec dfsPostOrder = function
           | [], g -> ([], g)
           | v::vs, g -> match g with
@@ -143,32 +146,32 @@ module Graph =
                                                  let v2, g2 = dfsPostOrder (vs, g1)
                                                  v1@(v::v2), g2
                         | _ -> dfsPostOrder (vs, g)
-                        
+
         dfsPostOrder(roots, graph) |> fst |> List.rev
 
-(*
+
   module Viewer =
-  
+
     open System.Windows.Forms
     open System.Drawing
-  
+
     let display graph pp =
-    
+
       let toGleeGraph graph =
-        fold (fun (acc:Microsoft.Glee.Drawing.Graph) (p, v, l, s) -> 
+        fold (fun (acc:Microsoft.Glee.Drawing.Graph) (p, v, l, s) ->
                 for node in p do
                   let nodeL = (labelOf node graph)
                   acc.AddEdge(pp node nodeL, pp v l) |> ignore
-                
+
                 acc.AddNode (pp v l) |> ignore
-                
+
                 for node in s do
                   let nodeL = (labelOf node graph)
                   acc.AddEdge(pp v l, pp node nodeL) |> ignore
 
                 acc)
-             (new Microsoft.Glee.Drawing.Graph ("graph")) graph    
-   
+             (new Microsoft.Glee.Drawing.Graph ("graph")) graph
+
       let createWindow () =
         let form = new Form(Text="Graph viewer", Size=new Size(800, 600))
         let gViewer = new Microsoft.Glee.GraphViewerGdi.GViewer(Dock=DockStyle.Fill)
@@ -180,5 +183,5 @@ module Graph =
       gViewer.Graph <- gleeGraph
       form.Show()
       Application.Run(form)
-                       
-*)
+
+

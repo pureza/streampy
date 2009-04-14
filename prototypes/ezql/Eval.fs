@@ -13,8 +13,12 @@ let rec eval env = function
       match target with
       | VEvent ev -> ev.[name]
       | _ -> failwith "eval MemberAccess: Not an event!"
+  | Record fields ->
+      // This is extremely ineficient - we should create a node if possible
+      VRecord (fields |> List.map (fun (Symbol (name), expr) -> (VString name, ref (eval env expr)))
+                      |> Map.of_list)
   | Lambda (args, body) as fn -> VClosure (env, fn)
-  | BinaryExpr (oper, expr1, expr2) ->        
+  | BinaryExpr (oper, expr1, expr2) ->
     let value1 = eval env expr1
     let value2 = eval env expr2
     evalOp (oper, value1, value2)
@@ -39,7 +43,7 @@ and apply = function
       | Lambda (ids, body) ->
           (fun args ->
               let ids' = List.map (fun (Identifier name) -> name) ids
-              let env' = List.fold_left (fun e (n, v) -> Map.add n v e) 
+              let env' = List.fold_left (fun e (n, v) -> Map.add n v e)
                                          env (List.zip ids' args)
               eval env' body)
       | _ -> failwith "evalClosure: Wrong type"
@@ -52,10 +56,10 @@ and evalClosure = function
         | Lambda (ids, body) ->
             (fun args ->
                 let ids' = List.map (fun (Identifier name) -> name) ids
-                let env' = List.fold_left (fun e (n, v) -> Map.add n v e) 
+                let env' = List.fold_left (fun e (n, v) -> Map.add n v e)
                                            env (List.zip ids' (List.map ref args))
                 eval env' body)
         | _ -> failwith "evalClosure: Wrong type"
     | _ -> failwith "This is not a closure"
-    
+
     *)

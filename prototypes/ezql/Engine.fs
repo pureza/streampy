@@ -24,25 +24,25 @@ let parse code =
 let compile code =
     let ast = parse code
     match ast with
-    | Prog stmts -> 
+    | Prog stmts ->
         let g = Graph.empty
         let env = Map.empty
         let roots = []
         let env', g', roots' = List.fold_left dataflow (env, g, roots) stmts
-        
+
         //Graph.Viewer.display g' (fun v info -> info.Name)
         let rootUids = List.map (fun name -> env'.[name].Uid) roots'
         let operators = Dataflow.makeOperNetwork g' rootUids id
         let rootStreams = List.fold_left (fun acc x -> Map.add x (fun ev -> addEvent operators.[env'.[x].Uid] ev) acc) Map.empty roots'
         let declaredOps = Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
         rootStreams, declaredOps
-   
-let mainLoop () = 
+
+let mainLoop () =
     let virtualClock = Scheduler.clock () :?> VirtualClock
     while virtualClock.HasNext () do
         virtualClock.Step ()
-              
+
 let reset () =
     Scheduler.reset ()
-    
+
 let now () = Scheduler.clock().Now
