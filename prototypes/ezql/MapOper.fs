@@ -52,7 +52,7 @@ let makeGroupby field groupBuilder uid prio parents =
                                   changes
                       Some (op.Children, List.map_concat id changes)),
                    [], contents = VDict results)
-     
+
 
     { groupOp with
         Children = dictOp.Children;
@@ -68,12 +68,12 @@ let makeGroupby field groupBuilder uid prio parents =
  * - dictOp receives the changes from whereOp and the changes from each
  *   predicate and updates the results dictionary accordingly.
  *)
-let mapWhere uid prio predicateBuilder =
+let makeDictWhere predicateBuilder uid prio parents =
     let predicates = ref Map.empty
     let results = Dictionary<value, value>()
 
-    let rec buildPredCircuit key =
-      let circuit = predicateBuilder prio
+    let rec buildPredCircuit key env =
+      let circuit = predicateBuilder prio env
       let result = followCircuit circuit
       predicates := (!predicates).Add(key, circuit)
 
@@ -81,67 +81,69 @@ let mapWhere uid prio predicateBuilder =
       // The diff is converted into a DictDiff before being passed to the child.
       connect result dictOp (fun changes -> [DictDiff (key, changes)])
 
-    and whereOp =
-      { Eval = (fun op changes ->
-                    let prntChg = changes.Head
-                    let predsToEval = prntChg
-                                        |> List.map (function
-                                                     | DictDiff (key, diff) ->
-                                                         if not (Map.mem key !predicates) then buildPredCircuit key
+    and whereOp = Operator.Build(uid, prio,
+                    (fun op changes ->
+                      printfn "where changes %A" changes
+                      let env = Map.of_list [ for p in op.Parents do
+                                                if p <> op.Parents.[0]
+                                                  then yield (p.Uid, p) ]
 
-                                                         // The link between the where and the group's circuit ignores everything
-                                                         // that is not related to that group.
-                                                         let link = (fun changes -> [ for diff in changes do
-                                                                                        match diff with
-                                                                                        | DictDiff (key', v) when key = key' -> yield! v
-                                                                                        | _ -> () ])
-                                                         (!predicates).[key], 0, link
-                                                     | _ -> failwith "Map/where received invalid changes")
-                    Some (List<_> ((dictOp, 0, id)::predsToEval), prntChg))
-        Children = List<_> ()
-        Parents = List<_> ()
-        Contents = ref VNull
-        Priority = prio
-        Uid = uid }
-    
-    and dictOp =
-      { Eval = (fun op changes ->
-                  // changes.Head contains the dictionary changes passed to the where
-                  // changes.Tail contains the changes in the inner predicates
-                  let prntChg, predChg = changes.Head, changes.Tail     
-                  let parentDict = match whereOp.Parents.[0].Value with
-                                   | VDict d -> d
-                                   | _ -> failwith "The parent of this where is not a dictionary!"         
-                  
-                  // Update the results dictionary and collect removed keys
-                  let deletions =
-                    predChg
-                      |> List.map_concat (fun chg -> 
-                                            match chg with
-                                            | [] -> []
-                                            | [DictDiff (key, v)] -> match v with
-                                                                     | [Added (VBool true)] -> results.[key] <- parentDict.[key]; []
-                                                                     | [Added (VBool false)] -> results.Remove(key) |> ignore; [RemovedKey key]
-                                                                     | _ -> failwith "Map's where expects only added vbool changes."
-                                            | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
-                  
-                  // Ignore changes to keys that are filtered out
-                  let containedChanges = [ for change in prntChg do
-                                             match change with
-                                             | DictDiff (key, v) when results.ContainsKey(key) -> results.[key] <- parentDict.[key]
-                                                                                                  yield change
-                                             | _ -> () ]
-                  Some (op.Children, deletions@containedChanges))
-        Children = List<_> ()
-        Parents = List<_> ()
-        Contents = ref (VDict results)
-        Priority = prio + 0.9
-        Uid = uid + "_dict" }
-         
-    { whereOp with 
+                      let parentDiff = changes.Head
+                      let predsToEval = List.map (function
+                                                  | DictDiff (key, diff) ->
+                                                      if not (Map.mem key !predicates) then buildPredCircuit key env
+
+                                                      // The link between the where and the group's circuit ignores everything
+                                                      // that is not related to that group.
+                                                      let link = (fun changes -> [ for diff in changes do
+                                                                                     match diff with
+                                                                                     | DictDiff (key', v) when key = key' -> yield! v
+                                                                                     | _ -> () ])
+                                                      (!predicates).[key], 0, link
+                                                  | _ -> failwith "Map/where received invalid changes")
+                                                 parentDiff
+                      Some (List<_> ((dictOp, 0, id)::predsToEval), parentDiff)),
+                      parents)
+
+    and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+                   (fun op changes ->
+                      printfn "where_dict changes %A" changes
+                      // changes.Head contains the dictionary changes passed to the where
+                      // changes.Tail contains the changes in the inner predicates
+                      let parentChanges, predChanges = changes.Head, changes.Tail
+                      let parentDict = match whereOp.Parents.[0].Value with
+                                       | VDict d -> d
+                                       | _ -> failwith "The parent of this where is not a dictionary!"
+
+                      // Update the results dictionary and collect removed keys
+                      let deletions =
+                        List.map_concat (function
+                                           | [] -> []
+                                           | [DictDiff (key, v)] ->
+                                               match v with
+                                               | [Added (VBool true)] -> results.[key] <- parentDict.[key]
+                                                                         []
+                                               | [Added (VBool false)] -> results.Remove(key) |> ignore
+                                                                          [RemovedKey key]
+                                               | other -> failwithf "Map's where expects only added vbool changes: %A" other
+                                           | other -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" other)
+                                        predChanges
+
+                      // Ignore changes to keys that are filtered out
+                      let containedChanges = [ for change in parentChanges do
+                                                 match change with
+                                                 | DictDiff (key, v) when results.ContainsKey(key) ->
+                                                     results.[key] <- parentDict.[key]
+                                                     yield change
+                                                 | _ -> () ]
+                      Some (op.Children, deletions@containedChanges)),
+                   [], contents = VDict results)
+
+    { whereOp with
         Children = dictOp.Children;
         Contents = dictOp.Contents }
-        
+
+
 let mapSelect uid prio projectorBuilder =
     let projectors = ref Map.empty
     let results = Dictionary<value, value>()

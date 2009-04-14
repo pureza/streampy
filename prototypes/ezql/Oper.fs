@@ -72,7 +72,7 @@ let rec spread (stack:evalStack) =
     match stack with
     | [] -> ()
     | (op, parentChanges)::xs -> 
-        // printfn "*** Vou actualizar o %O" op
+        printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
         let filledChanges = fillLeftArgs op parentChanges 0
         match op.Eval op filledChanges with
         | Some (children, changes) -> spread (mergeStack xs [ for child, idx, link in children -> (child, [(idx, (link changes))]) ])
@@ -82,11 +82,11 @@ let rec spread (stack:evalStack) =
 // Some common operators
 
 (* A stream: propagates received events *)
-let makeStream uid prio parents = 
+let makeStream uid prio parents =
   let eval = fun op inputs -> match inputs with
                               | [[Added (VEvent ev)] as changes] -> Some (op.Children, changes)
-                              | _ -> failwith "Wrong number of arguments!"
-  
+                              | _ -> failwith "stream: Wrong number of arguments!"
+
   Operator.Build(uid, prio, eval, parents)
 
 
@@ -104,16 +104,25 @@ let makeWhere predLambda uid prio parents =
                        | VBool true -> Some (op.Children, inputs.Head)
                        | VBool false -> None
                        | _ -> failwith "Predicate was supposed to return VBool"
-                 | _ -> failwithf "Wrong number of arguments! %A" inputs
+                 | _ -> failwithf "where: Wrong number of arguments! %A" inputs
 
     Operator.Build(uid, prio, eval, parents)
+
+
+
+let makeDynVal uid prio parents =
+  let eval = fun op inputs -> match inputs with
+                              | [[Added v]] -> setValueAndGetChanges op v
+                              | _ -> failwith "dynVal: Wrong number of arguments! %A" inputs
+
+  Operator.Build(uid, prio, eval, parents)
 
 
 (* Last: records one field of the last event of a stream *)
 let makeLast field uid prio parents =
   let eval = fun op inputs -> match inputs with
                               | [[Added (VEvent ev)] as changes] -> setValueAndGetChanges op ev.[field]
-                              | _ -> failwith "Wrong number of arguments!"
+                              | _ -> failwith "last: Wrong number of arguments! %A" inputs
   
   Operator.Build(uid, prio, eval, parents)
 

@@ -157,13 +157,13 @@ let streams, allOps = Engine.compile @"
                             temp_readings = stream (:room_id, :temperature);
                             //hum_readings = stream (:room_id, :humidity);
 
-                            x = temp_readings.last(:room_id);
-                            y = temp_readings.last(:temperature);
+                            //x = temp_readings.last(:room_id);
+                            //y = temp_readings.last(:temperature);
                             
                             //z = x + y * 3;
-                            hot_readings = temp_readings.where(ev -> ev.temperature > x + y - x);
+                            //hot_readings = temp_readings.where(ev -> ev.temperature > x + y - x);
                             
-                            lastHot = hot_readings.last(:temperature);
+                            //lastHot = hot_readings.last(:temperature);
                             
                             
 
@@ -174,17 +174,19 @@ let streams, allOps = Engine.compile @"
                             //z = y * (x + x[3 min].max());
                             
                             //h = hum_readings.last(:humidity);
-                            tempPerRoom = temp_readings.groupby(:room_id, g -> x * g.last(:temperature) + x + y);
+                            tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature));
+                            hotRooms = tempPerRoom.where(t -> t > 30);
                            "
 
 
 streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 30)]))
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 20)]))
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 2); ("temperature", VInt 40)]))
+//streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 20)]))
+//streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 2); ("temperature", VInt 40)]))
 //streams.["humidity"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("humidity", VInt 60)]))
 
-printfn "%A" allOps.["lastHot"].Value
+//printfn "%A" allOps.["lastHot"].Value
 printfn "%A" allOps.["tempPerRoom"].Value
+printfn "%A" allOps.["hotRooms"].Value
 
 (*
 

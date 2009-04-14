@@ -150,36 +150,55 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                | _ -> failwith "Invalid parameter to where"
                              let deps, g', expr' = dataflowE env' graph expr
                              let expr'' = Lambda ([Identifier arg], expr')
-                             let groupBuilder = makeGroupBuilder arg expr' deps
+                             let groupBuilder = makeSubExprBuilder (arg, Stream, makeStream) expr' deps
                              // GroupBy depends on the stream and on the dependencies of the predicate.
                              let groupbyDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
                              let n, g'' = createNode (nextSymbol methName) Dict groupbyDeps
                                                      (makeGroupby field groupBuilder) g'
                              Set.singleton n, g'', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method: %s" methName
+  | Dict -> match methName with
+            | "where" -> let expr, env', arg =
+                           match paramExps with
+                           | [Lambda ([Identifier arg], body) as fn] ->
+                               body,
+                               // Put the argument as an Unknown node into the environment
+                               // This way it will be ignored by the dataflow algorithm
+                               Map.add arg (NodeInfo.AsUnknown(arg)) env,
+                               arg
+                           | _ -> failwith "Invalid parameter to where"
+                         let deps, g', expr' = dataflowE env' graph expr
+                         let expr'' = Lambda ([Identifier arg], expr')
+                         let groupBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
+                         // GroupBy depends on the stream and on the dependencies of the predicate.
+                         let groupbyDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
+                         let n, g'' = createNode (nextSymbol methName) Dict groupbyDeps
+                                                 (makeDictWhere groupBuilder) g'
+                         Set.singleton n, g'', Id (Identifier n.Uid)
+            | _ -> failwithf "Unkown method: %s" methName
   | _ -> failwith "Unknown target type"
 
 
-and makeGroupBuilder arg expr deps =
+and makeSubExprBuilder (arg, argType, argMaker) expr deps =
   let mergeMaps a b = Map.fold_left (fun acc k v -> Map.add k v acc) a b
 
-  let argInfo = { Uid = arg; Type = Stream; MakeOper = makeStream; Name = arg; ParentUids = [] }
+  let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = [] }
   let graph = Graph.add ([], arg, argInfo, []) Graph.empty
   let env = Set.fold_left (fun acc n -> Map.add n.Uid n acc)
                           Map.empty deps
               |> Map.add arg argInfo
   let deps', g', expr' = dataflowE env graph expr
-  
-  (fun prio env -> let fixPrio = (fun p -> prio + (p * 0.01))
+
+  (fun prio env -> let fixPrio = (fun p -> prio + ((p + 1.0) * 0.01))
                    let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) env
-                   
+
                    // Do we need a final operator to evaluate the expression?
                    // If we do, deps' contains all the dependencies necessary
                    // and we use "operators" to lookup the corresponding operators.
                    match expr' with
                    | (* No *)  Id (Identifier _) -> ()
                    | (* Yes *) _ -> let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
-                                    makeEvaluator expr' (nextSymbol "groupResult") (fixPrio (float operators.Count) + 1.0)
+                                    makeEvaluator expr' (nextSymbol ("groupResult-" + arg)) (fixPrio (float operators.Count + 1.0))
                                       resultParents |> ignore
                    operators.[arg])
 
