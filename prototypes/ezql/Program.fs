@@ -1,10 +1,5 @@
 ﻿#light
 
-open System
-open Types
-open Oper
-open MapOper
-
 (*
 open Graph
 
@@ -48,73 +43,3 @@ testGraphNetworkX ()
 testTriangleGraph ()
 
 *)
-
-open Ast
-open Graph
-open Dataflow
-
-
-let streams, allOps = Engine.compile @"
-                            temp_readings = stream (:room_id, :temperature);
-                            //hum_readings = stream (:room_id, :humidity);
-
-                            x = temp_readings.last(:room_id);
-                            //y = temp_readings.last(:temperature);
-
-                            //z = x + y * 3;
-                            //hot_readings = temp_readings.where(ev -> ev.temperature > x + y - x);
-
-                            //lastHot = hot_readings.last(:temperature);
-
-
-
-                            //a = (y - x + (x * temp_readings.last(:temperature)));
-
-                            //y = temp_readings.last(:temperature);
-
-                            //z = y * (x + x[3 min].max());
-
-                            //h = hum_readings.last(:humidity);
-                            tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature));
-                            //hotRooms = tempPerRoom.where(t -> t > y);
-                            tempPerRoomX2 = tempPerRoom.select(t -> { :ola = temp_readings.last(:room_id) + t > 2 * t, :ole = t, 
-                                                                      :oli = x });
-
-                            blah = { :a = x * 2 + x, :b = x + 5 };
-                           "
-
-
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 30)]))
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 40)]))
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 2); ("temperature", VInt 20)]))
-//streams.["humidity"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("humidity", VInt 60)]))
-
-//printfn "%A" allOps.["lastHot"].Value
-printfn "%A" allOps.["tempPerRoom"].Value
-//printfn "%A" allOps.["hotRooms"].Value
-printfn "%A" allOps.["tempPerRoomX2"].Value
-printfn "%O" allOps.["blah"].Value
-
-(*
-
-let expr = Parser.expr Lexer.token (Lexing.from_string "temp_readings[5 min].last(:temp) + x * y")
-
-printfn "%A" expr
-
-let temp_readings = { Uid = "temp_readings"; Type = Stream; Name = "temp_readings"; MakeOper = fun uid prio -> failwith "not" }
-let x = { Uid = "x"; Type = DynVal; Name = "x"; MakeOper = fun uid prio -> failwith "not" }
-let y = { Uid = "y"; Type = DynVal; Name = "y"; MakeOper = fun uid prio -> failwith "not" }
-
-let graph = Graph.empty()
-              |> Graph.add ([], "x", x, [])
-              |> Graph.add ([], "y", y, [])
-              |> Graph.add ([], "temp_readings", temp_readings, [])
-
-let env = Map.of_list [("x", x); ("y", y); ("temp_readings", temp_readings)]
-
-let deps, graph', expr' = dataflowE env graph expr
-
-printfn "%A" (Set.map (fun n -> n.Uid) deps)
-printfn "%A" expr'
-*)
-Console.ReadLine() |> ignore

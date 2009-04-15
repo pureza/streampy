@@ -1,9 +1,72 @@
 ﻿#light
 
 open System
-open System.Reflection
+open Ast
+open Graph
+open Dataflow
+open Types
 open Test
 
+
+let streams, allOps = Engine.compile @"
+  temp_readings = stream (:room_id, :temperature);
+  //hum_readings = stream (:room_id, :humidity);
+
+  x = temp_readings.last(:room_id);
+  //y = temp_readings.last(:temperature);
+
+  //z = x + y * 3;
+  //hot_readings = temp_readings.where(ev -> ev.temperature > x + y - x);
+
+  //lastHot = hot_readings.last(:temperature);
+
+
+
+  //a = (y - x + (x * temp_readings.last(:temperature)));
+
+  //y = temp_readings.last(:temperature);
+
+  //z = y * (x + x[3 min].max());
+
+  //h = hum_readings.last(:humidity);
+  tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature));
+  //hotRooms = tempPerRoom.where(t -> t > y);
+  tempPerRoomX2 = tempPerRoom.select(t -> { :ola = temp_readings.last(:room_id) + t > 2 * t, :ole = t, 
+                                            :oli = x });
+
+  blah = { :a = x * 2 + x, :b = x + 5 };
+   "
+streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 30)]))
+streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 40)]))
+streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 2); ("temperature", VInt 20)]))
+//streams.["humidity"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("humidity", VInt 60)]))
+
+//printfn "%A" allOps.["lastHot"].Value
+//printfn "%A" allOps.["tempPerRoom"].Value
+//printfn "%A" allOps.["hotRooms"].Value
+//printfn "%A" allOps.["tempPerRoomX2"].Value
+//printfn "%O" allOps.["blah"].Value
+
+
+
+
+[<TestCase ("streams/where.ez")>]
+let test_streamsWhere (test:Test) =             
+    test.AssertThat (In "hot"
+                      [Added 0 "{ :temperature = 30 }" (At  0)
+                       Added 4 "{ :temperature = 50 }" (At  4)]) 
+                       
+                       
+    test.AssertThat (In "lastTemp"
+                      [Added 0 "{ :temperature = 30 }" (At  0)
+                       Added 4 "{ :temperature = 50 }" (At  4)]) 
+
+Test.runTests (Test.findTests ())
+
+Console.ReadLine() |> ignore
+
+
+(*
 [<TestCase ("test1.ez")>]
 let simpleTest (test:Test) =             
     test.AssertThat (In "hot"
@@ -124,3 +187,5 @@ Test.runTests [(Test.findTest "testDiamond")]
 
 Console.ReadLine() |> ignore
 //let graph = edges.ToAdjacencyGraph(edges)
+
+*)

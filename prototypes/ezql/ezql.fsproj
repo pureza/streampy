@@ -67,6 +67,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Extensions.fs" />
     <Compile Include="Ast.fs" />
     <FsYacc Include="Parser.fsy" />
     <FsLex Include="Lexer.fsl" />

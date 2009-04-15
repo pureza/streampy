@@ -76,7 +76,6 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Test.fs" />
-    <Compile Include="TestCV2.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

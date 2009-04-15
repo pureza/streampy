@@ -2,6 +2,7 @@
 
 open System
 open System.Collections.Generic
+open DateTimeExtensions
 open Ast
 
 type uid = string
@@ -66,6 +67,15 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
     member self.Timestamp with get() = timestamp
     member self.Item with get(field) = fields.[field]
     member self.Fields = fields
+    
+    override self.Equals(otherObj:obj) =
+        let other = unbox<Event>(otherObj)
+        other.Timestamp = self.Timestamp && self.Fields = other.Fields
+    
+    override self.ToString() =
+       "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
+            (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %A " pair.Key pair.Value ])
+             + "}"
 
 and context = Map<string, value>
 

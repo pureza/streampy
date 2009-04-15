@@ -3,6 +3,8 @@ Microsoft Visual Studio Solution File, Format Version 10.00
 # Visual Studio 2008
 Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "ezql", "ezql.fsproj", "{AF03CFCD-93B4-4C4D-B19B-E769A7873E9F}"
 EndProject
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "EzQLTest", "..\ezqltest\EzQLTest.fsproj", "{A0D2ECFB-BA6D-4458-BC39-808621478338}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -13,6 +15,10 @@ Global
 		{AF03CFCD-93B4-4C4D-B19B-E769A7873E9F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AF03CFCD-93B4-4C4D-B19B-E769A7873E9F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AF03CFCD-93B4-4C4D-B19B-E769A7873E9F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A0D2ECFB-BA6D-4458-BC39-808621478338}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A0D2ECFB-BA6D-4458-BC39-808621478338}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A0D2ECFB-BA6D-4458-BC39-808621478338}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A0D2ECFB-BA6D-4458-BC39-808621478338}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

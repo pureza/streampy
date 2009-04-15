@@ -1,0 +1,14 @@
+temp_readings = stream (:room_id, :temperature);
+
+hot = temp_readings
+        .where(t -> t.temperature > 20);
+
+
+lastTemp = temp_readings.last(:temperature);
+
+#! temp_readings
+Timestamp, temperature
+0,          30
+3,          15
+4,          50
+
