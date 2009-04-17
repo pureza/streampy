@@ -50,8 +50,10 @@ let SetKey keyExpr expr timestamp =
   let value = eval Map.empty (Parser.expr Lexer.token (Lexing.from_string expr))
   (timestamp, ValueAtKey (key, value))
 
-let DelKey expr (timestamp:DateTime) =
-    Expired timestamp.TotalSeconds (sprintf "{ :value = %s }" expr) timestamp    
+let DelKey keyExpr (timestamp:DateTime) =
+  let key = eval Map.empty (Parser.expr Lexer.token (Lexing.from_string keyExpr))
+  (timestamp, (fact.Diff (RemovedKey key)))
+
 
 let In entity (facts:(DateTime * fact) list) =
  (*   let interval, f = facts.Head
@@ -146,7 +148,7 @@ let parseTestFile fileName =
 type TestCaseAttribute(srcFile:string) =
     inherit Attribute()
     member self.CreateTest() =
-        let code, inputs = parseTestFile (@"C:\streampy\prototypes\ezql\test\" + srcFile)
+        let code, inputs = parseTestFile (@"../ezql/test/" + srcFile)
         init code inputs
 
 let currentAssembly = Assembly.LoadFrom(Assembly.GetExecutingAssembly().GetName().Name + ".exe")

@@ -8,6 +8,9 @@ lastHum = hum_readings.last(:humidity);
 tempsPerRoom = temp_readings
                  .groupby(:room_id, g -> g.last(:temperature));
 
+hotRooms = tempsPerRoom
+             .where (t -> t > 30);
+
 
 // The group does not depend on g
 lastTempAllRooms = temp_readings

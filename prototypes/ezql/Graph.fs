@@ -149,7 +149,7 @@ module Graph =
 
         dfsPostOrder(roots, graph) |> fst |> List.rev
 
-
+(*
   module Viewer =
 
     open System.Windows.Forms
@@ -184,4 +184,4 @@ module Graph =
       form.Show()
       Application.Run(form)
 
-
+*)

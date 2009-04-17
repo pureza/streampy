@@ -129,8 +129,10 @@ let makeDictWhere predicateBuilder uid prio parents =
                                                match v with
                                                | [Added (VBool true)] -> results.[key] <- parentDict.[key]
                                                                          []
-                                               | [Added (VBool false)] -> results.Remove(key) |> ignore
-                                                                          [RemovedKey key]
+                                               | [Added (VBool false)] -> if results.ContainsKey(key)
+                                                                            then results.Remove(key) |> ignore
+                                                                                 [RemovedKey key]
+                                                                            else []
                                                | other -> failwithf "Map's where expects only added vbool changes: %A" other
                                            | other -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" other)
                                         predChanges
@@ -142,7 +144,10 @@ let makeDictWhere predicateBuilder uid prio parents =
                                                      results.[key] <- parentDict.[key]
                                                      yield change
                                                  | _ -> () ]
-                      Some (op.Children, deletions@containedChanges)),
+                      let allChanges = deletions @ containedChanges
+                      match allChanges with
+                      | [] -> None
+                      | _ -> Some (op.Children, allChanges)),
                    [], contents = VDict results)
 
     { whereOp with
