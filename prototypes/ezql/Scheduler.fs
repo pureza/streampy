@@ -3,16 +3,18 @@
 open System
 open System.Collections.Generic
 open Clock
+open Types
+open Oper
 
-type callback = (unit -> unit)
+type action = Operator * diff
 
 type Scheduler =
     { clock:IClock
-      queue:SortedList<DateTime, callback list> }
+      queue:SortedList<DateTime, action list> }
 
 let init () =
     { clock = VirtualClock ()
-      queue = SortedList<DateTime, callback list>() }
+      queue = SortedList<DateTime, action list>() }
 
 let sched = ref (init ())
 
@@ -24,7 +26,11 @@ let rec reSchedule sched =
     let queue = sched.queue
     if queue.Count <> 0
         then sched.clock.Schedule(queue.Keys.[0], 
-                                  fun _ -> List.iter (fun action -> action()) queue.Values.[0]
+                                  fun _ -> // Sort the list of events to propagate according to node priority
+                                           // and then spread them.
+                                           let stack = List.fold_left (fun acc (stream, diff) -> mergeStack acc [(stream, ([0, [diff]]))])
+                                                                      List.empty queue.Values.[0]
+                                           spread stack
                                            queue.RemoveAt 0
                                            reSchedule sched)
                                            

@@ -41,21 +41,21 @@ let setValueAndGetChanges (op:Operator) v =
 
 type evalStack = (Operator * (int * changes) list) list
 
+// Joins two evaluation stacks and sorts them by node priority
+let mergeStack (stack:evalStack) (toMerge:evalStack) : evalStack =
+    let sortWithOrder = Map.to_list >> List.sort_by (fun (op, _) -> op.Priority)
+
+    let stackMap = Map.of_list stack
+    let merged = List.fold_left (fun acc (k, v) ->
+                                   if Map.mem k acc
+                                     then Map.add k (acc.[k]@v) acc
+                                     else Map.add k v acc) stackMap toMerge
+    merged |> sortWithOrder
+    
 (*
  * This is where any change is propagated throughout the graph.
  *)
 let rec spread (stack:evalStack) =
-    // Joins two evaluation stacks and sorts them by node priority
-    let mergeStack (stack:evalStack) (toMerge:evalStack) : evalStack =
-        let sortWithOrder = Map.to_list >> List.sort_by (fun (op, _) -> op.Priority)
-
-        let stackMap = Map.of_list stack
-        let merged = List.fold_left (fun acc (k, v) ->
-                                       if Map.mem k acc
-                                         then Map.add k (acc.[k]@v) acc
-                                         else Map.add k v acc) stackMap toMerge
-        merged |> sortWithOrder
-
     let rec fillLeftArgs (op:Operator) inputs idx : changes list =
         match (List.sort_by fst inputs) with
         | (next, changes)::xs -> // If there were no changes for input idx, cons []
@@ -101,9 +101,10 @@ let makeWhere predLambda uid prio parents =
                  | [Added (VEvent ev)]::_ ->
                      let env' = Map.add "ev" (VEvent ev) env
                      match eval env' expr with
-                       | VBool true -> Some (op.Children, inputs.Head)
-                       | VBool false -> None
-                       | _ -> failwith "Predicate was supposed to return VBool"
+                     | VBool true -> Some (op.Children, inputs.Head)
+                     | VBool false -> None
+                     | _ -> failwith "Predicate was supposed to return VBool"
+                 | []::_ -> None // Ignore changes to the predicate dependencies
                  | _ -> failwithf "where: Wrong number of arguments! %A" inputs
 
     Operator.Build(uid, prio, eval, parents)
@@ -121,7 +122,7 @@ let makeDynVal uid prio parents =
 (* Last: records one field of the last event of a stream *)
 let makeLast field uid prio parents =
   let eval = fun op inputs -> match inputs with
-                              | [[Added (VEvent ev)] as changes] -> setValueAndGetChanges op ev.[field]
+                              | [[Added (VEvent ev)]] -> setValueAndGetChanges op ev.[field]
                               | _ -> failwith "last: Wrong number of arguments! %A" inputs
 
   Operator.Build(uid, prio, eval, parents)
@@ -134,7 +135,12 @@ let makeEvaluator expr uid prio parents =
                    let result = eval env expr
                    setValueAndGetChanges oper result
 
-  Operator.Build(uid, prio, operEval, parents)
+  let initialContents = try
+                          let env = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
+                          eval env expr
+                        with
+                          | err -> VNull
+  Operator.Build(uid, prio, operEval, parents, contents = initialContents)
 
 
 

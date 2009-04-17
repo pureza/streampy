@@ -1,0 +1,14 @@
+Meter isto on groupby
+
+
+##! hum_readings
+#Timestamp, room_id, humidity
+#0,         1, 70
+#1,         2, 80
+#2,         3, 90
+#3,         1, 71
+#4,         2, 81
+#5,         3, 91
+#6,         1, 72
+#7,         2, 82
+#8,         3, 92

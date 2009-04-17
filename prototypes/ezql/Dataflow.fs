@@ -116,7 +116,7 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
       | Some info' -> if info'.Type <> Unknown
                         then Set.singleton info', graph, Id (Identifier info'.Uid)
                         else Set.empty, graph, expr // If the type is unknown, nothing depends on it.
-      | _ -> failwithf "Identifier not found in the graph: %s" name
+      | _ when (fst (graph.Extract(name))).IsSome -> failwithf "Identifier not found in the graph: %s" name
   | Integer i -> Set.empty, graph, expr
   | _ -> failwithf "Expression type not supported: %A" expr
 
@@ -157,7 +157,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                    // This way it will be ignored by the dataflow algorithm
                                    Map.add arg (NodeInfo.AsUnknown(arg)) env,
                                    arg
-                               | _ -> failwith "Invalid parameter to where"
+                               | _ -> failwith "Invalid parameter to groupby"
                              let deps, g', expr' = dataflowE env' graph expr
                              let expr'' = Lambda ([Identifier arg], expr')
                              let groupBuilder = makeSubExprBuilder (arg, Stream, makeStream) expr' deps
@@ -176,7 +176,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                // This way it will be ignored by the dataflow algorithm
                                Map.add arg (NodeInfo.AsUnknown(arg)) env,
                                arg
-                           | _ -> failwith "Invalid parameter to where"
+                           | _ -> failwith "Invalid parameter to dict/where"
                          let deps, g', expr' = dataflowE env' graph expr
                          let expr'' = Lambda ([Identifier arg], expr')
                          let predBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
@@ -193,7 +193,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                 // This way it will be ignored by the dataflow algorithm
                                 Map.add arg (NodeInfo.AsUnknown(arg)) env,
                                 arg
-                            | _ -> failwith "Invalid parameter to where"
+                            | _ -> failwith "Invalid parameter to dict/select"
                           let deps, g', expr' = dataflowE env' graph expr
                           let expr'' = Lambda ([Identifier arg], expr')
                           let projBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
@@ -214,11 +214,14 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
   let env = Set.fold_left (fun acc n -> Map.add n.Uid n acc)
                           Map.empty deps
               |> Map.add arg argInfo
+              
+  // deps' contains "new" dependencies that must be added to the environment
+  // in case dataflowE gets called again on expr'
   let deps', g', expr' = dataflowE env graph expr
+  let env' = Set.fold_left (fun acc info -> Map.add info.Uid info acc) env deps'
 
   (fun prio rtEnv -> let fixPrio p = prio + (p + 1.0) * 0.01
                      let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) rtEnv
-
                      (* Do we need a final operator to evaluate the expression?
                         If we do, deps' contains all the dependencies necessary
                         and we use "operators" to lookup the corresponding operators. *)
@@ -232,7 +235,7 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
                            let fieldDeps = List.mapi
                                              (fun i (Symbol field, expr) ->
                                                 (* Lets get the dependencies for just this expression *)
-                                                let deps'', g'', expr' = dataflowE env g' expr
+                                                let deps'', g'', expr' = dataflowE env' g' expr
                                                 (* Sanity check: at this point, the expression should be completely
                                                    "continualized" and thus, the previous operation must not have
                                                    altered the graph nor the expression itself *)
@@ -275,7 +278,7 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio : Map<stri
                      let parents = List.map (fun uid -> Map.find uid operators) info.ParentUids
                      let op = info.MakeOper uid (fixPrio orderPrio.[uid]) parents
                      Map.add uid op operators)
-                   Map.empty graph order
+                  Map.empty graph order
 
   operators
 

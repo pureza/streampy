@@ -28,7 +28,8 @@ let makeGroupby field groupBuilder uid prio parents =
                                                      then buildSubGroup key env
 
                                                    let group = (!substreams).[key]
-                                                   Some (List<_>([group, 0, id]), changes.Head)
+                                                   Some (List<_>((dictOp, 0, fun changes -> [DictDiff (key, changes)])
+                                                                   ::[group, 0, id]), changes.Head)
                        | []::_ -> None
                        | other -> failwithf "Invalid arguments for groupby! %A" other),
                     parents)
@@ -36,14 +37,30 @@ let makeGroupby field groupBuilder uid prio parents =
 
     and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
                    (fun op changes ->
-                      List.iteri (fun i chg ->
-                                    match chg with
-                                    | [] -> ()
-                                    | [DictDiff (key, _)] -> results.[key] <- op.Parents.[i].Value // TODO remove values that didn't change
-                                    | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
-                                  changes
-                      Some (op.Children, List.map_concat id changes)),
-                   [], contents = VDict results)
+                      match changes with
+                      | parentChanges::groupChanges -> 
+                          List.iteri (fun i chg ->
+                                        match chg with
+                                        | [] -> ()
+                                        | [DictDiff (key, _)] -> results.[key] <- op.Parents.[i + 1].Value
+                                        | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
+                                     groupChanges
+                          let allChanges =
+                            (List.map_concat (fun chg ->
+                                                match chg with
+                                                | DictDiff (key, _) when not (results.ContainsKey(key)) ->
+                                                    // If this happens, the groupby result must not depend on
+                                                    // the group's substream. Hence, it depends only on values
+                                                    // in the outer scope. Hence, every subgroup has the same value!
+                                                    results.[key] <- op.Parents.[1].Value
+                                                    [DictDiff (key, [Added results.[key]])]
+                                                | _ -> [])
+                                            parentChanges) @ (List.concat groupChanges)
+                          match allChanges with
+                          | [] -> None
+                          | _ -> Some (op.Children, allChanges)
+                      | _ -> failwith "Empty changes?"),
+                   [groupOp], contents = VDict results)
 
 
     { groupOp with

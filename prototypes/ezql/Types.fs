@@ -65,7 +65,11 @@ and ChildData = Operator * int * link
 
 and Event(timestamp:DateTime, fields:Map<string, value>) =
     member self.Timestamp with get() = timestamp
-    member self.Item with get(field) = fields.[field]
+    member self.Item
+      with get(field) = match Map.tryfind field fields with
+                        | Some result -> result
+                        | None -> failwithf "This event does not contain the field '%s'" field
+
     member self.Fields = fields
     
     override self.Equals(otherObj:obj) =
@@ -101,25 +105,22 @@ and value =
               | VNull -> "VNull"
       (sprintf "« %s »" s)
 
-    static member (+)(left:value, right:value) =
-        match left, right with
-        | VInt l, VInt r -> VInt (l + r)
-        | _ -> failwith "Invalid types in +"
+    static member IntArithmOp(left, right, op) =
+      match left, right with
+        | VInt l, VInt r -> VInt (op l r)
+        | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
-    static member (*)(left:value, right:value) =
-        match left, right with
-        | VInt l, VInt r -> VInt (l * r)
-        | _ -> failwith "Invalid types in *"
+    static member IntCmpOp(left, right, op) =
+      match left, right with
+        | VInt l, VInt r -> VBool (op l r)
+        | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
-    static member (-)(left:value, right:value) =
-        match left, right with
-        | VInt l, VInt r -> VInt (l - r)
-        | _ -> failwith "Invalid types in +"
+    static member Add(left, right) = value.IntArithmOp(left, right, (+))
+    static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
+    static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
+    static member GreaterThan(left, right) = value.IntCmpOp(left, right, (>))
+    static member Equals(left, right) = value.IntCmpOp(left, right, (=))
 
-    static member op_GreaterThan(left:value, right:value) =
-        match left, right with
-        | VInt l, VInt r -> VBool (l > r)
-        | _ -> failwith "Invalid types in +"
 
 and diff =
     | Added of value

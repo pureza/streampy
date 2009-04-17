@@ -42,7 +42,7 @@ type CSVAdapter(stream, reader:TextReader) =
     let events = read(reader)
     do for ev in events do
            match ev with
-           | Some event -> Scheduler.schedule event.Timestamp (fun _ -> Engine.addEvent stream event)
+           | Some event -> Scheduler.schedule event.Timestamp (stream, Added (VEvent event))
            | _ -> ()
         
     static member FromString(stream, string) =
