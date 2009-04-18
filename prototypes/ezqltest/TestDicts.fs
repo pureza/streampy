@@ -58,3 +58,34 @@ let test_dictsWhere (test:Test) =
                        DelKey "2"      (At 9)
                        DelKey "3"      (At 9)])
 
+[<TestCase ("dicts/select.ez")>]
+let test_dictsSelect (test:Test) =
+
+    test.AssertThat (In "tempsPerRoomX2"
+                      [SetKey "1" " 50" (At  2)
+                       SetKey "3" " 90" (At  4)
+                       SetKey "2" "100" (At  6)
+                       SetKey "3" " 60" (At  7)
+                       SetKey "1" " 46" (At  9)])
+
+    test.AssertThat (In "tempsPerRoomX2b"
+                      [SetKey "1" " 75" (At  2)
+                       SetKey "1" " 95" (At  4)
+                       SetKey "3" "135" (At  4)
+                       SetKey "1" " 75" (At  5)
+                       SetKey "3" "115" (At  5)
+                       SetKey "1" "100" (At  6)
+                       SetKey "2" "150" (At  6)
+                       SetKey "3" "140" (At  6)
+                       SetKey "1" " 80" (At  7)
+                       SetKey "2" "130" (At  7)
+                       SetKey "3" " 90" (At  7)
+                       SetKey "1" " 69" (At  9)
+                       SetKey "2" "123" (At  9)
+                       SetKey "3" " 83" (At  9)])
+
+    test.AssertThat (In "always3"
+                      [SetKey "1" "3" (At  2)
+                       SetKey "3" "3" (At  4)
+                       SetKey "2" "3" (At  6)])
+

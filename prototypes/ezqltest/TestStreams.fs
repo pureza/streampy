@@ -38,7 +38,7 @@ let test_streamsGroupby (test:Test) =
                        SetKey "3" "45" (At  4)
                        SetKey "2" "50" (At  6)
                        SetKey "3" "30" (At  7)
-                       SetKey "1" "23" (At  9)]) 
+                       SetKey "1" "23" (At  9)])
 
     test.AssertThat (In "lastTempAllRooms"
                       [SetKey "1" "25" (At  2)
