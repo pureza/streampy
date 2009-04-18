@@ -8,9 +8,12 @@ lastHum = hum_readings.last(:humidity);
 tempsPerRoom = temp_readings
                  .groupby(:room_id, g -> g.last(:temperature));
 
+// Predicate depends on t
 hotRooms = tempsPerRoom
              .where (t -> t > 30);
 
+// Predicate is always true
+hotRooms2 = hotRooms.where(t -> 2 > 1);
 
 // The group does not depend on g
 lastTempAllRooms = temp_readings

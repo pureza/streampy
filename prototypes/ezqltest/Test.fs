@@ -91,33 +91,37 @@ type Test =
     self.allFacts.Add(timeToFact)
     let operOpt = Map.tryfind entity self.env
     match operOpt with
-    | Some oper -> 
+    | Some oper ->
         addSinkTo oper
-          (fun (changes::_) ->
-             let now = Engine.now()
-             let facts = Map.tryfind now (!timeToFact)
-             match facts with
-             | Some facts' ->
-                 if facts'.Length <> changes.Length
-                   then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
-                                  entity now.TotalSeconds changes facts'
-                 for fact' in facts' do
-                   match fact' with
-                   | Diff fact'' -> if changes <> [fact'']
-                                      then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
-                                                     entity now.TotalSeconds changes [fact']
-                   | ValueAtKey (k, v) -> match oper.Value with
-                                          | VDict dict -> if dict.ContainsKey(k)
-                                                            then let v' = dict.[k]
-                                                                 if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %A\n\t Expected: %A\n"
-                                                                                           entity now.TotalSeconds k dict.[k] v
-                                                            else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
-                                                                           entity now.TotalSeconds k
-                                          | _ -> failwithf "The entity '%s' is not a dictionary!" entity
-                   | Value v -> printfn "ola"
-                 timeToFact := Map.remove now !timeToFact
-             | _ -> failwithf "  In %s, at %A: unpredicted event happened:\n\t %A\n"
-                              entity now.TotalSeconds changes) |> ignore
+          (function
+            | changes::_ ->
+                let now = Engine.now()
+                let facts = Map.tryfind now (!timeToFact)
+                match facts with
+                | Some facts' ->
+                    if facts'.Length <> changes.Length
+                      then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
+                                     entity now.TotalSeconds changes facts'
+                    for fact' in facts' do
+                      match fact' with
+                      | Diff fact'' -> if changes <> [fact'']
+                                         then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
+                                                        entity now.TotalSeconds changes [fact']
+                      | ValueAtKey (k, v) ->
+                          match oper.Value with
+                          | VDict dict ->
+                              if dict.ContainsKey(k)
+                                then let v' = dict.[k]
+                                     if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %A\n\t Expected: %A\n"
+                                                               entity now.TotalSeconds k dict.[k] v
+                                else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
+                                               entity now.TotalSeconds k
+                          | _ -> failwithf "The entity '%s' is not a dictionary!" entity
+                      | Value v -> printfn "ola"
+                    timeToFact := Map.remove now !timeToFact
+                | _ -> failwithf "  In %s, at %A: unpredicted event happened:\n\t %A\n"
+                                 entity now.TotalSeconds changes
+            | [] -> failwithf "  In %s, at %A: entity is spreading empty changes." entity (Engine.now().TotalSeconds)) |> ignore
     | _ -> failwithf "\n\n\nAssertThat: Couldn't find symbol '%s'\n\n\n" entity
 
 let init code inputs =
@@ -179,6 +183,6 @@ let runTests (testMethods:MethodInfo list) =
         then printfn "\t\t\t\t\t\t\t\tPass"
         else printfn "| Tests left in test '%s'\n%A\n\n" testName left
     with
-      | err -> printfn "Exception:\n %s" err.Message
+      | err -> printfn "Exception:\n %A\n\n" err
 
     Engine.reset ()
