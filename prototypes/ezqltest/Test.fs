@@ -95,6 +95,7 @@ type Test =
         addSinkTo oper
           (function
             | changes::_ ->
+                //printfn "changes = %A" changes
                 let now = Engine.now()
                 let facts = Map.tryfind now (!timeToFact)
                 match facts with
@@ -104,9 +105,9 @@ type Test =
                                      entity now.TotalSeconds changes facts'
                     for fact' in facts' do
                       match fact' with
-                      | Diff fact'' -> if changes <> [fact'']
+                      | Diff fact'' -> if not (List.mem fact'' changes)
                                          then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
-                                                        entity now.TotalSeconds changes [fact']
+                                                        entity now.TotalSeconds changes facts'
                       | ValueAtKey (k, v) ->
                           match oper.Value with
                           | VDict dict ->
@@ -175,14 +176,14 @@ let runTests (testMethods:MethodInfo list) =
     let test = attr.CreateTest()
     let testName = testMethod.Name
     printfn "- Testing %s\n" testName
-    try
-      testMethod.Invoke(null, [|box test|]) |> ignore
-      Engine.mainLoop ()
-      let left = testsLeft test
-      if left.IsEmpty
-        then printfn "\t\t\t\t\t\t\t\tPass"
-        else printfn "| Tests left in test '%s'\n%A\n\n" testName left
-    with
-      | err -> printfn "Exception:\n %A\n\n" err
+//    try
+    testMethod.Invoke(null, [|box test|]) |> ignore
+    Engine.mainLoop ()
+    let left = testsLeft test
+    if left.IsEmpty
+      then printfn "\t\t\t\t\t\t\t\tPass"
+      else printfn "| Tests left in test '%s'\n%A\n\n" testName left
+//    with
+//      | err -> printfn "Exception:\n %A\n\n" err
 
     Engine.reset ()

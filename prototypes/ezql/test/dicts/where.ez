@@ -9,43 +9,29 @@ tempsPerRoom = temp_readings
                  .groupby(:room_id, g -> g.last(:temperature));
 
 // Predicate depends on t
-hotRooms = tempsPerRoom
-             .where (t -> t > 30);
+hotRooms = tempsPerRoom.where (t -> t > 30);
 
-// Predicate is always true
-hotRooms2 = hotRooms.where(t -> 2 > 1);
+// Test if where propagates changes well
+hotRooms2 = hotRooms.where(t -> t > 30);
 
-// The group does not depend on g
-lastTempAllRooms = temp_readings
-                     .groupby(:room_id, g -> lastTemp);
+// Now the predicate doesn't depend on t
+hotRooms3 = hotRooms2.where(t -> 1 > 0);
 
+// In this example, 3 will be removed by the parents
+// at the exact same time this predicate becomes true
+hotRooms4 = hotRooms3.where(t -> t == 30);
 
-// The group does not depend on anything!
-allRooms20 = temp_readings
-               .groupby(:room_id, g -> 20);
+// The predicate depends on t and on an external variable
+hoterThanLast = tempsPerRoom.where(t -> t > lastTemp);
 
+// Same thing, but with a more complex expression
+hoterThanLast2 = tempsPerRoom.where(t -> t * 2 > temp_readings.last(:temperature) * 2 - 1 + 1);
 
-// Current temperature per room, with a more complex expression
-tempsPerRoom2 = temp_readings
-                .groupby(:room_id,
-                         g -> g.last(:temperature) + (lastTemp - lastTemp) * 2);
+// Depends on t and on another stream
+tempGTHalfHumidity = tempsPerRoom.where(t -> t * 2 > lastHum);
 
-// The expression depends on hum_readings
-lastHumPerRoom = temp_readings
-                   .groupby(:room_id,
-                            g -> lastHum);
-
-// The expression depends on temp_readings and hum_readings
-lastHumLastTempPerRoom = temp_readings
-                           .groupby(:room_id, g -> g.last(:temperature) + lastHum);
-
-
-// The result is a record
-someRecordPerRoom =
-  temp_readings
-    .groupby(:room_id, g -> { :a = 5, :b = g.last(:temperature),
-                              :c = lastHum, :d = g.last(:temperature) + lastHum });
-
+// Depends only on an external variable
+lastHoterThan25 = tempsPerRoom.where(t -> lastTemp > 25);
 
 #! hum_readings
 Timestamp, room_id, humidity

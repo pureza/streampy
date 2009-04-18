@@ -78,12 +78,16 @@ let makeGroupby field groupBuilder uid prio parents =
  *   predicate and updates the results dictionary accordingly.
  *)
 let makeDictWhere predicateBuilder uid prio parents =
+    // Contains the initial and final operator for each key's predicate
     let predicates = ref Map.empty
     let results = Dictionary<value, value>()
 
+    let predStartOp key = fst (!predicates).[key]
+    let predResultOp key = snd (!predicates).[key]
+
     let rec buildPredCircuit key env =
       let initial, final = predicateBuilder prio env
-      predicates := (!predicates).Add(key, initial)
+      predicates := (!predicates).Add(key, (initial, final))
 
       // Connects the resulting node to the dictionary operator.
       // The diff is converted into a DictDiff before being passed to the child.
@@ -94,21 +98,22 @@ let makeDictWhere predicateBuilder uid prio parents =
                       let env = Map.of_list [ for p in op.Parents do
                                                 if p <> op.Parents.[0]
                                                   then yield (p.Uid, p) ]
-
                       let parentDiff = changes.Head
-                      let predsToEval = List.map (function
-                                                  | DictDiff (key, diff) ->
-                                                      if not (Map.mem key !predicates) then buildPredCircuit key env
+                      let predsToEval = List.map_concat
+                                          (function
+                                             | DictDiff (key, diff) ->
+                                                 if not (Map.mem key !predicates) then buildPredCircuit key env
 
-                                                      // The link between the where and the group's circuit ignores everything
-                                                      // that is not related to that group.
-                                                      let link = (fun changes -> [ for diff in changes do
-                                                                                     match diff with
-                                                                                     | DictDiff (key', v) when key = key' -> yield! v
-                                                                                     | _ -> () ])
-                                                      (!predicates).[key], 0, link
-                                                  | _ -> failwith "Map/where received invalid changes")
-                                                 parentDiff
+                                                 // The link between the where and the group's circuit ignores everything
+                                                 // that is not related to that group.
+                                                 let link = (fun changes -> [ for diff in changes do
+                                                                                match diff with
+                                                                                | DictDiff (key', v) when key = key' -> yield! v
+                                                                                | _ -> () ])
+                                                 [predStartOp key, 0, link]
+                                             | RemovedKey (key) -> []
+                                             | chg -> failwithf "Map/where received invalid changes: %A" chg)
+                                          parentDiff
                       Some (List<_> ((dictOp, 0, id)::predsToEval), parentDiff)),
                       parents)
 
@@ -121,30 +126,42 @@ let makeDictWhere predicateBuilder uid prio parents =
                                        | VDict d -> d
                                        | _ -> failwith "The parent of this where is not a dictionary!"
 
-                      // Update the results dictionary and collect removed keys
-                      let deletions =
-                        List.map_concat (function
-                                           | [] -> []
-                                           | [DictDiff (key, v)] ->
-                                               match v with
-                                               | [Added (VBool true)] -> results.[key] <- parentDict.[key]
-                                                                         []
-                                               | [Added (VBool false)] -> if results.ContainsKey(key)
-                                                                            then results.Remove(key) |> ignore
-                                                                                 [RemovedKey key]
-                                                                            else []
-                                               | other -> failwithf "Map's where expects only added vbool changes: %A" other
-                                           | other -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" other)
-                                        predChanges
+                      (* First, take care of the changes reported by the parent dictionary *)
+                      let keys1, changes1 =
+                        List.unzip [ for change in parentChanges do
+                                       match change with
+                                       | DictDiff (key, v) ->
+                                           match (predResultOp key).Value, results.ContainsKey(key) with
+                                           | VBool true, _ -> results.[key] <- parentDict.[key]
+                                                              yield key, change
+                                           | VBool false, true -> results.Remove(key) |> ignore
+                                                                  yield key, RemovedKey key
+                                           | _ -> ()
+                                       | RemovedKey key ->
+                                           if results.ContainsKey(key)
+                                             then results.Remove(key) |> ignore
+                                                  yield key, change
+                                             else ()
+                                       | _ -> failwithf "Invalid change received in dict/where: %A" change ]
 
-                      // Ignore changes to keys that are filtered out
-                      let containedChanges = [ for change in parentChanges do
-                                                 match change with
-                                                 | DictDiff (key, v) when results.ContainsKey(key) ->
-                                                     results.[key] <- parentDict.[key]
-                                                     yield change
-                                                 | _ -> () ]
-                      let allChanges = deletions @ containedChanges
+                      let keys1' = Set.of_list keys1
+
+                      (* Now we still have to take care of predicate changes for the keys
+                         which have not been handled already *)
+                      let changes2 =
+                        [ for change in predChanges do
+                            match change with
+                            | [] -> ()
+                            | [DictDiff (key, [(Added (VBool v))])] when not (Set.mem key keys1') ->
+                                if v then results.[key] <- parentDict.[key]
+                                          yield DictDiff (key, [Added results.[key]])
+                                     else if results.ContainsKey(key)
+                                             then results.Remove(key) |> ignore
+                                                  yield RemovedKey key
+                            | [DictDiff (key, _)] when (Set.mem key keys1') -> ()
+                            | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
+
+                      let allChanges = changes1 @ changes2
                       match allChanges with
                       | [] -> None
                       | _ -> Some (op.Children, allChanges)),
@@ -185,7 +202,7 @@ let makeDictSelect projectorBuilder uid prio parents =
                                                                                                 | _ -> () ])
                                                                  [(!projectors).[key], 0, link]
                                                              | RemovedKey key -> []
-                                                             | _ -> failwith "Map/where received invalid changes")
+                                                             | _ -> failwith "Map/select received invalid changes")
                                                           parentChanges
                         Some (List<_> ((dictOp, 0, id)::projsToEval), parentChanges)),
                      parents)
