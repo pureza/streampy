@@ -188,3 +188,75 @@ Console.ReadLine() |> ignore
 //let graph = edges.ToAdjacencyGraph(edges)
 
 *)
+
+(*
+    let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+                   (fun op changes ->
+                      // changes.Head contains the dictionary changes passed to the where
+                      // changes.Tail contains the changes in the inner predicates
+                      let parentChanges, predChanges = changes.Head, changes.Tail
+                      
+                      //////////////////////
+                      let whereOp = op.Parents.[0]
+                      let parentDict = match whereOp.Parents.[0].Value with
+                                       | VDict d -> d
+                                       | _ -> failwith "The parent of this where is not a dictionary!"
+                      //////////////////////
+
+                      (* First, take care of the changes reported by the parent dictionary *)
+                      let keys1, changes1 =
+                        List.unzip [ for change in parentChanges do
+                                       match change with
+                                       | DictDiff (key, v) ->
+                                           match (subGroupResultOp key predicates).Value, results.ContainsKey(key) with
+                                           | VBool true, _ -> results.[key] <- parentDict.[key]
+                                                              yield key, change
+                                           | VBool false, true -> results.Remove(key) |> ignore
+                                                                  yield key, RemovedKey key
+                                           | _ -> ()
+                                       | RemovedKey key ->
+                                           if results.ContainsKey(key)
+                                             then results.Remove(key) |> ignore
+                                                  yield key, change
+                                             else ()
+                                       | _ -> failwithf "Invalid change received in dict/where: %A" change ]
+
+                      let keys1' = Set.of_list keys1
+                      let allChanges = changes1 @ changes2
+                      match allChanges with
+                      | [] -> None
+                      | _ -> Some (op.Children, allChanges)),
+                   [], contents = VDict results)
+                   
+let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+                   (fun op changes ->
+                      // changes.Head contains the dictionary changes passed to the select
+                      // changes.Tail contains the changes in the inner predicates
+                      let parentChanges, projChanges = changes.Head, changes.Tail
+                                                       
+                      let keys1, changes1 =
+                        List.unzip [ for chg in parentChanges do
+                                       match chg with
+                                       | DictDiff (key, _) when not (results.ContainsKey(key)) ->
+                                           results.[key] <- (subGroupResultOp key projectors).Value
+                                           yield key, DictDiff (key, [Added results.[key]])
+                                       | RemovedKey key -> assert results.Remove(key)
+                                                           yield key, chg
+                                       | _ -> () ]
+                      let keys1' = Set.of_list keys1
+                      
+                      let changes2 =
+                        [ for change in projChanges do
+                            match change with
+                            | [] -> ()
+                            | [DictDiff (key, _)] -> 
+                                if not (Set.mem key keys1')
+                                  then results.[key] <- (subGroupResultOp key projectors).Value
+                                       yield DictDiff (key, [Added results.[key]])
+                            | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
+                 
+                      let allChanges = changes1 @ changes2
+                      match allChanges with
+                      | [] -> None
+                      | _ -> Some (op.Children, allChanges)),      
+                      *) 

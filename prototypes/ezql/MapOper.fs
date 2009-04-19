@@ -4,6 +4,54 @@ open System.Collections.Generic
 open Types
 open Oper
 
+type SubCircuitMap = Map<value, Operator * Operator>
+
+let subGroupStartOp key (subgroups:SubCircuitMap ref) = fst (!subgroups).[key]
+let subGroupResultOp key (subgroups:SubCircuitMap ref) = snd (!subgroups).[key]
+
+let getOperEnv op = Map.of_list [ for p in op.Parents do
+                                    if p <> op.Parents.[0]
+                                      then yield (p.Uid, p) ]
+
+let spreadUnlessEmpty op changes =
+  match changes with
+  | [] -> None
+  | _ -> Some (op.Children, changes)
+
+(*
+ * Creates the initial operator used by where and select
+ *)     
+let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio parents =
+  let rec buildSubGroup key env =
+    let initial, final = groupBuilder prio env
+    subgroups := (!subgroups).Add(key, (initial, final))
+
+    // Connects the resulting node to the dictionary operator.
+    // The diff is converted into a DictDiff before being passed to the child.
+    connect final dictOp (fun changes -> [DictDiff (key, changes)])
+  
+  Operator.Build(uid, prio,
+    (fun op changes ->
+      let env = getOperEnv op
+      let parentChanges = changes.Head
+      let predsToEval = 
+        [ for chg in parentChanges do
+            match chg with
+            | DictDiff (key, diff) ->
+                if not (Map.mem key !subgroups) then buildSubGroup key env
+
+                // The link between this operator and the group's circuit ignores everything
+                // that is not related to that group.
+                let link = (fun changes -> [ for diff in changes do
+                                               match diff with
+                                               | DictDiff (key', v) when key = key' -> yield! v
+                                               | _ -> () ])
+                yield subGroupStartOp key subgroups, 0, link
+            | RemovedKey (key) -> ()
+            | chg -> failwithf "%s received invalid changes: %A" uid chg ]
+
+      Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges)), parents)
+      
 let makeGroupby field groupBuilder uid prio parents =
     let substreams = ref Map.empty
     let results = new Dictionary<value, value>()
@@ -19,21 +67,19 @@ let makeGroupby field groupBuilder uid prio parents =
     and groupOp = Operator.Build(uid, prio,
                     (fun op changes ->
                        match changes with
-                       | [Added (VEvent ev)]::_ -> let key = ev.[field]
-                                                   let env = Map.of_list [ for p in op.Parents do
-                                                                             if p <> op.Parents.[0]
-                                                                               then yield (p.Uid, p) ]
+                       | [Added (VEvent ev)]::_ ->
+                           let key = ev.[field]
+                           let env = getOperEnv op
 
-                                                   if not (Map.mem key !substreams)
-                                                     then buildSubGroup key env
+                           if not (Map.mem key !substreams)
+                             then buildSubGroup key env
 
-                                                   let group = (!substreams).[key]
-                                                   Some (List<_>((dictOp, 0, fun changes -> [DictDiff (key, changes)])
-                                                                   ::[group, 0, id]), changes.Head)
+                           let group = (!substreams).[key]
+                           let link = fun changes -> [DictDiff (key, changes)]
+                           Some (List<_>((dictOp, 0, link)::[group, 0, id]), changes.Head)
                        | []::_ -> None
                        | other -> failwithf "Invalid arguments for groupby! %A" other),
                     parents)
-
 
     and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
                    (fun op changes ->
@@ -56,12 +102,9 @@ let makeGroupby field groupBuilder uid prio parents =
                                                     [DictDiff (key, [Added results.[key]])]
                                                 | _ -> [])
                                             parentChanges) @ (List.concat groupChanges)
-                          match allChanges with
-                          | [] -> None
-                          | _ -> Some (op.Children, allChanges)
+                          spreadUnlessEmpty op allChanges
                       | _ -> failwith "Empty changes?"),
                    [groupOp], contents = VDict results)
-
 
     { groupOp with
         Children = dictOp.Children;
@@ -81,47 +124,13 @@ let makeDictWhere predicateBuilder uid prio parents =
     // Contains the initial and final operator for each key's predicate
     let predicates = ref Map.empty
     let results = Dictionary<value, value>()
-
-    let predStartOp key = fst (!predicates).[key]
-    let predResultOp key = snd (!predicates).[key]
-
-    let rec buildPredCircuit key env =
-      let initial, final = predicateBuilder prio env
-      predicates := (!predicates).Add(key, (initial, final))
-
-      // Connects the resulting node to the dictionary operator.
-      // The diff is converted into a DictDiff before being passed to the child.
-      connect final dictOp (fun changes -> [DictDiff (key, changes)])
-
-    and whereOp = Operator.Build(uid, prio,
-                    (fun op changes ->
-                      let env = Map.of_list [ for p in op.Parents do
-                                                if p <> op.Parents.[0]
-                                                  then yield (p.Uid, p) ]
-                      let parentDiff = changes.Head
-                      let predsToEval = List.map_concat
-                                          (function
-                                             | DictDiff (key, diff) ->
-                                                 if not (Map.mem key !predicates) then buildPredCircuit key env
-
-                                                 // The link between the where and the group's circuit ignores everything
-                                                 // that is not related to that group.
-                                                 let link = (fun changes -> [ for diff in changes do
-                                                                                match diff with
-                                                                                | DictDiff (key', v) when key = key' -> yield! v
-                                                                                | _ -> () ])
-                                                 [predStartOp key, 0, link]
-                                             | RemovedKey (key) -> []
-                                             | chg -> failwithf "Map/where received invalid changes: %A" chg)
-                                          parentDiff
-                      Some (List<_> ((dictOp, 0, id)::predsToEval), parentDiff)),
-                      parents)
-
-    and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+ 
+    let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
                    (fun op changes ->
                       // changes.Head contains the dictionary changes passed to the where
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, predChanges = changes.Head, changes.Tail
+                      let whereOp = op.Parents.[0]
                       let parentDict = match whereOp.Parents.[0].Value with
                                        | VDict d -> d
                                        | _ -> failwith "The parent of this where is not a dictionary!"
@@ -131,19 +140,20 @@ let makeDictWhere predicateBuilder uid prio parents =
                         List.unzip [ for change in parentChanges do
                                        match change with
                                        | DictDiff (key, v) ->
-                                           match (predResultOp key).Value, results.ContainsKey(key) with
+                                           match (subGroupResultOp key predicates).Value, results.ContainsKey(key) with
+                                           // Add/modify they key, wether we already contain it or not.
                                            | VBool true, _ -> results.[key] <- parentDict.[key]
                                                               yield key, change
+                                           // Remove the key if we contain it.
                                            | VBool false, true -> results.Remove(key) |> ignore
                                                                   yield key, RemovedKey key
                                            | _ -> ()
-                                       | RemovedKey key ->
+                                       | RemovedKey key -> // Remove the key if we contain it.
                                            if results.ContainsKey(key)
                                              then results.Remove(key) |> ignore
                                                   yield key, change
                                              else ()
                                        | _ -> failwithf "Invalid change received in dict/where: %A" change ]
-
                       let keys1' = Set.of_list keys1
 
                       (* Now we still have to take care of predicate changes for the keys
@@ -161,11 +171,11 @@ let makeDictWhere predicateBuilder uid prio parents =
                             | [DictDiff (key, _)] when (Set.mem key keys1') -> ()
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
 
-                      let allChanges = changes1 @ changes2
-                      match allChanges with
-                      | [] -> None
-                      | _ -> Some (op.Children, allChanges)),
+                      spreadUnlessEmpty op (changes1 @ changes2)),
                    [], contents = VDict results)
+     
+    let whereOp = makeHeadOp dictOp predicates predicateBuilder uid prio parents                  
+    connect whereOp dictOp id
 
     { whereOp with
         Children = dictOp.Children;
@@ -175,43 +185,8 @@ let makeDictWhere predicateBuilder uid prio parents =
 let makeDictSelect projectorBuilder uid prio parents =
     let projectors = ref Map.empty
     let results = Dictionary<value, value>()
-    
-    let projStartOp key = fst (!projectors).[key]
-    let projResultOp key = snd (!projectors).[key]
 
-
-    let rec buildProjCircuit key env =
-      let initial, final = projectorBuilder prio env
-      projectors := (!projectors).Add(key, (initial, final))
-
-      // Connects the resulting node to the dictionary operator.
-      // The diff is converted into a DictDiff before being passed to the child.
-      connect final dictOp (fun changes -> [DictDiff (key, changes)])
-
-    and selectOp = Operator.Build(uid, prio,
-                     (fun op changes ->
-                        let env = Map.of_list [ for p in op.Parents do
-                                                  if p <> op.Parents.[0]
-                                                    then yield (p.Uid, p) ]
-                        let parentChanges = changes.Head
-                        let projsToEval = List.map_concat (function
-                                                             | DictDiff (key, diff) ->
-                                                                 if not (Map.mem key !projectors) then buildProjCircuit key env
-
-                                                                 // The link between the where and the group's circuit ignores everything
-                                                                 // that is not related to that group.
-                                                                 let link = (fun changes -> [ for diff in changes do
-                                                                                                match diff with
-                                                                                                | DictDiff (key', v) when key = key' -> yield! v
-                                                                                                | _ -> () ])
-                                                                 [projStartOp key, 0, link]
-                                                             | RemovedKey key -> []
-                                                             | _ -> failwith "Map/select received invalid changes")
-                                                          parentChanges
-                        Some (List<_> ((dictOp, 0, id)::projsToEval), parentChanges)),
-                     parents)
-
-    and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+    let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
                    (fun op changes ->
                       // changes.Head contains the dictionary changes passed to the select
                       // changes.Tail contains the changes in the inner predicates
@@ -221,7 +196,7 @@ let makeDictSelect projectorBuilder uid prio parents =
                         List.unzip [ for chg in parentChanges do
                                        match chg with
                                        | DictDiff (key, _) when not (results.ContainsKey(key)) ->
-                                           results.[key] <- (projResultOp key).Value
+                                           results.[key] <- (subGroupResultOp key projectors).Value
                                            yield key, DictDiff (key, [Added results.[key]])
                                        | RemovedKey key -> assert results.Remove(key)
                                                            yield key, chg
@@ -234,15 +209,15 @@ let makeDictSelect projectorBuilder uid prio parents =
                             | [] -> ()
                             | [DictDiff (key, _)] -> 
                                 if not (Set.mem key keys1')
-                                  then results.[key] <- (projResultOp key).Value
+                                  then results.[key] <- (subGroupResultOp key projectors).Value
                                        yield DictDiff (key, [Added results.[key]])
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
                  
-                      let allChanges = changes1 @ changes2
-                      match allChanges with
-                      | [] -> None
-                      | _ -> Some (op.Children, allChanges)),                      
-                   [selectOp], contents = VDict results)
+                      spreadUnlessEmpty op (changes1 @ changes2)),                      
+                   [], contents = VDict results)
+    
+    let selectOp = makeHeadOp dictOp projectors projectorBuilder uid prio parents    
+    connect selectOp dictOp id
 
     { selectOp with
         Children = dictOp.Children;
