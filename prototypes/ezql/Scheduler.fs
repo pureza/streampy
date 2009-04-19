@@ -6,7 +6,7 @@ open Clock
 open Types
 open Oper
 
-type action = Operator * diff
+type action = ChildData list * changes
 
 type Scheduler =
     { clock:IClock
@@ -28,8 +28,11 @@ let rec reSchedule sched =
         then sched.clock.Schedule(queue.Keys.[0], 
                                   fun _ -> // Sort the list of events to propagate according to node priority
                                            // and then spread them.
-                                           let stack = List.fold_left (fun acc (stream, diff) -> mergeStack acc [(stream, ([0, [diff]]))])
-                                                                      List.empty queue.Values.[0]
+                                           let stack = List.fold_left (fun acc (children, changes) ->
+                                                                         (List.fold_left (fun acc (childOp, idx, link) ->
+                                                                                            mergeStack acc [childOp, ([idx, link changes])])
+                                                                                         acc children))
+                                                                      [] queue.Values.[0]
                                            spread stack
                                            queue.RemoveAt 0
                                            reSchedule sched)

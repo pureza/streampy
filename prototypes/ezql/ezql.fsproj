@@ -74,12 +74,13 @@
     <Compile Include="Parser.fs" />
     <Compile Include="Lexer.fs" />
     <Compile Include="Types.fs" />
-    <Compile Include="Eval.fs" />
-    <Compile Include="Oper.fs" />
-    <Compile Include="MapOper.fs" />
-    <Compile Include="Graph.fs" />
     <Compile Include="Clock.fs" />
+    <Compile Include="Eval.fs" />
+    <Compile Include="Graph.fs" />
+    <Compile Include="Oper.fs" />
     <Compile Include="Scheduler.fs" />
+    <Compile Include="CommonOpers.fs" />
+    <Compile Include="DictOpers.fs" />
     <Compile Include="Dataflow.fs" />
     <Compile Include="Engine.fs" />
     <Compile Include="Adapters.fs" />

@@ -6,7 +6,8 @@ open Ast
 open Types
 open Graph
 open Oper
-open MapOper
+open CommonOpers
+open DictOpers
 open Eval
 
 type NodeType =
@@ -129,8 +130,11 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                           let n, g' = createNode (nextSymbol methName) DynVal [target.Uid]
                                                  (makeLast field) graph
                           Set.singleton n, g', Id (Identifier n.Uid)
-              | "[]" -> let n, g' = createNode (nextSymbol "[x min]") Stream [target.Uid]
-                                               (fun prio -> failwith "Windows are not supported. Do your homework.") graph
+              | "[]" -> let duration = match paramExps with
+                                       | [Time (Integer v, unit) as t] -> toSeconds v unit
+                                       | _ -> failwith "Invalid duration"
+                        let n, g' = createNode (nextSymbol "[x min]") Stream [target.Uid]
+                                               (makeWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
               | "where" -> let pred, env', arg =
                              match paramExps with

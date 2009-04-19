@@ -6,61 +6,10 @@ open Graph
 open Dataflow
 open Types
 open Test
-(*
-
-let streams, allOps = Engine.compile @"
-  temp_readings = stream (:room_id, :temperature);
-  //hum_readings = stream (:room_id, :humidity);
-
-  x = temp_readings.last(:room_id);
-  //y = temp_readings.last(:temperature);
-
-  //z = x + y * 3;
-  //hot_readings = temp_readings.where(ev -> ev.temperature > x + y - x);
-
-  //lastHot = hot_readings.last(:temperature);
-
-
-
-  //a = (y - x + (x * temp_readings.last(:temperature)));
-
-  //y = temp_readings.last(:temperature);
-
-  //z = y * (x + x[3 min].max());
-
-  //h = hum_readings.last(:humidity);
-  
-  tempPerRoom = temp_readings.groupby(:room_id, g -> g.last(:temperature));
-  
-  hotRooms = tempPerRoom.where(t -> t > 20);
-  
-  //hotRooms = tempPerRoom.where(t -> t > y);
-  
-  
-  tempPerRoomX2 = tempPerRoom.select(t -> { :ola = temp_readings.last(:room_id) + t > 2 * t, :ole = t, 
-                                            :oli = x });
-
-  blah = { :a = x * 2 + x, :b = x + 5 };
-   "
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 30)]))
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("temperature", VInt 40)]))
-streams.["temp_readings"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 2); ("temperature", VInt 20)]))
-//streams.["humidity"] (Event (DateTime.Now, Map.of_list [("room_id", VInt 1); ("humidity", VInt 60)]))
-
-//printfn "%A" allOps.["lastHot"].Value
-printfn "%A" allOps.["tempPerRoom"].Value
-printfn "%A" allOps.["hotRooms"].Value
-printfn "%A" allOps.["tempPerRoomX2"].Value
-printfn "%O" allOps.["blah"].Value
-
-
-*)
-
-
 
 Test.runTests (Test.findTests ())
 
-//Test.runTests [(Test.findTest "test_dictsSelect")]
+//Test.runTests [(Test.findTest "test_windowsCreation")]
     
 Console.ReadLine() |> ignore
 
@@ -188,75 +137,3 @@ Console.ReadLine() |> ignore
 //let graph = edges.ToAdjacencyGraph(edges)
 
 *)
-
-(*
-    let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
-                   (fun op changes ->
-                      // changes.Head contains the dictionary changes passed to the where
-                      // changes.Tail contains the changes in the inner predicates
-                      let parentChanges, predChanges = changes.Head, changes.Tail
-                      
-                      //////////////////////
-                      let whereOp = op.Parents.[0]
-                      let parentDict = match whereOp.Parents.[0].Value with
-                                       | VDict d -> d
-                                       | _ -> failwith "The parent of this where is not a dictionary!"
-                      //////////////////////
-
-                      (* First, take care of the changes reported by the parent dictionary *)
-                      let keys1, changes1 =
-                        List.unzip [ for change in parentChanges do
-                                       match change with
-                                       | DictDiff (key, v) ->
-                                           match (subGroupResultOp key predicates).Value, results.ContainsKey(key) with
-                                           | VBool true, _ -> results.[key] <- parentDict.[key]
-                                                              yield key, change
-                                           | VBool false, true -> results.Remove(key) |> ignore
-                                                                  yield key, RemovedKey key
-                                           | _ -> ()
-                                       | RemovedKey key ->
-                                           if results.ContainsKey(key)
-                                             then results.Remove(key) |> ignore
-                                                  yield key, change
-                                             else ()
-                                       | _ -> failwithf "Invalid change received in dict/where: %A" change ]
-
-                      let keys1' = Set.of_list keys1
-                      let allChanges = changes1 @ changes2
-                      match allChanges with
-                      | [] -> None
-                      | _ -> Some (op.Children, allChanges)),
-                   [], contents = VDict results)
-                   
-let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
-                   (fun op changes ->
-                      // changes.Head contains the dictionary changes passed to the select
-                      // changes.Tail contains the changes in the inner predicates
-                      let parentChanges, projChanges = changes.Head, changes.Tail
-                                                       
-                      let keys1, changes1 =
-                        List.unzip [ for chg in parentChanges do
-                                       match chg with
-                                       | DictDiff (key, _) when not (results.ContainsKey(key)) ->
-                                           results.[key] <- (subGroupResultOp key projectors).Value
-                                           yield key, DictDiff (key, [Added results.[key]])
-                                       | RemovedKey key -> assert results.Remove(key)
-                                                           yield key, chg
-                                       | _ -> () ]
-                      let keys1' = Set.of_list keys1
-                      
-                      let changes2 =
-                        [ for change in projChanges do
-                            match change with
-                            | [] -> ()
-                            | [DictDiff (key, _)] -> 
-                                if not (Set.mem key keys1')
-                                  then results.[key] <- (subGroupResultOp key projectors).Value
-                                       yield DictDiff (key, [Added results.[key]])
-                            | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
-                 
-                      let allChanges = changes1 @ changes2
-                      match allChanges with
-                      | [] -> None
-                      | _ -> Some (op.Children, allChanges)),      
-                      *) 

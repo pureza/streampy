@@ -132,3 +132,9 @@ and diff =
 and changes = diff list
 and priority = float
 and link = changes -> changes
+
+
+let toSeconds value unit =
+  match unit with
+  | Sec -> value
+  | Min -> value * 60

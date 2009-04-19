@@ -72,7 +72,7 @@ let In entity (facts:(DateTime * fact) list) =
 (* Operator support *)
 
 let addSinkTo op action =
-  Operator.Build("__sink" + op.Uid, -1.0,
+  Operator.Build("__sink" + op.Uid, op.Priority + 0.00001,
     (fun op changes -> action(changes); None),
     [op])
     
