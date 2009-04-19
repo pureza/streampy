@@ -17,35 +17,52 @@ tempsPerRoomX2b = tempsPerRoom.select (t -> t * 2 + lastTemp);
 // Projector doesn't depend on anything
 always3 = tempsPerRoom.select (t -> 3);
 
+// Depends on an external variable
+lastTempAllRooms = tempsPerRoom.select (t -> lastTemp);
+
+// The result is a record
+someRecordPerRoom =
+  tempsPerRoom
+    .select (t -> { :a = 5, :b = t, :c = lastHum, :d = t + lastHum + lastTemp });
+
+// Where + select
+hotRoomsX2 = tempsPerRoom
+               .where(t -> lastTemp > 25)
+               .select (t -> t * 2);
+
+weird = temp_readings
+          .groupby(:room_id, g -> 3)
+          .where(t -> lastTemp > 25)
+          .select (t -> lastTemp);
+
+nestedSelect = weird.select(t -> { :a = 3, :b = t });
 
 // TESTAR WHERE + SELECT
 // TESTAR SELECT + SELECT
 
 
-// Predicate depends on t
-hotRooms = tempsPerRoom.where (t -> t > 30);
 
 // Test if where propagates changes well
-hotRooms2 = hotRooms.where(t -> t > 30);
+//hotRooms2 = hotRooms.where(t -> t > 30);
 
 // Now the predicate doesn't depend on t
-hotRooms3 = hotRooms2.where(t -> 1 > 0);
+//hotRooms3 = hotRooms2.where(t -> 1 > 0);
 
 // In this example, 3 will be removed by the parents
 // at the exact same time this predicate becomes true
-hotRooms4 = hotRooms3.where(t -> t == 30);
+//hotRooms4 = hotRooms3.where(t -> t == 30);
 
 // The predicate depends on t and on an external variable
-hoterThanLast = tempsPerRoom.where(t -> t > lastTemp);
+//hoterThanLast = tempsPerRoom.where(t -> t > lastTemp);
 
 // Same thing, but with a more complex expression
-hoterThanLast2 = tempsPerRoom.where(t -> t * 2 > temp_readings.last(:temperature) * 2 - 1 + 1);
+//hoterThanLast2 = tempsPerRoom.where(t -> t * 2 > temp_readings.last(:temperature) * //2 //- 1 + 1);
 
 // Depends on t and on another stream
-tempGTHalfHumidity = tempsPerRoom.where(t -> t * 2 > lastHum);
+//tempGTHalfHumidity = tempsPerRoom.where(t -> t * 2 > lastHum);
 
 // Depends only on an external variable
-lastHoterThan25 = tempsPerRoom.where(t -> lastTemp > 25);
+//lastHoterThan25 = tempsPerRoom.where(t -> lastTemp > 25);
 
 #! hum_readings
 Timestamp, room_id, humidity

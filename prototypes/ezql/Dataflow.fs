@@ -116,7 +116,7 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
       | Some info' -> if info'.Type <> Unknown
                         then Set.singleton info', graph, Id (Identifier info'.Uid)
                         else Set.empty, graph, expr // If the type is unknown, nothing depends on it.
-      | _ when (fst (graph.Extract(name))).IsSome -> failwithf "Identifier not found in the graph: %s" name
+      | _ -> failwithf "Identifier not found in the graph: %s" name
   | Integer i -> Set.empty, graph, expr
   | _ -> failwithf "Expression type not supported: %A" expr
 

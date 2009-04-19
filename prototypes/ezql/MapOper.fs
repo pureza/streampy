@@ -175,10 +175,14 @@ let makeDictWhere predicateBuilder uid prio parents =
 let makeDictSelect projectorBuilder uid prio parents =
     let projectors = ref Map.empty
     let results = Dictionary<value, value>()
+    
+    let projStartOp key = fst (!projectors).[key]
+    let projResultOp key = snd (!projectors).[key]
+
 
     let rec buildProjCircuit key env =
       let initial, final = projectorBuilder prio env
-      projectors := (!projectors).Add(key, initial)
+      projectors := (!projectors).Add(key, (initial, final))
 
       // Connects the resulting node to the dictionary operator.
       // The diff is converted into a DictDiff before being passed to the child.
@@ -200,7 +204,7 @@ let makeDictSelect projectorBuilder uid prio parents =
                                                                                                 match diff with
                                                                                                 | DictDiff (key', v) when key = key' -> yield! v
                                                                                                 | _ -> () ])
-                                                                 [(!projectors).[key], 0, link]
+                                                                 [projStartOp key, 0, link]
                                                              | RemovedKey key -> []
                                                              | _ -> failwith "Map/select received invalid changes")
                                                           parentChanges
@@ -209,22 +213,35 @@ let makeDictSelect projectorBuilder uid prio parents =
 
     and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
                    (fun op changes ->
-                      // changes.Head contains the dictionary changes passed to the where
+                      // changes.Head contains the dictionary changes passed to the select
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, projChanges = changes.Head, changes.Tail
-
-                      List.iteri (fun i chg ->
-                                    match chg with
-                                    | [] -> ()
-                                    | [DictDiff (key, _)] -> results.[key] <- op.Parents.[i + 1].Value // TODO remove values that didn't change
-                                    | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
-                                  projChanges
-                      let deletions = [ for diff in parentChanges do
-                                          match diff with
-                                          | RemovedKey key -> results.Remove(key) |> ignore
-                                                              yield diff
-                                          | _ -> () ]
-                      Some (op.Children, (List.map_concat id projChanges)@deletions)),
+                                                       
+                      let keys1, changes1 =
+                        List.unzip [ for chg in parentChanges do
+                                       match chg with
+                                       | DictDiff (key, _) when not (results.ContainsKey(key)) ->
+                                           results.[key] <- (projResultOp key).Value
+                                           yield key, DictDiff (key, [Added results.[key]])
+                                       | RemovedKey key -> assert results.Remove(key)
+                                                           yield key, chg
+                                       | _ -> () ]
+                      let keys1' = Set.of_list keys1
+                      
+                      let changes2 =
+                        [ for change in projChanges do
+                            match change with
+                            | [] -> ()
+                            | [DictDiff (key, _)] -> 
+                                if not (Set.mem key keys1')
+                                  then results.[key] <- (projResultOp key).Value
+                                       yield DictDiff (key, [Added results.[key]])
+                            | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
+                 
+                      let allChanges = changes1 @ changes2
+                      match allChanges with
+                      | [] -> None
+                      | _ -> Some (op.Children, allChanges)),                      
                    [selectOp], contents = VDict results)
 
     { selectOp with

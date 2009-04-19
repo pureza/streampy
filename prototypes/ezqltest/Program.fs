@@ -60,7 +60,7 @@ printfn "%O" allOps.["blah"].Value
 
 Test.runTests (Test.findTests ())
 
-//Test.runTests [(Test.findTest "test_streamsGroupby")]
+//Test.runTests [(Test.findTest "test_dictsSelect")]
     
 Console.ReadLine() |> ignore
 
