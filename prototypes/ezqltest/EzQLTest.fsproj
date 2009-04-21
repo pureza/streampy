@@ -77,7 +77,8 @@
   <ItemGroup>
     <Compile Include="Test.fs" />
     <Compile Include="TestStreams.fs" />
-    <Compile Include="TestWindows.fs" />
+    <Compile Include="TestEventWindows.fs" />
+    <Compile Include="TestDynValWindows.fs" />
     <Compile Include="TestAggregates.fs" />
     <Compile Include="TestDicts.fs" />
     <Compile Include="Program.fs" />

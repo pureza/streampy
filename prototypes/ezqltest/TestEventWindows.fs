@@ -2,7 +2,7 @@
 
 open Test
 
-[<TestCase ("windows/create_window.ez")>]
+[<TestCase ("eventWindows/create_window.ez")>]
 let test_windowsCreation (test:Test) =
 
   test.AssertThat (In "temps_3secs"
@@ -47,7 +47,7 @@ let test_windowsCreation (test:Test) =
                      SetKey "1" "23" (At  9)])
 
 
-[<TestCase ("windows/groupby.ez")>]
+[<TestCase ("eventWindows/groupby.ez")>]
 let test_windowGroupby (test:Test) =
   test.AssertThat (In "tempsPerRoom"
                     [SetKey "1" "25" (At  2)

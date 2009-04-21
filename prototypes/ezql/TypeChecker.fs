@@ -34,13 +34,16 @@ and typeOf env = function
           //  then printfn "Invalid parameters to function %s(). Expecting %A, got %A" name paramTypes'' paramTypes
           returnType.Force()
       | other -> failwithf "The target expression %A should be a function but is a %A" expr other
+  | BinaryExpr (oper, expr1, expr2) ->
+    let type1 = typeOf env expr1
+    let type2 = typeOf env expr2
+    typeOfOp (oper, type1, type2)
   | expr.SymbolExpr _ -> Symbol
   | Id (Identifier name) ->
       match Map.tryfind name env with
       | Some v -> v
-      | _ -> failwithf "typeOf: Unknown variable or identifier: %s" name
-      
-
+      | _ -> failwithf "typeOf: Unknown variable or identifier: %s" name  
+  | Integer v -> Int
 
 
       (*
@@ -76,9 +79,25 @@ and typeOfMethodCall env target name paramExps =
       | _ -> failwithf "Method not found in class %s: %s" cname name
   | _ -> failwith "Target is not a class type"
 
+and typeOfOp = function
+  | Plus, Int, Int -> Int
+  | GreaterThan, Int, Int -> Bool
+  | _, (Class ("dynValWindow", _) as c), _ -> c
+  | _, _, (Class ("dynValWindow", _) as c) -> c
+  | x -> failwithf "typeOfOp: op not implemented %A" x
+
+
 let initialEnv =
   let predicateType = Function ("", [lazy Event], lazy Bool)
   let projType = Function ("", [lazy Any], lazy Any)
+ 
+  // Dynamic values
+  let rec dynValWindowType = Class ("dynValWindow", Map.of_list ["last", lastType; "sum", sumType])
+  and dynValType = Class ("dynVal", Map.of_list ["[]", createWindowType])
+  and lastType = Function ("last", [lazy Symbol], lazy dynValType)
+  and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
+  and createWindowType = Function ("[]", [lazy Type.Time], lazy dynValWindowType)
+ 
  
   let rec dictType = Class ("dictionary", Map.of_list ["where", whereType; "select", selectType])
   and whereType = Function ("where", [lazy predicateType], lazy dictType)
@@ -87,8 +106,8 @@ let initialEnv =
   let rec windowType = Class ("window", Map.of_list ["last", lastType; "where", whereType
                                                      "groupby", groupbyType
                                                      "sum", sumType])
-  and lastType = Function ("last", [lazy Symbol], lazy windowType)
-  and sumType = Function ("sum", [lazy Symbol], lazy windowType)
+  and lastType = Function ("last", [lazy Symbol], lazy dynValType)
+  and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
   and whereType = Function ("where", [lazy predicateType], lazy windowType)
   and grpbySubType = Function ("", [lazy windowType], lazy Any)
   and groupbyType = Function ("groupby", [lazy grpbySubType], lazy dictType)
@@ -96,8 +115,8 @@ let initialEnv =
   let rec streamType = Class ("stream", Map.of_list ["last", lastType; "where", whereType
                                                      "groupby", groupbyType; "[]", createWindowType
                                                      "sum", sumType])
-  and lastType = Function ("last", [lazy Symbol], lazy streamType)
-  and sumType = Function ("sum", [lazy Symbol], lazy streamType)
+  and lastType = Function ("last", [lazy Symbol], lazy dynValType)
+  and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
   and whereType = Function ("where", [lazy predicateType], lazy streamType)
   and grpbySubType = Function ("", [lazy streamType], lazy Any)
   and groupbyType = Function ("groupby", [lazy grpbySubType], lazy dictType)

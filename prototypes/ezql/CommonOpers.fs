@@ -60,6 +60,18 @@ let makeDynVal uid prio parents =
 
   Operator.Build(uid, prio, eval, parents)
 
+(* A timed window for dynamic values *)
+let makeDynValWindow duration uid prio parents =
+  let eval = fun (op:Operator) inputs ->
+               match inputs with
+               | [[Added something] as changes] ->
+                   if op.Value <> VNull
+                     then Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired op.Value])
+                   op.Value <- something
+                   Some (op.Children, changes)
+               | _ -> failwith "timed window: Wrong number of arguments!"
+
+  Operator.Build(uid, prio, eval, parents)
 
 (* Evaluator: this operator evaluates some expression and records its result *)
 let makeEvaluator expr uid prio parents =

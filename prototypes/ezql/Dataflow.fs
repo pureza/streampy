@@ -13,8 +13,9 @@ open Eval
 
 type NodeType =
   | Stream
-  | Window
+  | EventWindow
   | DynVal
+  | DynValWindow
   | Dict
   | Unknown
 
@@ -131,7 +132,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
               | "[]" -> let duration = match paramExps with
                                        | [Time (Integer v, unit) as t] -> toSeconds v unit
                                        | _ -> failwith "Invalid duration"
-                        let n, g' = createNode (nextSymbol "[x min]") Window [target.Uid]
+                        let n, g' = createNode (nextSymbol "[x min]") EventWindow [target.Uid]
                                                (makeWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
               | "where" -> let pred, env', arg =
@@ -169,11 +170,11 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                                      (makeGroupby field groupBuilder) g'
                              Set.singleton n, g'', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method: %s" methName
-  | Window -> match methName with
-              | "last" -> dataflowAggregate graph target paramExps makeLast methName
-              | "sum" -> dataflowAggregate graph target paramExps makeSum methName
-              | "groupby" -> dataflowGroupby env graph target paramExps
-              | _ -> failwithf "Unkown method of type Window: %s" methName
+  | EventWindow -> match methName with
+                   | "last" -> dataflowAggregate graph target paramExps makeLast methName
+                   | "sum" -> dataflowAggregate graph target paramExps makeSum methName
+                   | "groupby" -> dataflowGroupby env graph target paramExps
+                   | _ -> failwithf "Unkown method of type Window: %s" methName
   | Dict -> match methName with
             | "where" -> let expr, env', arg =
                            match paramExps with
@@ -210,6 +211,17 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                                   (makeDictSelect projBuilder) g'
                           Set.singleton n, g'', Id (Identifier n.Uid)
             | _ -> failwithf "Unkown method: %s" methName
+  | DynVal -> match methName with
+              | "[]" -> let duration = match paramExps with
+                                       | [Time (Integer v, unit) as t] -> toSeconds v unit
+                                       | _ -> failwith "Invalid duration"
+                        let n, g' = createNode (nextSymbol "[x min]") DynValWindow [target.Uid]
+                                               (makeDynValWindow duration) graph
+                        Set.singleton n, g', Id (Identifier n.Uid)
+              | _ -> failwithf "Unkown method: %s" methName
+  | DynValWindow -> match methName with
+                    | "sum" -> dataflowAggregate graph target paramExps makeSum methName
+                    | _ -> failwithf "Unkown method of type Window: %s" methName
   | _ -> failwith "Unknown target type"
 
 
@@ -268,11 +280,14 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
                      operators.[arg], final)
 
 and dataflowAggregate graph target paramExprs opMaker aggrName =
-  let field = match paramExprs with
-              | [SymbolExpr (Symbol name)] -> name
-              | _ -> failwith "Invalid parameters to last"
+  let getField = match paramExprs, target.Type with
+                 | [SymbolExpr (Symbol name)], Stream -> (fun (VEvent ev) -> ev.[name])
+                 | [SymbolExpr (Symbol name)], EventWindow -> (fun (VEvent ev) -> ev.[name])
+                 | [], DynVal -> id
+                 | [], DynValWindow -> id
+                 | _ -> failwith "Invalid parameters to %s" aggrName
   let n, g' = createNode (nextSymbol aggrName) DynVal [target.Uid]
-                         (opMaker field) graph
+                         (opMaker getField) graph
   Set.singleton n, g', Id (Identifier n.Uid)
 
 and dataflowGroupby env graph target paramExps =
@@ -288,7 +303,7 @@ and dataflowGroupby env graph target paramExps =
   let argType = target.Type
   let argMaker = match argType with
                  | Stream -> makeStream
-                 | Window -> makeSimpleWindow
+                 | EventWindow -> makeSimpleWindow
                  | _ -> failwith "Can't happen! But will"
   let deps, g', expr' = dataflowE env' graph expr
   let expr'' = Lambda ([Identifier arg], expr')
