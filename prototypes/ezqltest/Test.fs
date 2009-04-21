@@ -7,7 +7,7 @@ open System.IO
 open Adapters
 open Types
 open Eval
-open DateTimeExtensions
+open Extensions.DateTimeExtensions
 
 (* Test DSL *)
 
@@ -126,7 +126,7 @@ type Test =
     | _ -> failwithf "\n\n\nAssertThat: Couldn't find symbol '%s'\n\n\n" entity
 
 let init code inputs =
-  let streams, env = Engine.compile code
+  let env = Engine.compile code
   for inputStream, events in inputs do
     match Map.tryfind inputStream env with
     | Some op -> CSVAdapter.FromString(op, events) |> ignore

@@ -5,14 +5,6 @@ open Types
 open Eval
 open Scheduler
 
-// Changes the current value of a continuous value if the new value differs
-// from the current one. Also gets the list of changes to propagate.
-let setValueAndGetChanges (op:Operator) v =
-    if v <> op.Value
-      then op.Value <- v
-           Some (op.Children, [Added v])
-      else None
-
 (* A stream: propagates received events *)
 let makeStream uid prio parents =
   let eval = fun op inputs -> match inputs with
@@ -21,14 +13,22 @@ let makeStream uid prio parents =
 
   Operator.Build(uid, prio, eval, parents)
 
+(* A simple window - does not schedule expiration of events. *)
+let makeSimpleWindow uid prio parents =
+  let eval = fun op inputs -> match inputs with
+                              | changes::_ ->
+                                  Some (op.Children, changes)
+                              | _ -> failwith "Simple window: Wrong number of arguments!"
 
+  Operator.Build(uid, prio, eval, parents)
+  
 (* A timed window *)
 let makeWindow duration uid prio parents =
   let eval = fun op inputs -> match inputs with
                               | [[Added (VEvent ev)] as changes] ->
                                   Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired (VEvent ev)])
                                   Some (op.Children, changes)
-                              | _ -> failwith "stream: Wrong number of arguments!"
+                              | _ -> failwith "timed window: Wrong number of arguments!"
 
   Operator.Build(uid, prio, eval, parents)
 
@@ -57,15 +57,6 @@ let makeDynVal uid prio parents =
   let eval = fun op inputs -> match inputs with
                               | [[Added v]] -> setValueAndGetChanges op v
                               | _ -> failwith "dynVal: Wrong number of arguments! %A" inputs
-
-  Operator.Build(uid, prio, eval, parents)
-
-
-(* Last: records one field of the last event of a stream *)
-let makeLast field uid prio parents =
-  let eval = fun op inputs -> match inputs with
-                              | [[Added (VEvent ev)]] -> setValueAndGetChanges op ev.[field]
-                              | _ -> failwith "last: Wrong number of arguments! %A" inputs
 
   Operator.Build(uid, prio, eval, parents)
 

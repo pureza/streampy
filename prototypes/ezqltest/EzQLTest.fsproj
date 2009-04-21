@@ -78,6 +78,7 @@
     <Compile Include="Test.fs" />
     <Compile Include="TestStreams.fs" />
     <Compile Include="TestWindows.fs" />
+    <Compile Include="TestAggregates.fs" />
     <Compile Include="TestDicts.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>

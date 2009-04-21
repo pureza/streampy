@@ -7,11 +7,13 @@ open Types
 open Graph
 open Oper
 open CommonOpers
+open AggregateOpers
 open DictOpers
 open Eval
 
 type NodeType =
   | Stream
+  | Window
   | DynVal
   | Dict
   | Unknown
@@ -124,16 +126,12 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
 and dataflowMethod env graph (target:NodeInfo) methName paramExps =
   match target.Type with
   | Stream -> match methName with
-              | "last" -> let field = match paramExps with
-                                      | [SymbolExpr (Symbol name)] -> name
-                                      | _ -> failwith "Invalid parameters to last"
-                          let n, g' = createNode (nextSymbol methName) DynVal [target.Uid]
-                                                 (makeLast field) graph
-                          Set.singleton n, g', Id (Identifier n.Uid)
+              | "last" -> dataflowAggregate graph target paramExps makeLast methName
+              | "sum" -> dataflowAggregate graph target paramExps makeSum methName
               | "[]" -> let duration = match paramExps with
                                        | [Time (Integer v, unit) as t] -> toSeconds v unit
                                        | _ -> failwith "Invalid duration"
-                        let n, g' = createNode (nextSymbol "[x min]") Stream [target.Uid]
+                        let n, g' = createNode (nextSymbol "[x min]") Window [target.Uid]
                                                (makeWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
               | "where" -> let pred, env', arg =
@@ -171,6 +169,11 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                                      (makeGroupby field groupBuilder) g'
                              Set.singleton n, g'', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method: %s" methName
+  | Window -> match methName with
+              | "last" -> dataflowAggregate graph target paramExps makeLast methName
+              | "sum" -> dataflowAggregate graph target paramExps makeSum methName
+              | "groupby" -> dataflowGroupby env graph target paramExps
+              | _ -> failwithf "Unkown method of type Window: %s" methName
   | Dict -> match methName with
             | "where" -> let expr, env', arg =
                            match paramExps with
@@ -263,6 +266,38 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
                                             resultParents
 
                      operators.[arg], final)
+
+and dataflowAggregate graph target paramExprs opMaker aggrName =
+  let field = match paramExprs with
+              | [SymbolExpr (Symbol name)] -> name
+              | _ -> failwith "Invalid parameters to last"
+  let n, g' = createNode (nextSymbol aggrName) DynVal [target.Uid]
+                         (opMaker field) graph
+  Set.singleton n, g', Id (Identifier n.Uid)
+
+and dataflowGroupby env graph target paramExps =
+  let field, expr, env', arg =
+    match paramExps with
+    | [SymbolExpr (Symbol field); Lambda ([Identifier arg], body) as fn] ->
+        field, body,
+        // Put the argument as an Unknown node into the environment
+        // This way it will be ignored by the dataflow algorithm
+        Map.add arg (NodeInfo.AsUnknown(arg)) env,
+        arg
+    | _ -> failwith "Invalid parameter to groupby"
+  let argType = target.Type
+  let argMaker = match argType with
+                 | Stream -> makeStream
+                 | Window -> makeSimpleWindow
+                 | _ -> failwith "Can't happen! But will"
+  let deps, g', expr' = dataflowE env' graph expr
+  let expr'' = Lambda ([Identifier arg], expr')
+  let groupBuilder = makeSubExprBuilder (arg, argType, argMaker) expr' deps
+  // GroupBy depends on the stream and on the dependencies of the predicate.
+  let groupbyDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
+  let n, g'' = createNode (nextSymbol "groupby") Dict groupbyDeps
+                         (makeGroupby field groupBuilder) g'
+  Set.singleton n, g'', Id (Identifier n.Uid)
 
 
 (*

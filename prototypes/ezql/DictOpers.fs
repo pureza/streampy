@@ -51,10 +51,31 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio parent
             | chg -> failwithf "%s received invalid changes: %A" uid chg ]
 
       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges)), parents)
-      
+
+     
 let makeGroupby field groupBuilder uid prio parents =
     let substreams = ref Map.empty
     let results = new Dictionary<value, value>()
+
+    // Filter only the changes related to the given key
+    let filterKey k =
+      List.filter (fun change ->
+                     match change with
+                     | Added (VEvent ev) | Expired (VEvent ev) -> ev.[field] = k
+                     | _ -> false)
+
+    // Collect changes by key returning a list of DictDiff's
+    let collectByKey =
+      List.fold_left (fun acc change -> 
+                        match change with
+                        | Added (VEvent ev) | Expired (VEvent ev) ->                                 
+                            let key = ev.[field]
+                            let v' = if Map.mem key acc then change :: acc.[key] else [change]
+                            Map.add key v' acc
+                        | _ -> failwith "Invalid changes")
+                     Map.empty
+        >> Map.to_list
+        >> List.map DictDiff
 
     let rec buildSubGroup key env =
       let initial, final = groupBuilder prio env
@@ -66,19 +87,23 @@ let makeGroupby field groupBuilder uid prio parents =
 
     and groupOp = Operator.Build(uid, prio,
                     (fun op changes ->
-                       match changes with
-                       | [Added (VEvent ev)]::_ ->
-                           let key = ev.[field]
-                           let env = getOperEnv op
+                       let env = getOperEnv op
+                       let children = 
+                         [ for change in changes.Head ->
+                             match change with
+                             | Added (VEvent ev) | Expired (VEvent ev) ->
+                                 let key = ev.[field]
 
-                           if not (Map.mem key !substreams)
-                             then buildSubGroup key env
+                                 if not (Map.mem key !substreams)
+                                   then buildSubGroup key env
 
-                           let group = (!substreams).[key]
-                           let link = fun changes -> [DictDiff (key, changes)]
-                           Some (List<_>((dictOp, 0, link)::[group, 0, id]), changes.Head)
-                       | []::_ -> None
-                       | other -> failwithf "Invalid arguments for groupby! %A" other),
+                                 (!substreams).[key], key
+                             | _ -> failwithf "Invalid arguments for groupby! %A" change ]
+                       let childrenNoDup = children |> Set.of_list |> Set.to_list
+                       match children with
+                       | [] -> None
+                       | _ -> let childrenData = List.map (fun (g, k) -> g, 0, filterKey k) childrenNoDup
+                              Some (List<_>((dictOp, 0, collectByKey)::childrenData), changes.Head)),
                     parents)
 
     and dictOp = Operator.Build(uid + "_dict", prio + 0.9,

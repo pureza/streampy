@@ -71,6 +71,7 @@ let rec spread (stack:evalStack) =
     | [] -> ()
     | (op, parentChanges)::xs ->
         //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
+        //printfn "%A" (List.map (fun (o, chgs) -> (o.Uid, chgs)) stack)
         let filledChanges = fillLeftArgs op parentChanges 0
         match op.Eval op filledChanges with
         | Some (children, changes) -> spread (mergeStack xs [ for child, idx, link in children -> (child, [(idx, (link changes))]) ])

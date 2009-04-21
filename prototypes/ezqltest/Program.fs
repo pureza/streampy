@@ -9,7 +9,7 @@ open Test
 
 Test.runTests (Test.findTests ())
 
-//Test.runTests [(Test.findTest "test_windowsCreation")]
+//Test.runTests [(Test.findTest "test_aggregatesSum")]
     
 Console.ReadLine() |> ignore
 

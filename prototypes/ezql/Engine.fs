@@ -4,12 +4,11 @@ open Scheduler
 open Clock
 open Ast
 open Types
+open TypeChecker
+open Rewrite
 open Oper
 open Graph
 open Dataflow
-
-let addEvent stream event =
-  spread [(stream, ([(0, [Added (VEvent event)])]))]
 
 let parse code =
     // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
@@ -21,21 +20,29 @@ let parse code =
         failwithf "Error near line %d, character %d\n" (pos.Line + 1) pos.Column
 
 
+let typeCheck ast =
+  match ast with
+  | Prog stmts ->
+      List.fold_left types TypeChecker.initialEnv stmts
+
+
+let dataflowAnalysis ast =
+  match ast with
+  | Prog stmts ->
+      let g = Graph.empty
+      let env = Map.empty
+      let roots = []
+      let env', g', roots' = List.fold_left dataflow (env, g, roots) stmts
+
+      //Graph.Viewer.display g' (fun v info -> info.Uid)
+      let rootUids = List.map (fun name -> env'.[name].Uid) roots'
+      let operators = Dataflow.makeOperNetwork g' rootUids id
+      Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
+
 let compile code =
     let ast = parse code
-    match ast with
-    | Prog stmts ->
-        let g = Graph.empty
-        let env = Map.empty
-        let roots = []
-        let env', g', roots' = List.fold_left dataflow (env, g, roots) stmts
+    rewrite (typeCheck ast) ast |> dataflowAnalysis
 
-        //Graph.Viewer.display g' (fun v info -> info.Uid)
-        let rootUids = List.map (fun name -> env'.[name].Uid) roots'
-        let operators = Dataflow.makeOperNetwork g' rootUids id
-        let rootStreams = List.fold_left (fun acc x -> Map.add x (fun ev -> addEvent operators.[env'.[x].Uid] ev) acc) Map.empty roots'
-        let declaredOps = Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
-        rootStreams, declaredOps
 
 let mainLoop () =
     let virtualClock = Scheduler.clock () :?> VirtualClock
