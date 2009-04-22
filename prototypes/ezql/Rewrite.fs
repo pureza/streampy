@@ -30,6 +30,17 @@ let rec delayWindows (varExprs:ExprsContext) (types:TypeContext) = function
       varExprs.Add(name, expr'), Assign (Identifier name, expr')
 
 and delayWindowsExpr varExprs types expr =
+  let isDynValWindow expr =
+    match typeOf types expr with
+    | Class ("dynValWindow", _) -> true
+    | _ -> false
+    
+  let rec splitArrayIndex expr =
+    match expr with
+    | ArrayIndex(target, index) -> target, index
+    | Id (Identifier var) -> splitArrayIndex (lookupExpr var varExprs) 
+    | _ -> failwith "expr is not a window"
+
   match expr with
   | MethodCall (ArrayIndex (target, index), (Identifier name), paramExps) ->
       // The most simple case: reorder the operations so that the window
@@ -56,6 +67,29 @@ and delayWindowsExpr varExprs types expr =
       if target' <> target
         then delayWindowsExpr varExprs types expr'
         else expr'
+  | BinaryExpr (oper, expr1, expr2) ->
+    // Delay both subexpressions and then delay the entire expression if needed
+    let expr1' = delayWindowsExpr varExprs types expr1
+    let expr2' = delayWindowsExpr varExprs types expr2
+    
+    match expr1', expr2' with
+    | Id (Identifier name1), _ -> delayWindowsExpr varExprs types (BinaryExpr (oper, lookupExpr name1 varExprs, expr2'))
+    | _, Id (Identifier name2) -> delayWindowsExpr varExprs types (BinaryExpr (oper, expr1', lookupExpr name2 varExprs))
+    | ArrayIndex (source1, index1), ArrayIndex (source2, index2) -> ArrayIndex (BinaryExpr (oper, source1, source2), index1)
+    | ArrayIndex (source1, index1), _ -> ArrayIndex (BinaryExpr (oper, source1, expr2'), index1)
+    | _, ArrayIndex (source2, index2) -> ArrayIndex (BinaryExpr (oper, expr1', source2), index2)
+    | _, _ -> BinaryExpr (oper, expr1', expr2')
+    (*
+    match isDynValWindow expr1', isDynValWindow expr2' with
+    | true, false -> let source1, index1 = splitArrayIndex expr1'
+                     ArrayIndex (BinaryExpr(oper, source1, expr2'), index1)
+    | false, true -> let source2, index2 = splitArrayIndex expr2'
+                     ArrayIndex (BinaryExpr(oper, expr1', source2), index2)
+    | true, true -> let source1, index1 = splitArrayIndex expr1'
+                    let source2, index2 = splitArrayIndex expr2'
+                    ArrayIndex (BinaryExpr(oper, source1, source2), index1)
+    | _ -> BinaryExpr (oper, expr1', expr2')
+    *)
   | _ -> expr
 
 

@@ -12,6 +12,18 @@ type Type =
   | Time
   | Symbol
   | Any
+  
+  override self.ToString() =
+    match self with
+    | Function (name, _, _) -> name + "()"
+    | Class (name, _) -> "class " + name
+    | Event -> "event"
+    | Bool -> "bool"
+    | Int -> "int"
+    | Time -> "time"
+    | Symbol -> "symbol"
+    | Any -> "any"
+
 
 and TypeContext = Map<string, Type>
 

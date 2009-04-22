@@ -1,5 +1,11 @@
 ﻿#light
 
+namespace Foo
+
+module Bar =
+
+  let pp any = sprintf "%A" any
+
 (*
 open Graph
 

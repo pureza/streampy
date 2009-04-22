@@ -147,3 +147,5 @@ let setValueAndGetChanges (op:Operator) v =
       then op.Value <- v
            Some (op.Children, [Added v])
       else None
+      
+let pp any = sprintf "%A" any

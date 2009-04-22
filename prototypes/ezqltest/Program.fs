@@ -7,9 +7,9 @@ open Dataflow
 open Types
 open Test
 
-Test.runTests (Test.findTests ())
+//Test.runTests (Test.findTests ())
 
-//Test.runTests [(Test.findTest "test_aggregatesSum")]
+Test.runTests [(Test.findTest "test_dictsSelect")]
     
 Console.ReadLine() |> ignore
 
