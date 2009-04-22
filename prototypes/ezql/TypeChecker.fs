@@ -114,10 +114,11 @@ let initialEnv =
   
   let rec streamType = Class ("stream", Map.of_list ["last", lastType; "where", whereType
                                                      "groupby", groupbyType; "[]", createWindowType
-                                                     "sum", sumType])
+                                                     "sum", sumType; "select", selectType])
   and lastType = Function ("last", [lazy Symbol], lazy dynValType)
   and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
   and whereType = Function ("where", [lazy predicateType], lazy streamType)
+  and selectType = Function ("select", [lazy predicateType], lazy streamType)
   and grpbySubType = Function ("", [lazy streamType], lazy Any)
   and groupbyType = Function ("groupby", [lazy grpbySubType], lazy dictType)
   and createWindowType = Function ("[]", [lazy Type.Time], lazy windowType)

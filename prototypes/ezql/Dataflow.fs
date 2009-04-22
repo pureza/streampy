@@ -152,6 +152,23 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                            let n, g'' = createNode (nextSymbol methName) Stream whereDeps
                                                    (makeWhere expr'') g'
                            Set.singleton n, g'', Id (Identifier n.Uid)
+              | "select" -> let pred, env', arg =
+                              match paramExps with
+                              | [Lambda ([Identifier arg], body) as fn] ->
+                                  body,
+                                  // Put the argument as an Unknown node into the environment
+                                  // This way it will be ignored by the dataflow algorithm
+                                  Map.add arg (NodeInfo.AsUnknown(arg)) env,
+                                  arg
+                              | _ -> failwith "Invalid parameter to where"
+                            let deps, g', expr' = dataflowE env' graph pred
+                            let expr'' = Lambda ([Identifier arg], expr')
+
+                            // Select depends on the stream and on the dependencies of the projector.
+                            let selectDeps = target.Uid::(List.map (fun n -> n.Uid) (Set.to_list deps))
+                            let n, g'' = createNode (nextSymbol methName) Stream selectDeps
+                                                    (makeSelect expr'') g'
+                            Set.singleton n, g'', Id (Identifier n.Uid)
               | "groupby" -> let field, expr, env', arg =
                                match paramExps with
                                | [SymbolExpr (Symbol field); Lambda ([Identifier arg], body) as fn] ->

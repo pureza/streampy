@@ -147,3 +147,9 @@ let setValueAndGetChanges (op:Operator) v =
       then op.Value <- v
            Some (op.Children, [Added v])
       else None
+
+let recordToEvent record = Map.fold_left (fun acc k v ->
+                                            match k with
+                                            | VString k' -> Map.add k' !v acc
+                                            | _ -> failwithf "Can't happen! %A" k)
+                                         Map.empty record
