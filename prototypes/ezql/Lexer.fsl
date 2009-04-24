@@ -6,10 +6,12 @@ open System.Collections
 open Parser
 open Lexing
 
-let ids = Map.of_list [("and",   AND);
-                       ("or",    OR);
-                       ("min",   MIN);
-                       ("sec",   SEC)];
+let ids = Map.of_list [("and",   AND)
+                       ("or",    OR)
+                       ("min",   MIN)
+                       ("sec",   SEC)
+                       ("let",   LET)
+                       ("in",    IN)]
 
 let tokenize text =
   if ids.ContainsKey(text)

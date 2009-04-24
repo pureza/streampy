@@ -1,10 +1,26 @@
 ﻿#light
 
-namespace Foo
+let parse code =
+    // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
+    let lexbuf = Lexing.from_string code
+    try
+        Parser.start Lexer.token lexbuf
+    with e ->
+        let pos = lexbuf.EndPos
+        failwithf "Error near line %d, character %d\n" (pos.Line + 1) pos.Column
 
-module Bar =
+printfn "%A" (parse 
+"
+ x = temp_readings.groupby(:room_id, g -> { g.last(:temperature); });
+ y = x.where(t -> { t > 25; });
 
-  let pp any = sprintf "%A" any
+ {
+   print(1);
+   print(2);
+ }")
+
+//when(a.updated(), a -> print(x + y));
+//print(3 + 4);
 
 (*
 open Graph

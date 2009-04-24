@@ -1,16 +1,14 @@
 #light
 
-type prog = Prog of stmt list
-
-and stmt =
-    | Assign of id * expr
+type prog = Prog of expr list
 
 and expr =
+  | Let of id * expr * expr list
   | BinaryExpr of op * expr * expr
   | MethodCall of expr * id * expr list
   | FuncCall of expr * expr list
   | MemberAccess of expr * id
-  | Lambda of id list * expr
+  | Lambda of id list * expr list
   | ArrayIndex of expr * expr
   | Record of (symbol * expr) list
   | Integer of int
