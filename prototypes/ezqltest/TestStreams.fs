@@ -27,7 +27,28 @@ let test_streamsWhere (test:Test) =
     test.AssertThat (In "lastTemp"
                       [Set "30" (At  0)
                        Set "15" (At  3)
-                       Set "50" (At  4)]) 
+                       Set "50" (At  4)])
+
+[<TestCase ("streams/select.ez")>]
+let test_streamsSelect (test:Test) =
+    test.AssertThat (In "temp_readingsX2"
+                      [Added 0 "{ :temperatureX2 =  60 }" (At  0)
+                       Added 3 "{ :temperatureX2 =  30 }" (At  3)
+                       Added 4 "{ :temperatureX2 = 100 }" (At  4)])
+
+    test.AssertThat (In "just10"
+                      [Added 0 "{ :a = 10 }" (At  0)
+                       Added 3 "{ :a = 10 }" (At  3)
+                       Added 4 "{ :a = 10 }" (At  4)])
+
+    test.AssertThat (In "combination"
+                      [Added 0 "{ :a =  60, :b = 10, :c = 40 }" (At  0)
+                       Added 3 "{ :a =  30, :b = 10, :c = 60 }" (At  3)
+                       Added 4 "{ :a = 100, :b = 10, :c = 60 }" (At  4)])
+                       
+    test.AssertThat (In "complex"
+                      [Added 4 "{ :a = 100, :b = 10, :c = 60 }" (At  4)])
+
 
 
 [<TestCase ("streams/groupby.ez")>]

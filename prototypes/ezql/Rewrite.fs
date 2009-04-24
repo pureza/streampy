@@ -67,6 +67,9 @@ and delayWindowsExpr varExprs types expr =
       if target' <> target
         then delayWindowsExpr varExprs types expr'
         else expr'
+        
+  // BinOps in continuous value windows won't be allowed, so this will be removed eventually.        
+        (*
   | BinaryExpr (oper, expr1, expr2) ->
     // Delay both subexpressions and then delay the entire expression if needed
     let expr1' = delayWindowsExpr varExprs types expr1
@@ -79,16 +82,6 @@ and delayWindowsExpr varExprs types expr =
     | ArrayIndex (source1, index1), _ -> ArrayIndex (BinaryExpr (oper, source1, expr2'), index1)
     | _, ArrayIndex (source2, index2) -> ArrayIndex (BinaryExpr (oper, expr1', source2), index2)
     | _, _ -> BinaryExpr (oper, expr1', expr2')
-    (*
-    match isDynValWindow expr1', isDynValWindow expr2' with
-    | true, false -> let source1, index1 = splitArrayIndex expr1'
-                     ArrayIndex (BinaryExpr(oper, source1, expr2'), index1)
-    | false, true -> let source2, index2 = splitArrayIndex expr2'
-                     ArrayIndex (BinaryExpr(oper, expr1', source2), index2)
-    | true, true -> let source1, index1 = splitArrayIndex expr1'
-                    let source2, index2 = splitArrayIndex expr2'
-                    ArrayIndex (BinaryExpr(oper, source1, source2), index1)
-    | _ -> BinaryExpr (oper, expr1', expr2')
     *)
   | _ -> expr
 

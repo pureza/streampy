@@ -9,10 +9,6 @@ type SubCircuitMap = Map<value, Operator * Operator>
 let subGroupStartOp key (subgroups:SubCircuitMap ref) = fst (!subgroups).[key]
 let subGroupResultOp key (subgroups:SubCircuitMap ref) = snd (!subgroups).[key]
 
-let getOperEnv op = Map.of_list [ for p in op.Parents do
-                                    if p <> op.Parents.[0]
-                                      then yield (p.Uid, p) ]
-
 let spreadUnlessEmpty op changes =
   match changes with
   | [] -> None

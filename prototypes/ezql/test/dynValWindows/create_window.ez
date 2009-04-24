@@ -10,20 +10,6 @@ last3secs = currTemp[3 sec];
 sumLast3secs = currTemp[3 sec].sum();
 
 
-last3secsb = last3secs + 0;
-
-
-x = 0;
-last3secsc = last3secs + x;
-
-//last3secsc = 0 + last3secs;
-
-
-//y = currTemp[3 sec] + currTemp;
-
-//z = y + 10;
-
-// y = currTemp[3 sec].map (v -> v + currTemp);
 
 #! hum_readings
 Timestamp, room_id, humidity

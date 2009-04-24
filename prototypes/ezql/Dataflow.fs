@@ -135,23 +135,8 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                         let n, g' = createNode (nextSymbol "[x min]") EventWindow [target.Uid]
                                                (makeWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
-              | "where" -> let pred, env', arg =
-                             match paramExps with
-                             | [Lambda ([Identifier arg], body) as fn] ->
-                                 body,
-                                 // Put the argument as an Unknown node into the environment
-                                 // This way it will be ignored by the dataflow algorithm
-                                 Map.add arg (NodeInfo.AsUnknown(arg)) env,
-                                 arg
-                             | _ -> failwith "Invalid parameter to where"
-                           let deps, g', expr' = dataflowE env' graph pred
-                           let expr'' = Lambda ([Identifier arg], expr')
-
-                           // Where depends on the stream and on the dependencies of the predicate.
-                           let whereDeps = target.Uid::(List.map (fun n -> n.Uid) (Set.to_list deps))
-                           let n, g'' = createNode (nextSymbol methName) Stream whereDeps
-                                                   (makeWhere expr'') g'
-                           Set.singleton n, g'', Id (Identifier n.Uid)
+              | "where" -> dataflowSelectWhere env graph target paramExps makeWhere methName 
+              | "select" -> dataflowSelectWhere env graph target paramExps makeSelect methName 
               | "groupby" -> let field, expr, env', arg =
                                match paramExps with
                                | [SymbolExpr (Symbol field); Lambda ([Identifier arg], body) as fn] ->
@@ -312,6 +297,28 @@ and dataflowGroupby env graph target paramExps =
   let groupbyDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
   let n, g'' = createNode (nextSymbol "groupby") Dict groupbyDeps
                          (makeGroupby field groupBuilder) g'
+  Set.singleton n, g'', Id (Identifier n.Uid)
+
+(*
+ * Handles stream.where() and stream.select()
+ *)
+and dataflowSelectWhere env graph target paramExps opMaker methName =
+  let subExpr, env', arg =
+    match paramExps with
+    | [Lambda ([Identifier arg], body) as fn] ->
+        body,
+        // Put the argument as an Unknown node into the environment
+        // This way it will be ignored by the dataflow algorithm
+        Map.add arg (NodeInfo.AsUnknown(arg)) env,
+        arg
+    | _ -> failwith "Invalid parameter to where"
+  let deps, g', expr' = dataflowE env' graph subExpr
+  let expr'' = Lambda ([Identifier arg], expr')
+ 
+  // Depends on the stream and on the dependencies of the predicate.
+  let opDeps = target.Uid::(List.map (fun n -> n.Uid) (Set.to_list deps))
+  let n, g'' = createNode (nextSymbol methName) Stream opDeps
+                          (opMaker expr'') g'
   Set.singleton n, g'', Id (Identifier n.Uid)
 
 

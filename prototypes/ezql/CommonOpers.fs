@@ -36,9 +36,7 @@ let makeWindow duration uid prio parents =
 let makeWhere predLambda uid prio parents =
     let expr = FuncCall (predLambda, [Id (Identifier "ev")])
     let eval = fun op inputs ->
-                 let env = Map.of_list [ for p in op.Parents do
-                                           if p <> op.Parents.[0]
-                                             then yield (p.Uid, p.Value) ]
+                 let env = getOperEnvValues op
                  match inputs with
                  | [Added (VEvent ev)]::_ ->
                      let env' = Map.add "ev" (VEvent ev) env
@@ -46,6 +44,24 @@ let makeWhere predLambda uid prio parents =
                      | VBool true -> Some (op.Children, inputs.Head)
                      | VBool false -> None
                      | _ -> failwith "Predicate was supposed to return VBool"
+                 | []::_ -> None // Ignore changes to the predicate dependencies
+                 | _ -> failwithf "where: Wrong number of arguments! %A" inputs
+
+    Operator.Build(uid, prio, eval, parents)
+
+
+(* Select: projects an event *)
+let makeSelect predLambda uid prio parents =
+    let expr = FuncCall (predLambda, [Id (Identifier "ev")])
+    let eval = fun op inputs ->
+                 let env = getOperEnvValues op
+                 match inputs with
+                 | [Added (VEvent ev)]::_ ->
+                     let env' = Map.add "ev" (VEvent ev) env
+                     let ev' = match eval env' expr with
+                               | VRecord map -> Event (ev.Timestamp, recordToEvent map)
+                               | _ -> failwithf "select should return a record"
+                     Some (op.Children, [Added (VEvent ev')])
                  | []::_ -> None // Ignore changes to the predicate dependencies
                  | _ -> failwithf "where: Wrong number of arguments! %A" inputs
 

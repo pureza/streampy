@@ -134,6 +134,8 @@ and priority = float
 and link = changes -> changes
 
 
+(* We need a better place to put these functions *)
+
 let toSeconds value unit =
   match unit with
   | Sec -> value
@@ -147,5 +149,17 @@ let setValueAndGetChanges (op:Operator) v =
       then op.Value <- v
            Some (op.Children, [Added v])
       else None
-      
-let pp any = sprintf "%A" any
+
+
+let getOperEnv op = Map.of_list [ for p in op.Parents do
+                                    if p <> op.Parents.[0]
+                                      then yield (p.Uid, p) ]
+
+let getOperEnvValues = getOperEnv >> Map.mapi (fun k v -> v.Value)
+
+
+let recordToEvent record = Map.fold_left (fun acc k v ->
+                                            match k with
+                                            | VString k' -> Map.add k' !v acc
+                                            | _ -> failwithf "Can't happen! %A" k)
+                                         Map.empty record
