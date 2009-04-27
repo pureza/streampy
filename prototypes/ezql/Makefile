@@ -5,12 +5,12 @@ FSYACC=mono $(FS_BIN)/fsyacc.exe
 REFS=-r FSharp.PowerPack.dll 
 FS_FILES=Extensions.fs
 FS_FILES+=Ast.fs Parser.fs Lexer.fs Program.fs
-FS_FILES+=#Types.fs Clock.fs TypeChecker.fs Rewrite.fs
-#FS_FILES+=Eval.fs Oper.fs Scheduler.fs
-#FS_FILES+=CommonOpers.fs
-#FS_FILES+=AggregateOpers.fs DictOpers.fs
-#FS_FILES+=Graph.fs Dataflow.fs Engine.fs Adapters.fs
-#FS_FILES+=Program.fs
+FS_FILES+=Types.fs Clock.fs TypeChecker.fs Rewrite.fs
+FS_FILES+=Eval.fs Oper.fs Scheduler.fs
+FS_FILES+=CommonOpers.fs
+FS_FILES+=AggregateOpers.fs DictOpers.fs
+FS_FILES+=Graph.fs Dataflow.fs Engine.fs Adapters.fs
+FS_FILES+=Program.fs
 
 all: Ezql
 

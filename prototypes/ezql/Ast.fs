@@ -1,17 +1,23 @@
 #light
 
-type prog = Prog of expr list
+type prog =
+  | Expr of expr
+  | Def of id * expr
 
 and expr =
-  | Let of id * expr * expr list
+  | Let of id * expr * expr
   | BinaryExpr of op * expr * expr
   | MethodCall of expr * id * expr list
   | FuncCall of expr * expr list
   | MemberAccess of expr * id
-  | Lambda of id list * expr list
+  | Lambda of id list * expr
+  | If of expr * expr * expr
   | ArrayIndex of expr * expr
+  | Seq of expr * expr
   | Record of (symbol * expr) list
+  | RecordWith of expr * (symbol * expr) list
   | Integer of int
+  | Bool of bool
   | Time of expr * timeUnit
   | SymbolExpr of symbol
   | Id of id
@@ -29,8 +35,9 @@ and op =
   | Minus
   | Times
   | Div
-  
-and timeUnit = Min | Sec  
+  | Mod
+
+and timeUnit = Min | Sec
 
 and id = Identifier of string
 

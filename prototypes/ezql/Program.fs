@@ -1,27 +1,32 @@
 ﻿#light
 
+(*
 let parse code =
     // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
     let lexbuf = Lexing.from_string code
     try
-        Parser.start Lexer.token lexbuf
+        Parser.toplevel Lexer.token lexbuf
     with e ->
         let pos = lexbuf.EndPos
         failwithf "Error near line %d, character %d\n" (pos.Line + 1) pos.Column
 
 printfn "%A" (parse 
 "
- x = temp_readings.groupby(:room_id, g -> { g.last(:temperature); });
- y = x.where(t -> { t > 25; });
+x = temp_readings
+      .groupby(:room_id, g -> g.last(:temperature))
+      .where (t -> t > 25);;
 
- {
-   print(1);
-   print(2);
- }")
+y = temp_readings.where(ev -> ev.temperature > 20;
+                              print(ev));;
+
+when (x.updated(),
+      ev -> let a = x * x in
+            if true then print (x) else print (a));;
+")
 
 //when(a.updated(), a -> print(x + y));
 //print(3 + 4);
-
+*)
 (*
 open Graph
 

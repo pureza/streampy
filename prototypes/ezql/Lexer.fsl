@@ -6,13 +6,16 @@ open System.Collections
 open Parser
 open Lexing
 
-let ids = Map.of_list [("and",   AND)
-                       ("or",    OR)
-                       ("min",   MIN)
-                       ("sec",   SEC)
-                       ("let",   LET)
-                       ("in",    IN)]
-
+let ids = Map.of_list ["min",   MIN
+                       "sec",   SEC
+                       "let",   LET
+                       "in",    IN
+                       "with",  WITH
+                       "and",   AND
+                       "or",    OR
+                       "if",    IF
+                       "then",  THEN
+                       "else",  ELSE]
 let tokenize text =
   if ids.ContainsKey(text)
       then ids.[text]
@@ -23,39 +26,42 @@ let num        = ['0'-'9']+
 let alpha      = ['a'-'z' 'A'-'Z']
 let identifier = alpha+ (alpha | ['_'] | num)*
 let integer    = '-'? num
+let boolean    = "true" | "false"
 let whitespace = ' ' | '\t'
 let newline    = '\n' | '\r' '\n'
 
 rule token = parse
     | whitespace			{ token lexbuf }
     | newline				{ (lexbuf:lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
-    | "("					{ LPAREN }
-    | ")"					{ RPAREN }
-    | "["					{ LBRACKET }
-    | "]"					{ RBRACKET }
+    | "("				{ LPAREN }
+    | ")"				{ RPAREN }
+    | "["				{ LBRACKET }
+    | "]"				{ RBRACKET }
     | "{"     				{ LBRACE }
     | "}"     				{ RBRACE }
     | "="      				{ ASSIGN }
     | "+"      				{ PLUS }
     | "-"      				{ MINUS }
     | "/"     				{ DIV }
+    | "%"                               { MOD }
     | "*"     				{ TIMES }
     | ">"     				{ GT }
-    | ">="   			    { GTE }
-    | "=="   			    { EQ }
-    | "!="  			    { DIFF }
-    | "<="  			    { LTE }
+    | ">="   			        { GTE }
+    | "=="   			        { EQ }
+    | "!="  			        { DIFF }
+    | "<="                              { LTE }
     | "<"      				{ LT }
-    | "!"      				{ NOT }
     | ","      				{ COMMA }
     | "."      				{ DOT }
     | ":"       			{ COLON }
     | "->"      			{ ARROW }
     | ";"       			{ SEMICOLON }
+    | ";;"      			{ SEMICOLON2 }
+    | boolean                           { BOOLEAN_LITERAL (Boolean.Parse(lexeme lexbuf)) }
     | identifier			{ tokenize (lexeme lexbuf) }
     | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
-    | "//"  [^'\n''\r']*	{ token lexbuf  }
-    | eof				    { EOF }
+    | "//"  [^'\n''\r']*                { token lexbuf  }
+    | eof				{ EOF }
 
 
 
