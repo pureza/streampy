@@ -3,6 +3,7 @@ open Ast
 %}
 
 %start toplevel
+%start expr
 
 %token <string> ID
 %token <int> INTEGER_LITERAL

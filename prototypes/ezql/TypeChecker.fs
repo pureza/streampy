@@ -1,5 +1,6 @@
 ﻿#light
 
+
 open Ast
 
 
@@ -28,9 +29,10 @@ type Type =
 and TypeContext = Map<string, Type>
 
 let rec types (env:TypeContext) = function
-  | Assign (Identifier name, expr) ->
+  | Def (Identifier name, expr) ->
       let typ = typeOf env expr
       env.Add(name, typ)
+  | Expr _ -> env
 
 and typeOf env = function
   | MethodCall (target, (Identifier name), paramExps) ->
@@ -136,3 +138,5 @@ let initialEnv =
   and createWindowType = Function ("[]", [lazy Type.Time], lazy windowType)
   
   Map.of_list ["stream", Function ("stream", [lazy Symbol], lazy streamType)]
+
+

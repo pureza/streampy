@@ -17,6 +17,8 @@ open TypeChecker
  * one window and results in a second window.
  *)
 
+
+
 type ExprsContext = Map<string, expr>
 
 let rec lookupExpr var (varExprs:ExprsContext) =
@@ -25,9 +27,10 @@ let rec lookupExpr var (varExprs:ExprsContext) =
   | other -> other
 
 let rec delayWindows (varExprs:ExprsContext) (types:TypeContext) = function
-  | Assign (Identifier name, expr) ->
+  | Def (Identifier name, expr) ->
       let expr' = delayWindowsExpr varExprs types expr
-      varExprs.Add(name, expr'), Assign (Identifier name, expr')
+      varExprs.Add(name, expr'), Def (Identifier name, expr')
+  | Expr expr -> varExprs, Expr (delayWindowsExpr varExprs types expr)
 
 and delayWindowsExpr varExprs types expr =
   let isDynValWindow expr =
@@ -87,11 +90,11 @@ and delayWindowsExpr varExprs types expr =
 
 
 let rewrite types ast =
-  match ast with
-  | Prog stmts ->
-      let varExprs, stmts' =
-        List.fold_left (fun (varExprs, stmts) stmt ->
-                          let varExprs', stmt' = delayWindows varExprs types stmt
-                          varExprs', stmts @ [stmt'])
-                       (Map.empty, []) stmts
-      Prog stmts'
+  let varExprs, stmts' =
+    List.fold_left (fun (varExprs, stmts) stmt ->
+                      let varExprs', stmt' = delayWindows varExprs types stmt
+                      varExprs', stmts @ [stmt'])
+                   (Map.empty, []) ast
+  stmts'
+  
+      

@@ -4,6 +4,10 @@ open Ast
 open Types
 
 let rec eval env = function
+  | FuncCall (Id (Identifier "print"), paramExps) ->
+      let v = eval env paramExps.Head
+      printfn "%O" v
+      v
   | FuncCall (expr, paramExps) ->
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps
@@ -18,10 +22,15 @@ let rec eval env = function
       VRecord (fields |> List.map (fun (Symbol (name), expr) -> (VString name, ref (eval env expr)))
                       |> Map.of_list)
   | Lambda (args, body) as fn -> VClosure (env, fn)
+  | Let (Identifier name, binder, body) ->
+      eval (env.Add(name, eval env binder)) body
   | BinaryExpr (oper, expr1, expr2) ->
     let value1 = eval env expr1
     let value2 = eval env expr2
     evalOp (oper, value1, value2)
+  | Seq (expr1, expr2) ->
+      eval env expr1 |> ignore
+      eval env expr2
   | Id (Identifier name) ->
       match Map.tryfind name env with
       | Some v -> v

@@ -67,7 +67,7 @@ let createNode uid typ parentUids makeOp graph =
 type context = Map<string, NodeInfo>
 
 let rec dataflow (env:context, (graph:DataflowGraph), roots) = function
-  | Assign (Identifier name, exp) ->
+  | Def (Identifier name, exp) ->
       let deps, g', expr' = dataflowE env graph exp
       let roots' = name::roots
       let n, g' = match Set.to_list deps, expr' with
@@ -76,6 +76,9 @@ let rec dataflow (env:context, (graph:DataflowGraph), roots) = function
                                 createNode (nextSymbol name) DynVal uids (makeEvaluator expr') g'
                   | [], _ -> failwith "constant node? Not supported (yet)"
       env.Add(name, Graph.labelOf n.Uid g'), g', roots'
+  | Expr expr ->
+      let deps, g', expr' = dataflowE env graph expr
+      env, g', roots
 
 
 and dataflowE (env:context) (graph:DataflowGraph) expr =
@@ -92,9 +95,7 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
       | [dep] -> dataflowMethod env g' dep "[]" [index]
       | [] -> Set.empty, g', expr'
       | _ -> failwith "The target of the window depends on more than one value"
-  | FuncCall (Id (Identifier "stream"), paramExps) ->
-      let n, g' = createNode (nextSymbol "stream") Stream [] makeStream graph
-      Set.singleton n, g', Id (Identifier n.Uid)
+  | FuncCall (fn, paramExps) -> dataflowFuncCall env graph fn paramExps
   | MemberAccess (expr, (Identifier name)) ->
       let deps, g', expr' = dataflowE env graph expr
       match Set.to_list deps with
@@ -110,10 +111,19 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
                           | _ -> depsAcc @ (Set.to_list deps), g', expsAcc @ [(Symbol field, expr')])
                        ([], graph, []) fields
       Set.of_list deps, g', Record exprs
+  | Let (Identifier name, binder, body) ->
+      let deps1, g1, binder' = dataflowE env graph binder
+      let env' = env.Add(name, NodeInfo.AsUnknown(name))
+      let deps2, g2, body' = dataflowE env' g1 body
+      Set.union deps1 deps2, g2, Let (Identifier name, binder', body')
   | BinaryExpr (oper, expr1, expr2) as expr ->
       let deps1, g1, expr1' = dataflowE env graph expr1
       let deps2, g2, expr2' = dataflowE env g1 expr2
       Set.union deps1 deps2, g2, BinaryExpr (oper, expr1', expr2')
+  | Seq (expr1, expr2) ->
+      let deps1, g1, expr1' = dataflowE env graph expr1
+      let deps2, g2, expr2' = dataflowE env g1 expr2
+      Set.union deps1 deps2, g2, Seq (expr1', expr2')
   | Id (Identifier name) ->
       let info = Map.tryfind name env
       match info with
@@ -209,6 +219,33 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                     | _ -> failwithf "Unkown method of type Window: %s" methName
   | _ -> failwith "Unknown target type"
 
+and dataflowFuncCall env graph fn paramExps =
+  match fn with
+  | Id (Identifier "stream") ->
+      let n, g' = createNode (nextSymbol "stream") Stream [] makeStream graph
+      Set.singleton n, g', Id (Identifier n.Uid)
+  | Id (Identifier "when") ->
+      match paramExps with
+      | [target; Lambda ([Identifier arg], handler)] ->
+          // Dataflow the target
+          let depsTarget, g', target' = dataflowE env graph target
+          let depTarget = match Set.to_list depsTarget with
+                          | [t] -> t
+                          | _ -> failwith "OMG the target of the when is not a simple node!!!"
+          // Dataflow the handler expression
+          let env' = env.Add(arg, NodeInfo.AsUnknown(arg))
+          let depsHandler, g'', handler' = dataflowE env' g' handler
+          // Create a node for the when operator
+          let allDeps = depTarget.Uid::(Set.map NodeInfo.UidOf depsHandler |> Set.to_list)
+          let n, g''' = createNode (nextSymbol "when") DynVal allDeps
+                                   (makeWhen (Lambda ([Identifier arg], handler'))) g''
+          Set.singleton n, g''', Id (Identifier n.Uid)
+      | _ -> failwithf "Invalid parameters to when: %A" paramExps
+  | _ -> let deps, g', paramExps' = List.fold_left (fun (depsAcc, g, exprs) expr ->
+                                                      let deps, g', expr' = dataflowE env g expr
+                                                      Set.union depsAcc deps, g', exprs @ [expr'])
+                                                   (Set.empty, graph, List.empty) paramExps
+         deps, g', FuncCall (fn, paramExps')
 
 and makeSubExprBuilder (arg, argType, argMaker) expr deps =
   let mergeMaps a b = Map.fold_left (fun acc k v -> Map.add k v acc) a b

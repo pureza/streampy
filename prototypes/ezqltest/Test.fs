@@ -153,11 +153,13 @@ let parseTestFile fileName =
 type TestCaseAttribute(srcFile:string) =
     inherit Attribute()
     member self.CreateTest() =
-        let code, inputs = parseTestFile (@"C:\streampy\prototypes\ezql\test\" + srcFile)
-        //let code, inputs = parseTestFile (@"../ezql/test/" + srcFile)
+        //let code, inputs = parseTestFile (@"C:\streampy\prototypes\ezql\test\" + srcFile)
+        let code, inputs = parseTestFile (@"test/" + srcFile)
         init code inputs
 
-let currentAssembly = Assembly.LoadFrom(Assembly.GetExecutingAssembly().GetName().Name + ".exe")
+
+//printfn "%A" (Assembly.GetExecutingAssembly().Location)
+let currentAssembly = Assembly.LoadFrom(Assembly.GetExecutingAssembly().Location)
 
 let findTests () =
     let asm = currentAssembly

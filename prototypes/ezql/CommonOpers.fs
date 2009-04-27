@@ -104,7 +104,6 @@ let makeEvaluator expr uid prio parents =
   Operator.Build(uid, prio, operEval, parents, contents = initialContents)
 
 
-
 let makeRecord (fields:list<string * Operator>) uid prio parents =
   let result = fields |> List.map (fun (f, _) -> (VString f, ref VNull)) |> Map.of_list
   assert (parents = (List.map snd fields))
@@ -128,3 +127,19 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
     result.[VString field] := op.Value
 
   recordOp
+
+
+(* When *)
+let makeWhen handler uid prio parents =
+    let expr = FuncCall (handler, [Id (Identifier "ev")])
+    let eval = fun op inputs ->
+                 let env = getOperEnvValues op
+                 match inputs with
+                 | [Added (VEvent ev)]::_ ->
+                     let env' = Map.add "ev" (VEvent ev) env
+                     eval env' expr |> ignore
+                     None
+                 | []::_ -> None // Ignore changes to the predicate dependencies
+                 | _ -> failwithf "where: Wrong number of arguments! %A" inputs
+
+    Operator.Build(uid, prio, eval, parents)
