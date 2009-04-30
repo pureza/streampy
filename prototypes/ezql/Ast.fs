@@ -18,6 +18,7 @@ and expr =
   | RecordWith of expr * (symbol * expr) list
   | Integer of int
   | Bool of bool
+  | String of string
   | Time of expr * timeUnit
   | SymbolExpr of symbol
   | Id of id

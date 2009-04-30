@@ -12,6 +12,7 @@ type Type =
   | Int
   | Time
   | Symbol
+  | Record
   | Any
   
   override self.ToString() =
@@ -23,6 +24,7 @@ type Type =
     | Int -> "int"
     | Time -> "time"
     | Symbol -> "symbol"
+    | Record -> "record"
     | Any -> "any"
 
 
@@ -48,39 +50,18 @@ and typeOf env = function
           //  then printfn "Invalid parameters to function %s(). Expecting %A, got %A" name paramTypes'' paramTypes
           returnType.Force()
       | other -> failwithf "The target expression %A should be a function but is a %A" expr other
+  | MemberAccess (target, Identifier name) -> Int // TODO
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
     let type2 = typeOf env expr2
     typeOfOp (oper, type1, type2)
-  | expr.SymbolExpr _ -> Symbol
+  | expr.Record _ -> Record
+  | SymbolExpr _ -> Symbol
   | Id (Identifier name) ->
       match Map.tryfind name env with
       | Some v -> v
       | _ -> failwithf "typeOf: Unknown variable or identifier: %s" name  
   | Integer v -> Int
-
-
-      (*
-  | MemberAccess (expr, Identifier name) ->
-      let target = eval env expr
-      match target with
-      | VEvent ev -> ev.[name]
-      | _ -> failwith "eval MemberAccess: Not an event!"
-  | Record fields ->
-      // This is extremely ineficient - we should create a node if possible
-      VRecord (fields |> List.map (fun (Symbol (name), expr) -> (VString name, ref (eval env expr)))
-                      |> Map.of_list)
-  | Lambda (args, body) as fn -> VClosure (env, fn)
-  | BinaryExpr (oper, expr1, expr2) ->
-    let value1 = eval env expr1
-    let value2 = eval env expr2
-    evalOp (oper, value1, value2)
-  | Id (Identifier name) ->
-      match Map.tryfind name env with
-      | Some v -> v
-      | _ -> failwithf "eval: Unknown variable or identifier: %s" name
-  | expr.Integer v -> VInt v
-  *)
   | other -> failwithf "Not implemented: %A" other
 
 

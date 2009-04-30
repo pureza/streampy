@@ -28,3 +28,18 @@ let makeSum getField uid prio parents =
                setValueAndGetChanges op balance
  
   Operator.Build(uid, prio, eval, parents)
+  
+(* Count *)
+let makeCount getField uid prio parents =
+
+  let eval = fun (op:Operator) inputs -> 
+               let initial = if op.Value = VNull then VInt 0 else op.Value
+               let balance = List.fold_left (fun acc diff -> 
+                                                match diff with
+                                                | Added v -> value.Add(acc, VInt 1)
+                                                | Expired v -> value.Subtract(acc, VInt 1)
+                                                | _ -> failwithf "Invalid diff in sum: %A" diff)
+                                            initial (List.hd inputs)
+               setValueAndGetChanges op balance
+ 
+  Operator.Build(uid, prio, eval, parents)

@@ -17,6 +17,7 @@ type NodeType =
   | DynVal
   | DynValWindow
   | Dict
+  | RecordType
   | Unknown
 
 type uid = string
@@ -66,16 +67,58 @@ let createNode uid typ parentUids makeOp graph =
 
 type context = Map<string, NodeInfo>
 
-let rec dataflow (env:context, (graph:DataflowGraph), roots) = function
+(* Create the necessary nodes to evaluate an expression.
+ *  - If the expression is a simple variable access, no new nodes are necessary;
+ *  - If the expression is a record, we will need new nodes for each field and
+ *    another node for the entire record;
+ *  - If the expression is of any other kind, we create a general purpose
+ *    evaluator node.
+ *)
+let rec makeFinalNode env graph expr deps name =
+  match expr with
+  (* No additional node necessary *)
+  | Id (Identifier uid) -> Set.choose deps, graph
+ 
+  (* Yes, the result is a record and we need the corresponding operator *)
+  | Record fields -> 
+      let env' = Set.fold_left (fun acc info -> Map.add info.Uid info acc) env deps
+      let g'', fieldDeps = List.fold_left (fun (g, fieldDeps) (Symbol field, expr) ->
+                                             (* Lets get the dependencies for just this expression *)
+                                             let deps'', g', expr' = dataflowE env' g expr
+                                            
+                                             (* Sanity check: at this point, the expression should be completely
+                                                "continualized" and thus, the previous operation must not have
+                                                altered the graph nor the expression itself *)
+                                             assert (g' = g && expr' = expr)
+                                             
+                                             (* Do we need an evaluator just for this field? *)
+                                             let n, g' = makeFinalNode env' g expr deps'' field
+                                             g', (field, n.Uid)::fieldDeps)
+                                          (graph, []) fields
+
+      let uids = List.map snd fieldDeps                                   
+      createNode (nextSymbol name) RecordType uids
+                 // At runtime, we need to find the operators corresponding to the parents
+                 (fun uid prio parents ->
+                    let parentOps = List.map (fun (n, uid) ->
+                                                (n, List.find (fun (p:Operator) -> p.Uid = uid) parents))
+                                             fieldDeps
+                    makeRecord parentOps uid prio parents)
+                 g''
+
+  (* The result is an arbitrary expression and we need to evaluate it *)
+  | _ -> let uids = Set.map NodeInfo.UidOf deps |> Set.to_list
+         createNode (nextSymbol name) DynVal uids (makeEvaluator expr) graph
+
+and dataflow (env:context, (graph:DataflowGraph), roots) = function
   | Def (Identifier name, exp) ->
       let deps, g', expr' = dataflowE env graph exp
       let roots' = name::roots
-      let n, g' = match Set.to_list deps, expr' with
-                  | [dep], Id (Identifier uid) -> dep, g'
-                  | x::xs, _ -> let uids = Set.map NodeInfo.UidOf deps |> Set.to_list
-                                createNode (nextSymbol name) DynVal uids (makeEvaluator expr') g'
-                  | [], _ -> failwith "constant node? Not supported (yet)"
-      env.Add(name, Graph.labelOf n.Uid g'), g', roots'
+      (* Do we need a final operator to evaluate the expression?
+         If we do, deps' contains all the dependencies necessary
+         and we use "operators" to lookup the corresponding operators. *)
+      let n, g'' = makeFinalNode env g' expr' deps name
+      env.Add(name, Graph.labelOf n.Uid g''), g'', roots'
   | Expr expr ->
       let deps, g', expr' = dataflowE env graph expr
       env, g', roots
@@ -98,10 +141,13 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
   | FuncCall (fn, paramExps) -> dataflowFuncCall env graph fn paramExps
   | MemberAccess (expr, (Identifier name)) ->
       let deps, g', expr' = dataflowE env graph expr
-      match Set.to_list deps with
-      | [dep] -> failwith "Ver isto"//deps, g', expr'
-      | [] -> Set.empty, g', MemberAccess (expr', (Identifier name))
-      | _ -> failwith "The target of the method call depends on more than one value"
+      match Set.size deps with
+      | 1 when (Set.choose deps).Type = RecordType ->
+         // If it's a record, create a projector
+         let n, g'' = createNode (nextSymbol ("." + name)) DynVal (Set.map NodeInfo.UidOf deps |> Set.to_list)
+                                 (makeProjector name) g'
+         Set.singleton n, g'', Id (Identifier n.Uid)
+      | _ -> deps, g', MemberAccess (expr', (Identifier name))
   | Record fields ->
       let deps, g', exprs =
         List.fold_left (fun (depsAcc, g, expsAcc) (Symbol field, expr) ->
@@ -116,6 +162,11 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
       let env' = env.Add(name, NodeInfo.AsUnknown(name))
       let deps2, g2, body' = dataflowE env' g1 body
       Set.union deps1 deps2, g2, Let (Identifier name, binder', body')
+  | If (cond, thn, els) ->
+      let deps1, g1, cond' = dataflowE env graph cond
+      let deps2, g2, thn' = dataflowE env g1 thn
+      let deps3, g3, els' = dataflowE env g2 els
+      Set.union (Set.union deps1 deps2) deps3, g3, If (cond', thn', els')
   | BinaryExpr (oper, expr1, expr2) as expr ->
       let deps1, g1, expr1' = dataflowE env graph expr1
       let deps2, g2, expr2' = dataflowE env g1 expr2
@@ -132,6 +183,7 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
                         else Set.empty, graph, expr // If the type is unknown, nothing depends on it.
       | _ -> failwithf "Identifier not found in the graph: %s" name
   | Integer i -> Set.empty, graph, expr
+  | String s -> Set.empty, graph, expr
   | _ -> failwithf "Expression type not supported: %A" expr
 
 and dataflowMethod env graph (target:NodeInfo) methName paramExps =
@@ -139,6 +191,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
   | Stream -> match methName with
               | "last" -> dataflowAggregate graph target paramExps makeLast methName
               | "sum" -> dataflowAggregate graph target paramExps makeSum methName
+              | "count" -> dataflowAggregate graph target paramExps makeCount methName
               | "[]" -> let duration = match paramExps with
                                        | [Time (Integer v, unit) as t] -> toSeconds v unit
                                        | _ -> failwith "Invalid duration"
@@ -168,6 +221,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
   | EventWindow -> match methName with
                    | "last" -> dataflowAggregate graph target paramExps makeLast methName
                    | "sum" -> dataflowAggregate graph target paramExps makeSum methName
+                   | "count" -> dataflowAggregate graph target paramExps makeCount methName
                    | "groupby" -> dataflowGroupby env graph target paramExps
                    | _ -> failwithf "Unkown method of type Window: %s" methName
   | Dict -> match methName with
@@ -213,6 +267,11 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                         let n, g' = createNode (nextSymbol "[x min]") DynValWindow [target.Uid]
                                                (makeDynValWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
+              | "updated" -> let n, g' = createNode (nextSymbol "toStream") Stream [target.Uid]
+                                                    (makeToStream) graph
+                             Set.singleton n, g', Id (Identifier n.Uid)
+              | "sum" -> dataflowAggregate graph target paramExps makeSum methName
+              | "count" -> dataflowAggregate graph target paramExps makeCount methName
               | _ -> failwithf "Unkown method: %s" methName
   | DynValWindow -> match methName with
                     | "sum" -> dataflowAggregate graph target paramExps makeSum methName
@@ -269,6 +328,7 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
                      let final =
                        match expr' with
                        (* No additional node necessary *)
+                       
                        | Id (Identifier uid) -> operators.[uid]
 
                        (* Yes, the result is a record and we need the corresponding operator *)
@@ -293,6 +353,7 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
                                              fields
                            makeRecord fieldDeps (nextSymbol ("groupRecordResult-" + arg))
                                       (fixPrio (float (fieldDeps.Length + operators.Count + 1))) (List.map snd fieldDeps)
+                                    
                        (* The result is an arbitrary expression and we need to evaluate it *)
                        | _ -> let finalPrio = fixPrio (float operators.Count + 1.0)
                               let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'

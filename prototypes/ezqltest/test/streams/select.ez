@@ -13,7 +13,7 @@ temp_readingsX2 = temp_readings
 
 // Doesn't depend on ev
 just10 = temp_readings
-                   .select(ev -> { :a = 10 });;
+           .select(ev -> { :a = 10 });;
 
 combination = temp_readings
                 .select(ev -> { :a = ev.temperature * 2, :b = 10, :c = lastHum });;
@@ -23,10 +23,6 @@ complex = temp_readings
             .where (ev -> ev.temperature > 20)
             .select (ev -> { :a = ev.temperature * 2, :b = 10, :c = lastHum })
             .where (ev -> ev.c == 60);;
-
-when (temp_readings, ev -> let x = temp_readings.last(:temperature) in
-                           print ({ :a = ev.temperature * 2, :b = 10, :c = lastHum });
-                           print (x * 2));;
 
 
 #! hum_readings

@@ -6,8 +6,9 @@ open Ast
 %start expr
 
 %token <string> ID
-%token <int> INTEGER_LITERAL
-%token <bool> BOOLEAN_LITERAL
+%token <int> INTEGER
+%token <bool> BOOLEAN
+%token <string> STRING
 %token LET IN WITH IF THEN ELSE
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE ASSIGN
 %token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV MOD COMMA
@@ -61,9 +62,10 @@ expr:   expr DOT ID                                        { MemberAccess ($1, I
       | record                                             { $1 }
       | ID                                                 { Id (Identifier $1) }
       | symbol                                             { SymbolExpr $1 }
-      | INTEGER_LITERAL timeUnit                           { Time (Integer $1, $2) }
-      | INTEGER_LITERAL                                    { Integer $1 }
-      | BOOLEAN_LITERAL                                    { Bool $1 }
+      | INTEGER timeUnit                                   { Time (Integer $1, $2) }
+      | INTEGER                                            { Integer $1 }
+      | BOOLEAN                                            { Bool $1 }
+      | STRING                                             { String $1 }
 
 binaryExpr:   arith                                        { $1 }
             | conditional                                  { $1 }

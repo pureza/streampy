@@ -84,6 +84,7 @@
     <Compile Include="TestDynValWindows.fs" />
     <Compile Include="TestAggregates.fs" />
     <Compile Include="TestDicts.fs" />
+    <Compile Include="TestMisc.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

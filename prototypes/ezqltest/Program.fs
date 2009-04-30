@@ -9,7 +9,7 @@ open Test
 
 //Test.runTests (Test.findTests ())
 
-Test.runTests [(Test.findTest "test_streamsSelect")]
+Test.runTests [(Test.findTest "test_misc")]
     
 Console.ReadLine() |> ignore
 

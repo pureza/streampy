@@ -31,25 +31,25 @@ let whitespace = ' ' | '\t'
 let newline    = '\n' | '\r' '\n'
 
 rule token = parse
-    | whitespace			{ token lexbuf }
-    | newline				{ (lexbuf:lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
-    | "("				{ LPAREN }
-    | ")"				{ RPAREN }
-    | "["				{ LBRACKET }
-    | "]"				{ RBRACKET }
+    | whitespace		    { token lexbuf }
+    | newline	            { (lexbuf:lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
+    | "("				    { LPAREN }
+    | ")"				    { RPAREN }
+    | "["				    { LBRACKET }
+    | "]"				    { RBRACKET }
     | "{"     				{ LBRACE }
     | "}"     				{ RBRACE }
     | "="      				{ ASSIGN }
     | "+"      				{ PLUS }
     | "-"      				{ MINUS }
     | "/"     				{ DIV }
-    | "%"                               { MOD }
+    | "%"                   { MOD }
     | "*"     				{ TIMES }
     | ">"     				{ GT }
-    | ">="   			        { GTE }
-    | "=="   			        { EQ }
-    | "!="  			        { DIFF }
-    | "<="                              { LTE }
+    | ">="   			    { GTE }
+    | "=="   			    { EQ }
+    | "!="  			    { DIFF }
+    | "<="                  { LTE }
     | "<"      				{ LT }
     | ","      				{ COMMA }
     | "."      				{ DOT }
@@ -57,11 +57,35 @@ rule token = parse
     | "->"      			{ ARROW }
     | ";"       			{ SEMICOLON }
     | ";;"      			{ SEMICOLON2 }
-    | boolean                           { BOOLEAN_LITERAL (Boolean.Parse(lexeme lexbuf)) }
+    | boolean               { BOOLEAN (Boolean.Parse(lexeme lexbuf)) }
     | identifier			{ tokenize (lexeme lexbuf) }
-    | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
-    | "//"  [^'\n''\r']*                { token lexbuf  }
-    | eof				{ EOF }
+    | integer				{ INTEGER (Int32.Parse(lexeme lexbuf)) }
+    | "//"  [^'\n''\r']*    { token lexbuf  }
+    | "/*"                  { comment lexbuf; token lexbuf }
+    | "\""                  { STRING (string lexbuf.StartPos "" lexbuf) }
+    | eof				    { EOF }
 
+// Shamelessly copied from Expert F#
+and comment = parse
+    | "/*"       { comment lexbuf; comment lexbuf }
+    | "*/"       { () }
+    | "\n"       { lexbuf.EndPos <- lexbuf.EndPos.NextLine;
+                    comment lexbuf }
+    | eof        { failwith "Unterminated comment" }
+    | _          { comment lexbuf }
 
-
+and string pos s = parse
+    | "\\" ('"' | 'n' | 'r' | 't')
+                  { let s' = s + (match Lexing.lexeme lexbuf with
+                          | "\\\"" -> "\""
+                          | "\\n" -> "\n"
+                          | "\\r" -> "\r"
+                          | "\\t" -> "\t"
+                          | "\\\\" -> "\\"
+                          | _ ->      "") in
+                     string pos s' lexbuf }
+    | "\""          { s }
+    | "\n"          { lexbuf.EndPos <- lexbuf.EndPos.NextLine;
+                      string pos (s + "\n") lexbuf }
+    | eof           { failwithf "end of file in string started at or near %A" pos }
+    | _             { string pos (s + (Lexing.lexeme lexbuf)) lexbuf }

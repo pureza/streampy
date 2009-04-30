@@ -66,9 +66,12 @@ and ChildData = Operator * int * link
 and Event(timestamp:DateTime, fields:Map<string, value>) =
     member self.Timestamp with get() = timestamp
     member self.Item
-      with get(field) = match Map.tryfind field fields with
-                        | Some result -> result
-                        | None -> failwithf "This event does not contain the field '%s'" field
+      with get(field) =
+        if field = "timestamp"
+          then VInt (self.Timestamp.TotalSeconds)
+          else match Map.tryfind field fields with
+               | Some result -> result
+               | None -> failwithf "This event does not contain the field '%s'" field
 
     member self.Fields = fields
     
@@ -98,7 +101,7 @@ and value =
               | VBool b -> b.ToString()
               | VInt v -> v.ToString()
               | VString s -> s
-              | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %A," k (!v))) "" m))
+              | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k (!v))) "" m))
               | VDict m -> m.ToString()
               | VClosure _ -> "..lambda.."
               | VEvent ev -> ev.ToString()
@@ -119,6 +122,7 @@ and value =
     static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
     static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
     static member GreaterThan(left, right) = value.IntCmpOp(left, right, (>))
+    static member LessThan(left, right) = value.IntCmpOp(left, right, (<))
     static member Equals(left, right) = value.IntCmpOp(left, right, (=))
 
 

@@ -143,3 +143,35 @@ let makeWhen handler uid prio parents =
                  | _ -> failwithf "where: Wrong number of arguments! %A" inputs
 
     Operator.Build(uid, prio, eval, parents)
+
+
+(* Converts a dynamic value into a stream of changes to the value *)
+let makeToStream uid prio parents =
+  let eval = fun (op:Operator) inputs ->
+               match inputs with
+               | [[Added something]] ->
+                   let ev = Event ((Scheduler.clock()).Now, Map.of_list ["value", something])
+                   Some (op.Children, [Added (VEvent ev)])
+               | _ -> failwithf "toStream: Invalid arguments: %A" inputs
+
+  Operator.Build(uid, prio, eval, parents)
+
+
+(* Projects a field out of a record *)
+let makeProjector field uid prio parents =
+  let eval = fun (op:Operator) inputs ->
+               let fieldChanges = List.first (fun diff ->
+                                                match diff with
+                                                | RecordDiff (field', chg) when (VString field) = field' -> Some chg
+                                                | _ -> None)
+                                             (List.hd inputs)
+               match fieldChanges with
+               | Some changes -> let record = op.Parents.[0].Value
+                                 match record with
+                                 | VRecord record' -> op.Value <- !record'.[VString field]
+                                 | _ -> failwith "What? The parent of a projector is not a record?"
+                                 Some (op.Children, changes)
+               | None -> None
+
+
+  Operator.Build(uid, prio, eval, parents)

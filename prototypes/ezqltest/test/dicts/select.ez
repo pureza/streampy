@@ -8,6 +8,8 @@ lastHum = hum_readings.last(:humidity);;
 tempsPerRoom = temp_readings
                  .groupby(:room_id, g -> g.last(:temperature));;
 
+
+
 // Projector depends on t
 tempsPerRoomX2 = tempsPerRoom.select (t -> t * 2);;
 
@@ -20,10 +22,14 @@ always3 = tempsPerRoom.select (t -> 3);;
 // Depends on an external variable
 lastTempAllRooms = tempsPerRoom.select (t -> lastTemp);;
 
+
+
 // The result is a record
 someRecordPerRoom =
   tempsPerRoom
     .select (t -> { :a = 5, :b = t, :c = lastHum, :d = t + lastHum + lastTemp });;
+
+
 
 // Where + select
 hotRoomsX2 = tempsPerRoom

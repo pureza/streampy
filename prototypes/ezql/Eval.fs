@@ -1,10 +1,11 @@
 ﻿#light
 
+open Extensions.DateTimeExtensions
 open Ast
 open Types
 
 let rec eval env = function
-  | FuncCall (Id (Identifier "print"), paramExps) ->
+  | FuncCall (Id (Identifier "print"), paramExps) -> // TODO: Put this in some sort of global environment
       let v = eval env paramExps.Head
       printfn "%O" v
       v
@@ -16,6 +17,7 @@ let rec eval env = function
       let target = eval env expr
       match target with
       | VEvent ev -> ev.[name]
+      | VRecord r -> !r.[VString name]
       | _ -> failwith "eval MemberAccess: Not an event!"
   | Record fields ->
       // This is extremely ineficient - we should create a node if possible
@@ -24,6 +26,11 @@ let rec eval env = function
   | Lambda (args, body) as fn -> VClosure (env, fn)
   | Let (Identifier name, binder, body) ->
       eval (env.Add(name, eval env binder)) body
+  | If (cond, thn, els) ->
+      match eval env cond with
+      | VBool true -> eval env thn
+      | VBool false -> eval env els
+      | x -> failwithf "The if condition is not a boolean: %A" x 
   | BinaryExpr (oper, expr1, expr2) ->
     let value1 = eval env expr1
     let value2 = eval env expr2
@@ -35,7 +42,8 @@ let rec eval env = function
       match Map.tryfind name env with
       | Some v -> v
       | _ -> failwithf "eval: Unknown variable or identifier: %s" name
-  | expr.Integer v -> VInt v
+  | Integer v -> VInt v
+  | String v -> VString v
   | other -> failwithf "Not implemented: %A" other
 
 and evalOp = function
@@ -43,6 +51,7 @@ and evalOp = function
   | Minus, v1, v2 -> value.Subtract(v1, v2)
   | Times, v1, v2 -> value.Multiply(v1, v2)
   | GreaterThan, v1, v2 -> value.GreaterThan(v1, v2)
+  | LessThan, v1, v2 -> value.LessThan(v1, v2)
   | Equal, v1, v2 -> value.Equals(v1, v2)
   | _ -> failwith "op not implemented"
 
