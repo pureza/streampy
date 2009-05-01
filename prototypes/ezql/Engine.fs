@@ -46,7 +46,6 @@ let mainLoop () =
     while virtualClock.HasNext () do
         virtualClock.Step ()
 
-let reset () =
-    Scheduler.reset ()
+let reset () = Scheduler.reset ()
 
 let now () = Scheduler.clock().Now

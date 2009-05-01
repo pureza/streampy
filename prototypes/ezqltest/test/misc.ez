@@ -7,7 +7,7 @@ lastHum = hum_readings.last(:humidity);;
 blah = { :a = lastTemp, :b = { :c = { :d = lastHum } } };;
 
 
-when (blah.a.updated(), ev -> print (blah.b));;
+when (blah.a.updated(), ev -> print (5 + "ola" + " " + blah.a.sum()));;
 
 
 

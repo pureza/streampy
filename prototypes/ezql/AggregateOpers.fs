@@ -16,7 +16,6 @@ let makeLast getField uid prio parents =
 
 (* Sum *)
 let makeSum getField uid prio parents =
-
   let eval = fun (op:Operator) inputs -> 
                let initial = if op.Value = VNull then VInt 0 else op.Value
                let balance = List.fold_left (fun acc diff -> 
@@ -31,7 +30,6 @@ let makeSum getField uid prio parents =
   
 (* Count *)
 let makeCount getField uid prio parents =
-
   let eval = fun (op:Operator) inputs -> 
                let initial = if op.Value = VNull then VInt 0 else op.Value
                let balance = List.fold_left (fun acc diff -> 

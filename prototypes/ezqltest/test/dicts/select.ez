@@ -2,6 +2,8 @@ temp_readings = stream (:room_id, :temperature);;
 hum_readings = stream (:room_id, :humidity);;
 
 lastTemp = temp_readings.last(:temperature);;
+
+
 lastHum = hum_readings.last(:humidity);;
 
 // Current temperature per room
@@ -36,12 +38,16 @@ hotRoomsX2 = tempsPerRoom
                .where(t -> lastTemp > 25)
                .select (t -> t * 2);;
 
+
+
 weird = temp_readings
           .groupby(:room_id, g -> 3)
           .where(t -> lastTemp > 25)
           .select (t -> lastTemp);;
 
 nestedSelect = weird.select(t -> { :a = 3, :b = t });;
+
+nestedSelect2 = weird.select(t -> { :a = { :b = 3, :c = lastTemp }, :b = t });;
 
 
 #! hum_readings

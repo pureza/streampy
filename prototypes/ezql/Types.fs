@@ -81,7 +81,7 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
     
     override self.ToString() =
        "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
-            (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %A " pair.Key pair.Value ])
+            (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %O " pair.Key pair.Value ])
              + "}"
 
 and context = Map<string, value>
@@ -106,7 +106,7 @@ and value =
               | VClosure _ -> "..lambda.."
               | VEvent ev -> ev.ToString()
               | VNull -> "VNull"
-      (sprintf "« %s »" s)
+      s
 
     static member IntArithmOp(left, right, op) =
       match left, right with
@@ -118,7 +118,13 @@ and value =
         | VInt l, VInt r -> VBool (op l r)
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
-    static member Add(left, right) = value.IntArithmOp(left, right, (+))
+    static member Add(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VInt (l + r)
+      | VString l, _ -> VString (l + right.ToString())
+      | _, VString r -> VString (left.ToString() + r)
+      | _ -> failwithf "Invalid types in call to +: %A %A" left right
+      
     static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
     static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
     static member GreaterThan(left, right) = value.IntCmpOp(left, right, (>))

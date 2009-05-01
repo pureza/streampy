@@ -17,7 +17,7 @@ type NodeType =
   | DynVal
   | DynValWindow
   | Dict
-  | RecordType
+  | RecordType of Map<string, NodeType>
   | Unknown
 
 type uid = string
@@ -67,50 +67,7 @@ let createNode uid typ parentUids makeOp graph =
 
 type context = Map<string, NodeInfo>
 
-(* Create the necessary nodes to evaluate an expression.
- *  - If the expression is a simple variable access, no new nodes are necessary;
- *  - If the expression is a record, we will need new nodes for each field and
- *    another node for the entire record;
- *  - If the expression is of any other kind, we create a general purpose
- *    evaluator node.
- *)
-let rec makeFinalNode env graph expr deps name =
-  match expr with
-  (* No additional node necessary *)
-  | Id (Identifier uid) -> Set.choose deps, graph
- 
-  (* Yes, the result is a record and we need the corresponding operator *)
-  | Record fields -> 
-      let env' = Set.fold_left (fun acc info -> Map.add info.Uid info acc) env deps
-      let g'', fieldDeps = List.fold_left (fun (g, fieldDeps) (Symbol field, expr) ->
-                                             (* Lets get the dependencies for just this expression *)
-                                             let deps'', g', expr' = dataflowE env' g expr
-                                            
-                                             (* Sanity check: at this point, the expression should be completely
-                                                "continualized" and thus, the previous operation must not have
-                                                altered the graph nor the expression itself *)
-                                             assert (g' = g && expr' = expr)
-                                             
-                                             (* Do we need an evaluator just for this field? *)
-                                             let n, g' = makeFinalNode env' g expr deps'' field
-                                             g', (field, n.Uid)::fieldDeps)
-                                          (graph, []) fields
-
-      let uids = List.map snd fieldDeps                                   
-      createNode (nextSymbol name) RecordType uids
-                 // At runtime, we need to find the operators corresponding to the parents
-                 (fun uid prio parents ->
-                    let parentOps = List.map (fun (n, uid) ->
-                                                (n, List.find (fun (p:Operator) -> p.Uid = uid) parents))
-                                             fieldDeps
-                    makeRecord parentOps uid prio parents)
-                 g''
-
-  (* The result is an arbitrary expression and we need to evaluate it *)
-  | _ -> let uids = Set.map NodeInfo.UidOf deps |> Set.to_list
-         createNode (nextSymbol name) DynVal uids (makeEvaluator expr) graph
-
-and dataflow (env:context, (graph:DataflowGraph), roots) = function
+let rec dataflow (env:context, (graph:DataflowGraph), roots) = function
   | Def (Identifier name, exp) ->
       let deps, g', expr' = dataflowE env graph exp
       let roots' = name::roots
@@ -141,12 +98,12 @@ and dataflowE (env:context) (graph:DataflowGraph) expr =
   | FuncCall (fn, paramExps) -> dataflowFuncCall env graph fn paramExps
   | MemberAccess (expr, (Identifier name)) ->
       let deps, g', expr' = dataflowE env graph expr
-      match Set.size deps with
-      | 1 when (Set.choose deps).Type = RecordType ->
-         // If it's a record, create a projector
-         let n, g'' = createNode (nextSymbol ("." + name)) DynVal (Set.map NodeInfo.UidOf deps |> Set.to_list)
-                                 (makeProjector name) g'
-         Set.singleton n, g'', Id (Identifier n.Uid)
+      match Set.to_list deps with
+      // If there is only one dep and it's a record, let's create a projector
+      | [{ Type = RecordType fieldTypes }] ->
+          let n, g'' = createNode (nextSymbol ("." + name)) fieldTypes.[name] (Set.map NodeInfo.UidOf deps |> Set.to_list)
+                                  (makeProjector name) g'
+          Set.singleton n, g'', Id (Identifier n.Uid)
       | _ -> deps, g', MemberAccess (expr', (Identifier name))
   | Record fields ->
       let deps, g', exprs =
@@ -276,6 +233,11 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
   | DynValWindow -> match methName with
                     | "sum" -> dataflowAggregate graph target paramExps makeSum methName
                     | _ -> failwithf "Unkown method of type Window: %s" methName
+  | RecordType _ -> match methName with
+                    | "updated" -> let n, g' = createNode (nextSymbol "toStream") Stream [target.Uid]
+                                                          (makeToStream) graph
+                                   Set.singleton n, g', Id (Identifier n.Uid)
+                    | _ -> failwithf "Unkown method of type Record: %s" methName
   | _ -> failwith "Unknown target type"
 
 and dataflowFuncCall env graph fn paramExps =
@@ -322,45 +284,83 @@ and makeSubExprBuilder (arg, argType, argMaker) expr deps =
 
   (fun prio rtEnv -> let fixPrio p = prio + (p + 1.0) * 0.01
                      let operators = mergeMaps (makeOperNetwork g' [arg] fixPrio) rtEnv
-                     (* Do we need a final operator to evaluate the expression?
-                        If we do, deps' contains all the dependencies necessary
-                        and we use "operators" to lookup the corresponding operators. *)
-                     let final =
-                       match expr' with
-                       (* No additional node necessary *)
-                       
-                       | Id (Identifier uid) -> operators.[uid]
-
-                       (* Yes, the result is a record and we need the corresponding operator *)
-                       | Record fields ->
-                           let fieldDeps = List.mapi
-                                             (fun i (Symbol field, expr) ->
-                                                (* Lets get the dependencies for just this expression *)
-                                                let deps'', g'', expr' = dataflowE env' g' expr
-                                                (* Sanity check: at this point, the expression should be completely
-                                                   "continualized" and thus, the previous operation must not have
-                                                   altered the graph nor the expression itself *)
-                                                assert (g'' = g' && expr' = expr)
-
-                                                (* Do we need an evaluator just for this field? *)
-                                                match expr, Set.to_list deps'' with
-                                                | Id (Identifier name), [dep] -> (field, operators.[dep.Uid])
-                                                | Id (Identifier name), _ -> failwith "This cannot happen... but will :)"
-                                                | _ -> let parents = List.map (fun v -> operators.[v.Uid]) (Set.to_list deps'')
-                                                       let prio = fixPrio (float (i + operators.Count + 1))
-                                                       let evalOper = makeEvaluator expr (nextSymbol field) prio parents
-                                                       (field, evalOper))
-                                             fields
-                           makeRecord fieldDeps (nextSymbol ("groupRecordResult-" + arg))
-                                      (fixPrio (float (fieldDeps.Length + operators.Count + 1))) (List.map snd fieldDeps)
-                                    
-                       (* The result is an arbitrary expression and we need to evaluate it *)
-                       | _ -> let finalPrio = fixPrio (float operators.Count + 1.0)
-                              let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps'
-                              makeEvaluator expr' (nextSymbol ("groupResult-" + arg)) finalPrio
-                                            resultParents
-
+                     let startPrio = float operators.Count + 1.0 
+                     let final = makeFinalOper env' g' expr' deps' operators fixPrio startPrio arg
                      operators.[arg], final)
+
+(* Create the necessary nodes to evaluate an expression.
+ *  - If the expression is a simple variable access, no new nodes are necessary;
+ *  - If the expression is a record, we will need new nodes for each field and
+ *    another node for the entire record;
+ *  - If the expression is of any other kind, we create a general purpose
+ *    evaluator node.
+ *)
+and makeFinalNode env graph expr deps name =
+  match expr with
+  (* No additional node necessary *)
+  | Id (Identifier uid) -> Set.choose deps, graph
+ 
+  (* Yes, the result is a record and we need the corresponding operator *)
+  | Record fields ->
+      (* Extend the environment to include dependencies of all the subexpressions *)
+      let env' = Set.fold_left (fun acc info -> Map.add info.Uid info acc) env deps
+      let g'', fieldDeps = List.fold_left (fun (g, fieldDeps) (Symbol field, expr) ->
+                                             (* Lets get the dependencies for just this expression *)
+                                             let deps'', g', expr' = dataflowE env' g expr
+                                            
+                                             (* Sanity check: at this point, the expression should be completely
+                                                "continualized" and thus, the previous operation must not have
+                                                altered the graph nor the expression itself *)
+                                             assert (g' = g && expr' = expr)
+                                             
+                                             (* Do we need an evaluator just for this field? *)
+                                             let n, g' = makeFinalNode env' g expr deps'' field
+                                             g', (field, n)::fieldDeps)
+                                          (graph, []) fields
+
+      let uids = List.map (snd >> NodeInfo.UidOf) fieldDeps
+      let fieldTypes = Map.of_list (List.map (fun (f, n) -> (f, n.Type)) fieldDeps)                                  
+      createNode (nextSymbol name) (RecordType  fieldTypes) uids
+                 // At runtime, we need to find the operators corresponding to the parents
+                 (fun uid prio parents ->
+                    let parentOps = List.map (fun (f, n) ->
+                                                (f, List.find (fun (p:Operator) -> p.Uid = n.Uid) parents))
+                                             fieldDeps
+                    makeRecord parentOps uid prio parents)
+                 g''
+
+  (* The result is an arbitrary expression and we need to evaluate it *)
+  | _ -> let uids = Set.map NodeInfo.UidOf deps |> Set.to_list
+         createNode (nextSymbol name) DynVal uids (makeEvaluator expr) graph
+         
+(* Similar to makeFinalNode, but creates operators instead of graph nodes *)
+and makeFinalOper env graph expr deps (operators:Map<string, Operator>) fixPrio startPrio name =
+   match expr with
+   (* No additional node necessary *)  
+   | Id (Identifier uid) -> operators.[uid]
+
+   (* Yes, the result is a record and we need the corresponding operator *)
+   | Record fields ->
+       // Handle priorities with care
+       let lastPrio, fieldDeps =
+         List.fold_left (fun (prio, acc) (Symbol field, expr) ->
+                           (* Lets get the dependencies for just this expression *)
+                           let deps', g', expr' = dataflowE env graph expr
+                           (* Sanity check: at this point, the expression should be completely
+                              "continualized" and thus, the previous operation must not have
+                              altered the graph nor the expression itself *)
+                           assert (g' = graph && expr' = expr)
+                           let op = makeFinalOper env graph expr deps' operators fixPrio (prio + 1.0) field
+                           (op.Priority, acc @ [(field, op)]))
+                        (startPrio, []) fields 
+       makeRecord fieldDeps (nextSymbol ("finalRecord-" + name))
+                  (fixPrio (lastPrio + 1.0)) (List.map snd fieldDeps)
+                
+   (* The result is an arbitrary expression and we need to evaluate it *)
+   | _ -> let finalPrio = fixPrio startPrio
+          let resultParents = Set.fold_left (fun acc v -> operators.[v.Uid]::acc) [] deps
+          makeEvaluator expr (nextSymbol ("groupResult-" + name)) finalPrio
+                        resultParents
 
 and dataflowAggregate graph target paramExprs opMaker aggrName =
   let getField = match paramExprs, target.Type with

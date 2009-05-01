@@ -223,7 +223,6 @@ let makeDictSelect projectorBuilder uid prio parents =
                                                            yield key, chg
                                        | _ -> () ]
                       let keys1' = Set.of_list keys1
-                      
                       let changes2 =
                         [ for change in projChanges do
                             match change with

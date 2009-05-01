@@ -113,7 +113,7 @@ type Test =
                           | VDict dict ->
                               if dict.ContainsKey(k)
                                 then let v' = dict.[k]
-                                     if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %A\n\t Expected: %A\n"
+                                     if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %O\n\t Expected: %O\n"
                                                                entity now.TotalSeconds k dict.[k] v
                                 else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
                                                entity now.TotalSeconds k
