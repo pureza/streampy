@@ -22,7 +22,7 @@ let parse code =
 
 
 let typeCheck ast =
-  List.fold_left types TypeChecker.initialEnv ast
+  List.fold_left types Map.empty ast
 
 
 let dataflowAnalysis ast =

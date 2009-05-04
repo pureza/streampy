@@ -6,16 +6,21 @@ open System.Collections
 open Parser
 open Lexing
 
-let ids = Map.of_list ["min",   MIN
-                       "sec",   SEC
-                       "let",   LET
-                       "in",    IN
-                       "with",  WITH
-                       "and",   AND
-                       "or",    OR
-                       "if",    IF
-                       "then",  THEN
-                       "else",  ELSE]
+let ids = Map.of_list ["min",        MIN
+                       "sec",        SEC
+                       "let",        LET
+                       "in",         IN
+                       "with",       WITH
+                       "and",        AND
+                       "or",         OR
+                       "if",         IF
+                       "then",       THEN
+                       "else",	     ELSE
+                       "entity",     ENTITY
+                       "createFrom", CREATE_FROM
+                       "belongsTo",  BELONGS_TO
+                       "hasMany",    HAS_MANY
+                       "member",     MEMBER]
 let tokenize text =
   if ids.ContainsKey(text)
       then ids.[text]

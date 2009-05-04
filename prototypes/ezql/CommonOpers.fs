@@ -69,14 +69,6 @@ let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
 let makeWhen = makeEvalOnAdd (fun op inputs ev result -> None)
 
 
-(* Generic dynamic value: records any value received *)
-let makeDynVal uid prio parents =
-  let eval = fun op inputs -> match inputs with
-                              | [[Added v]] -> setValueAndGetChanges op v
-                              | _ -> failwith "dynVal: Wrong number of arguments! %A" inputs
-
-  Operator.Build(uid, prio, eval, parents)
-
 (* A timed window for dynamic values *)
 let makeDynValWindow duration uid prio parents =
   let eval = fun (op:Operator) inputs ->
@@ -155,5 +147,18 @@ let makeProjector field uid prio parents =
                                  Some (op.Children, changes)
                | None -> None
 
+
+  Operator.Build(uid, prio, eval, parents)
+  
+(* Projects a field out of a record *)
+let makeIndexer index uid prio (parents:Operator list) =
+  let dict = match parents.[0].Value with
+             | VDict dict -> dict
+             | _ -> failwithf "The parent is not a dictionary!"
+
+  let eval = fun (oper:Operator) inputs ->
+               let env = getOperEnvValues oper
+               let result = dict.[eval env index]
+               setValueAndGetChanges oper result
 
   Operator.Build(uid, prio, eval, parents)

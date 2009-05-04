@@ -3,6 +3,7 @@
 type prog =
   | Expr of expr
   | Def of id * expr
+  | Entity of id * (createFrom * association list * attribute list)
 
 and expr =
   | Let of id * expr * expr
@@ -43,4 +44,11 @@ and timeUnit = Min | Sec
 and id = Identifier of string
 
 and symbol = Symbol of string
+
+and createFrom = expr * symbol
+and association =
+  | BelongsTo of symbol
+  | HasMany of symbol
+and attribute = Member of id * id * expr  
+
 

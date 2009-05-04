@@ -182,6 +182,13 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                    | "groupby" -> dataflowGroupby env graph target paramExps
                    | _ -> failwithf "Unkown method of type Window: %s" methName
   | Dict -> match methName with
+            | "[]" -> let deps, g', index = match paramExps with
+                                            | [indexExpr] -> dataflowE env graph indexExpr
+                                            | _ -> failwithf "Invalid arguments to []"
+                      let indexDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
+                      let n, g'' = createNode (nextSymbol methName) Dict indexDeps
+                                              (makeIndexer index) graph
+                      Set.singleton n, g'', Id (Identifier n.Uid)
             | "where" -> let expr, env', arg =
                            match paramExps with
                            | [Lambda ([Identifier arg], body) as fn] ->
@@ -193,7 +200,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                            | _ -> failwith "Invalid parameter to dict/where"
                          let deps, g', expr' = dataflowE env' graph expr
                          let expr'' = Lambda ([Identifier arg], expr')
-                         let predBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
+                         let predBuilder = makeSubExprBuilder (arg, DynVal, makeInitialOp) expr' deps
                          // Where depends on the parent dictionary and on the dependencies of the predicate.
                          let whereDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
                          let n, g'' = createNode (nextSymbol methName) Dict whereDeps
@@ -210,7 +217,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                             | _ -> failwith "Invalid parameter to dict/select"
                           let deps, g', expr' = dataflowE env' graph expr
                           let expr'' = Lambda ([Identifier arg], expr')
-                          let projBuilder = makeSubExprBuilder (arg, DynVal, makeDynVal) expr' deps
+                          let projBuilder = makeSubExprBuilder (arg, DynVal, makeInitialOp) expr' deps
                           // Select depends on the parent dictionary and on the dependencies of the predicate.
                           let selectDeps = target.Uid::(List.map NodeInfo.UidOf (Set.to_list deps))
                           let n, g'' = createNode (nextSymbol methName) Dict selectDeps

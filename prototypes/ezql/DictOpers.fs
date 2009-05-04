@@ -14,11 +14,22 @@ let spreadUnlessEmpty op changes =
   | [] -> None
   | _ -> Some (op.Children, changes)
 
+
+(* Used by the dict.where() and dict.select() methods to give an operator to
+   the parameter of the predicate or projector.
+   The value of this operators is manually set by the methods that use it.
+ *)
+let makeInitialOp uid prio parents =
+  let eval = fun op inputs -> Some (op.Children, List.hd inputs)
+
+  Operator.Build(uid, prio, eval, parents)
+
+
 (*
  * Creates the initial operator used by where and select
  *)     
 let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio parents =
-  let rec buildSubGroup key env =
+  let rec buildSubGroup key env headOp =
     let initial, final = groupBuilder prio env
     subgroups := (!subgroups).Add(key, (initial, final))
 
@@ -30,11 +41,14 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio parent
     (fun op changes ->
       let env = getOperEnv op
       let parentChanges = changes.Head
+      let parentDict = match op.Parents.[0].Value with
+                       | VDict dict -> dict
+                       | _ -> failwithf "Can't happen"
       let predsToEval = 
         [ for chg in parentChanges do
             match chg with
             | DictDiff (key, diff) ->
-                if not (Map.mem key !subgroups) then buildSubGroup key env
+                if not (Map.mem key !subgroups) then buildSubGroup key env op
 
                 // The link between this operator and the group's circuit ignores everything
                 // that is not related to that group.
@@ -42,6 +56,9 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio parent
                                                match diff with
                                                | DictDiff (key', v) when key = key' -> yield! v
                                                | _ -> () ])
+                let keyOp = subGroupStartOp key subgroups
+                // Manually set the value of the subgroup's initial operator
+                keyOp.Value <- parentDict.[key]
                 yield subGroupStartOp key subgroups, 0, link
             | RemovedKey (key) -> ()
             | chg -> failwithf "%s received invalid changes: %A" uid chg ]

@@ -1,16 +1,57 @@
 temp_readings = stream (:room_id, :temperature);;
 hum_readings = stream (:room_id, :humidity);;
 
+entity Room =
+  createFrom(temp_readings, :room_id)
+  belongsTo :room
+  
+  member self.cost = self.room_id;;
+
 lastTemp = temp_readings.last(:temperature);;
 lastHum = hum_readings.last(:humidity);;
 
 blah = { :a = lastTemp, :b = { :c = { :d = lastHum } } };;
 
 
-when (blah.a.updated(), ev -> print (5 + "ola" + " " + blah.a.sum()));;
+when (blah.a.updated(), ev -> print(Room.all[1].cost));;
+
+/*
+entity Product =
+  createFrom (entries, :product_id)
+  belongsTo :room
+  
+  member self.temperature = self.room.temperature;;
 
 
+entity Room =
+  createFrom(temp_readings, :room_id)
+  discrete volume
 
+  hasMany :products
+  member self.x = 10
+  member self.y = self.temperature * 2;;
+
+
+Room.all = temp_readings
+             .groupby(:room_id, g -> let room_id = g.last(:room_id) in
+                                     let temperature = g.last(:temperature) in
+                                     { :room_id     = room_id ,
+                                       :temperature = temperature ,
+                                       :x           = 10,
+                                       :y           = temperature  * 2},
+                                       :volume      = g.select(ev -> { :value = ev.volume },
+                                       :products    = Product.all.where(p -> p.room_id = room_id) })  
+
+
+Product.all = entries
+                .groupby(:product_id, g -> let room_id = g.last(:room_id) in
+                                           let room = Room.all[room_id] in
+                                           { :product_id  = g.last(:product_id),
+                                             :room_id     = room_id,
+                                             :room        = room,
+                                             :temperature = room.temperature })
+
+*/
 
 #! hum_readings
 Timestamp, room_id, humidity

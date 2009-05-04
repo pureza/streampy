@@ -1,31 +1,35 @@
 ﻿#light
 
-
 open Ast
+open Types
 
+type WindowType =
+  | TimedWindow of int
 
 type Type =
-  | Function of string * Lazy<Type> list * Lazy<Type>
-  | Class of string * TypeContext
-  | Event
-  | Bool
-  | Int
-  | Time
-  | Symbol
-  | Record
-  | Any
+  | TyUnit
+  | TyBool
+  | TyInt
+  | TyString
+  | TySymbol
+  | TyType of Map<string, Type>
+  | TyRecord of Map<string, Type>
+  | TyStream of string list
+  | TyWindow of Type * WindowType
+  | TyDict of Type
   
   override self.ToString() =
     match self with
-    | Function (name, _, _) -> name + "()"
-    | Class (name, _) -> "class " + name
-    | Event -> "event"
-    | Bool -> "bool"
-    | Int -> "int"
-    | Time -> "time"
-    | Symbol -> "symbol"
-    | Record -> "record"
-    | Any -> "any"
+    | TyUnit -> "()"
+    | TyBool -> "bool"
+    | TyInt -> "int"
+    | TyString -> "string"
+    | TySymbol -> "symbol"
+    | TyType _ -> "type"
+    | TyRecord _ -> "record"
+    | TyStream _ -> "stream"
+    | TyWindow _ -> "window"
+    | TyDict _ -> "dict"
 
 
 and TypeContext = Map<string, Type>
@@ -34,90 +38,173 @@ let rec types (env:TypeContext) = function
   | Def (Identifier name, expr) ->
       let typ = typeOf env expr
       env.Add(name, typ)
-  | Expr _ -> env
+  | Expr expr -> typeOf env expr |> ignore
+                 env
+  | Entity (Identifier name, ((source, uniqueId), _, members)) ->
+      match typeOf env source with
+      | TyStream fields ->
+          let allMembers = List.fold_left (fun (acc:Map<string, Type>) (Member (Identifier self, Identifier name, expr)) ->
+                                             let selfType = TyRecord acc
+                                             Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
+                                          (Map.of_list [ for f in fields -> (f, TyInt)])
+                                          members
+                                                           
+          env.Add(name, TyType allMembers)
+      | _ -> failwithf "The source of the entity '%s' is not a stream" name
 
 and typeOf env = function
   | MethodCall (target, (Identifier name), paramExps) ->
       typeOfMethodCall env target name paramExps
   | ArrayIndex (target, index) ->
       typeOfMethodCall env target "[]" [index]
-  | FuncCall (expr, paramExps) ->
-      let paramTypes = List.map (typeOf env) paramExps
-      match typeOf env expr with
-      | Function (name, paramTypes', returnType) ->
-          //let paramTypes'' = List.map (fun (l:Lazy<Type>) -> l.Force()) paramTypes'
-          //if paramTypes <> paramTypes''
-          //  then printfn "Invalid parameters to function %s(). Expecting %A, got %A" name paramTypes'' paramTypes
-          returnType.Force()
-      | other -> failwithf "The target expression %A should be a function but is a %A" expr other
-  | MemberAccess (target, Identifier name) -> Int // TODO
+  | FuncCall (Id (Identifier "stream"), fields) ->
+      let fields' = [ for f in fields ->
+                        match f with
+                        | SymbolExpr (Symbol name) -> name
+                        | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
+      TyStream ("timestamp"::fields')
+  | FuncCall (Id (Identifier "when"), [source; Lambda ([Identifier ev], handler)]) ->
+      match typeOf env source with
+      | TyStream _ -> ()
+      | _ -> failwithf "The source of the when doesn't reduce to a stream"
+      let evType = TyRecord (Map.of_list ["timestamp", TyInt; "value", TyInt])
+      typeOf (env.Add(ev, evType)) handler |> ignore
+      TyUnit
+  | FuncCall (Id (Identifier "print"), [expr]) ->
+      typeOf env expr |> ignore
+      TyUnit
+  | MemberAccess (target, Identifier name) ->
+      let targetType = typeOf env target
+      match targetType with
+      | TyRecord fields -> match Map.tryfind name fields with
+                           | Some t -> t
+                           | None -> failwithf "The record doesn't have field '%s'" name
+      | TyType fields -> match name with
+                         | "all" -> TyDict (TyRecord fields)
+                         | _ -> failwithf "The type %A does not have field '%s'" targetType name
+      | _ -> failwithf "The target type %A doesn't have any fields." targetType
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
     let type2 = typeOf env expr2
     typeOfOp (oper, type1, type2)
-  | expr.Record _ -> Record
-  | SymbolExpr _ -> Symbol
+  | expr.Record fields ->
+      let fieldTypes = [ for (Symbol name, expr) in fields -> (name, typeOf env expr) ]
+      TyRecord (Map.of_list fieldTypes)
   | Id (Identifier name) ->
       match Map.tryfind name env with
       | Some v -> v
       | _ -> failwithf "typeOf: Unknown variable or identifier: %s" name  
-  | Integer v -> Int
-  | other -> failwithf "Not implemented: %A" other
+  | SymbolExpr _ -> TySymbol
+  | Integer v -> TyInt
+  | String s -> TyString
+  | Bool b -> TyBool
+  | other -> failwithf "typeOf: Not implemented: %A" other
 
 
 and typeOfMethodCall env target name paramExps =
   let targetType = typeOf env target
   match targetType with
-  | Class (cname, methods) ->
-      match Map.tryfind name methods with
-      | Some (Function (fname, _, returnType)) -> returnType.Force()
-      | _ -> failwithf "Method not found in class %s: %s" cname name
-  | _ -> failwith "Target is not a class type"
+  | TyStream fields ->
+      match name with
+      | "last" | "sum" | "count" ->
+          match paramExps with
+          | [SymbolExpr (Symbol field)] when List.mem field fields -> TyInt
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "where" -> 
+          match paramExps with
+          | [Lambda ([Identifier ev], expr)] -> 
+              let evType = TyRecord (Map.of_list (("timestamp", TyInt)::[ for f in fields -> (f, TyInt) ]))
+              if (typeOf (env.Add(ev, evType)) expr) <> TyBool
+                then failwithf "The predicate of the where doesn't return a boolean!"
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+          targetType
+      | "select" -> 
+          match paramExps with
+          | [Lambda ([Identifier ev], expr)] -> 
+              let evType = TyRecord (Map.of_list (("timestamp", TyInt)::[ for f in fields -> (f, TyInt) ]))
+              match typeOf (env.Add(ev, evType)) expr with
+              | TyRecord projFields -> TyStream ((Map.to_list >> (List.map fst)) projFields)
+              | _ -> failwithf "The projector of the select doesn't return a record!"
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps        
+      | "[]" ->
+          match paramExps with
+          | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "groupby" ->
+          match paramExps with
+          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when List.mem field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name
+  // Event Windows
+  | TyWindow (TyStream fields, TimedWindow _) ->
+      match name with
+      | "last" | "sum" | "count" ->
+          match paramExps with
+          | [SymbolExpr (Symbol field)] when List.mem field fields -> TyInt
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "where" -> 
+          match paramExps with
+          | [Lambda ([Identifier ev], expr)] -> 
+              let evType = TyRecord (Map.of_list (("timestamp", TyInt)::[ for f in fields -> (f, TyInt) ]))
+              if (typeOf (env.Add(ev, evType)) expr) <> TyBool
+                then failwithf "The predicate of the where doesn't return a boolean!"
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+          targetType
+      | "groupby" ->
+          match paramExps with
+          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when List.mem field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | TyWindow (TyInt, TimedWindow _) ->
+      match name with
+      | "last" | "sum" | "count" ->
+          match paramExps with
+          | [] -> TyInt
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | TyDict valueType ->
+      match name with
+      | "where" -> 
+          match paramExps with
+          | [Lambda ([Identifier g], expr)] -> if (typeOf (env.Add(g, valueType)) expr) <> TyBool
+                                                 then failwithf "The predicate of the where doesn't return a boolean!"
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+          targetType
+      | "select" -> 
+          let valueType' = match paramExps with
+                           | [Lambda ([Identifier g], expr)] -> typeOf (env.Add(g, valueType)) expr
+                           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+          TyDict valueType'
+      | "[]" -> match paramExps with
+                | [index] -> valueType
+                | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | TyInt ->
+      match name with
+      | "last" | "sum" | "count" ->
+          match paramExps with
+          | [] -> TyInt
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "[]" -> match paramExps with
+                | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "updated" -> match paramExps with
+                     | [] -> TyStream ["value"]
+                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | _ -> failwithf "The type %A does not have method %A!" targetType name
+ 
 
 and typeOfOp = function
-  | Plus, Int, Int -> Int
-  | GreaterThan, Int, Int -> Bool
- // | _, (Class ("dynValWindow", _) as c), _ -> c
- // | _, _, (Class ("dynValWindow", _) as c) -> c
+  | Plus, TyInt, TyInt -> TyInt
+  | Minus, TyInt, TyInt -> TyInt
+  | Times, TyInt, TyInt -> TyInt
+  | GreaterThan, TyInt, TyInt -> TyBool
+  | GreaterThanOrEqual, TyInt, TyInt -> TyBool
+  | Equal, TyInt, TyInt -> TyBool
+  | NotEqual, TyInt, TyInt -> TyBool
+  | LessThanOrEqual, TyInt, TyInt -> TyBool
+  | LessThan, TyInt, TyInt -> TyBool
+  | Plus, _, TyString -> TyString
+  | Plus, TyString, _ -> TyString
   | x -> failwithf "typeOfOp: op not implemented %A" x
-
-
-let initialEnv =
-  let predicateType = Function ("", [lazy Event], lazy Bool)
-  let projType = Function ("", [lazy Any], lazy Any)
- 
-  // Dynamic values
-  let rec dynValWindowType = Class ("dynValWindow", Map.of_list ["last", lastType; "sum", sumType])
-  and dynValType = Class ("dynVal", Map.of_list ["[]", createWindowType])
-  and lastType = Function ("last", [lazy Symbol], lazy dynValType)
-  and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
-  and createWindowType = Function ("[]", [lazy Type.Time], lazy dynValWindowType)
- 
- 
-  let rec dictType = Class ("dictionary", Map.of_list ["where", whereType; "select", selectType])
-  and whereType = Function ("where", [lazy predicateType], lazy dictType)
-  and selectType = Function ("select", [lazy projType], lazy dictType)
-  
-  let rec windowType = Class ("window", Map.of_list ["last", lastType; "where", whereType
-                                                     "groupby", groupbyType
-                                                     "sum", sumType])
-  and lastType = Function ("last", [lazy Symbol], lazy dynValType)
-  and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
-  and whereType = Function ("where", [lazy predicateType], lazy windowType)
-  and grpbySubType = Function ("", [lazy windowType], lazy Any)
-  and groupbyType = Function ("groupby", [lazy grpbySubType], lazy dictType)
-  
-  let rec streamType = Class ("stream", Map.of_list ["last", lastType; "where", whereType
-                                                     "groupby", groupbyType; "[]", createWindowType
-                                                     "sum", sumType; "select", selectType])
-  and lastType = Function ("last", [lazy Symbol], lazy dynValType)
-  and sumType = Function ("sum", [lazy Symbol], lazy dynValType)
-  and whereType = Function ("where", [lazy predicateType], lazy streamType)
-  and selectType = Function ("select", [lazy predicateType], lazy streamType)
-  and grpbySubType = Function ("", [lazy streamType], lazy Any)
-  and groupbyType = Function ("groupby", [lazy grpbySubType], lazy dictType)
-  and createWindowType = Function ("[]", [lazy Type.Time], lazy windowType)
-  
-  Map.of_list ["stream", Function ("stream", [lazy Symbol], lazy streamType)]
-
-

@@ -102,7 +102,14 @@ and value =
               | VInt v -> v.ToString()
               | VString s -> s
               | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k (!v))) "" m))
-              | VDict m -> m.ToString()
+              | VDict m -> 
+                  let s = Text.StringBuilder ()
+                  for pair in m do
+                    s.Append(sprintf " :%O = %O,\n " pair.Key pair.Value) |> ignore
+                  if s.Length > 0
+                    then s.Remove(0, 1) |> ignore
+                         s.Remove (s.Length - 2, 2) |> ignore
+                  sprintf "{ %O }" s
               | VClosure _ -> "..lambda.."
               | VEvent ev -> ev.ToString()
               | VNull -> "VNull"
