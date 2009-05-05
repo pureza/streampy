@@ -99,6 +99,7 @@ let rec replace expr replacer =
   | Lambda (ids, expr) -> Lambda (ids, replacer expr) 
   | BinaryExpr (op, left, right) -> BinaryExpr (op, replacer left, replacer right)
   | Record fields -> Record (List.map (fun (n, e) -> (n, replacer e)) fields)
+  | Time (length, unit) -> Time (replacer length, unit)
   | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ -> expr
   | _ -> failwithf "not implemented: %A" expr
 
@@ -106,15 +107,19 @@ let rec translateEntities (entities:Set<string>) (types:TypeContext) = function
   | Def (Identifier name, expr) -> entities, Def (Identifier name, translateEntitiesExpr entities types expr)
   | Expr expr -> entities, Expr (translateEntitiesExpr entities types expr)
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) as expr ->
-      let fields = match typeOf types source with
-                   | TyStream f -> f
-                   | _ -> failwith "can't happen!"
-
+      let streamFields = match typeOf types source with
+                         | TyStream f -> f
+                         | _ -> failwith "can't happen!"
+      let initialRecordFields = Map.of_list [ for f in streamFields ->
+                                                (Symbol f, MethodCall (Id (Identifier "g"), Identifier "last",
+                                                                      [SymbolExpr (Symbol f)]))]
+      let recordFields = List.fold_left (fun acc (Member (self, Identifier name, expr)) ->
+                                          let expr' = translateSelf acc expr
+                                          acc.Add(Symbol name, expr'))
+                                        initialRecordFields members
       let allDictName = "$" + name + "_all"
-      let members' = [ for m in members ->
-                         match m with
-                         | Member (self, Identifier name, expr) -> (Symbol name, expr) ]
-      let record = Record ([ for f in fields -> (Symbol f, MethodCall (Id (Identifier "g"), Identifier "last", [SymbolExpr (Symbol f)]))] @ members')
+      let record = Record (Map.to_list recordFields)
+      //printfn "%A" (Map.to_list recordFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
                                    [SymbolExpr uniqueId; Lambda ([Identifier "g"], record)])
       let assign = Def (Identifier allDictName, groupByExpr)                 
@@ -122,12 +127,18 @@ let rec translateEntities (entities:Set<string>) (types:TypeContext) = function
 
 and translateEntitiesExpr entities types expr =
   let rec replacer expr = match expr with
-                          | MemberAccess (Id (Identifier target), _) when Set.mem target entities -> (Id (Identifier ("$" + target + "_all")))
+                          | MemberAccess (Id (Identifier target), Identifier "all") when Set.mem target entities -> (Id (Identifier ("$" + target + "_all")))
+                          | _ -> replace expr replacer
+  let expr' = replacer expr
+  if expr' <> expr then expr' else replace expr replacer
+
+and translateSelf (fieldExprs:Map<symbol, expr>) expr =
+  let rec replacer expr = match expr with
+                          | MemberAccess (Id (Identifier "self"), Identifier field) -> fieldExprs.[Symbol field]
                           | _ -> replace expr replacer
                             
-  replace expr replacer
-
-
+  let expr' = replacer expr
+  if expr' <> expr then expr' else replace expr replacer
 
 
 let rewrite types ast =

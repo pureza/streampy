@@ -4,6 +4,7 @@ hum_readings = stream (:room_id, :humidity);;
 
 tempsSum = temp_readings.sum(:temperature);;
 
+
 tempsSum_3secs = temp_readings[3 sec].sum(:temperature);;
 
 

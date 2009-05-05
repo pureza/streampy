@@ -25,11 +25,11 @@ let typeCheck ast =
   List.fold_left types Map.empty ast
 
 
-let dataflowAnalysis ast =
+let dataflowAnalysis types ast =
   let g = Graph.empty
   let env = Map.empty
   let roots = []
-  let env', g', roots' = List.fold_left dataflow (env, g, roots) ast
+  let env', types', g', roots' = List.fold_left dataflow (env, types, g, roots) ast
 
   //Graph.Viewer.display g' (fun v info -> info.Uid)
   let rootUids = List.map (fun name -> env'.[name].Uid) roots'
@@ -39,7 +39,8 @@ let dataflowAnalysis ast =
 
 let compile code =
     let ast = parse code
-    rewrite (typeCheck ast) ast |> dataflowAnalysis
+    let ast' = rewrite (typeCheck ast) ast
+    dataflowAnalysis (typeCheck ast') ast'
 
 let mainLoop () =
     let virtualClock = Scheduler.clock () :?> VirtualClock

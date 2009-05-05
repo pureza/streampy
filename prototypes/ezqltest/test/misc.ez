@@ -5,15 +5,15 @@ entity Room =
   createFrom(temp_readings, :room_id)
   belongsTo :room
   
-  member self.cost = self.room_id;;
+  member self.cost = self.temperature.sum();;
 
 lastTemp = temp_readings.last(:temperature);;
-lastHum = hum_readings.last(:humidity);;
+//lastHum = hum_readings.last(:humidity);;
 
-blah = { :a = lastTemp, :b = { :c = { :d = lastHum } } };;
+//blah = { :a = lastTemp, :b = { :c = { :d = lastHum } } };;
 
 
-when (blah.a.updated(), ev -> print(Room.all[1].cost));;
+when (lastTemp.updated(), ev -> print(Room.all[1].temperature.sum()));;
 
 /*
 entity Product =

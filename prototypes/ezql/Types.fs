@@ -7,6 +7,18 @@ open Ast
 
 type uid = string
 
+module Priority =
+  type priority = Priority of int list
+  
+  let initial = Priority [0]
+  let of_list = Priority
+  let next (Priority p) =
+    let (x::xs) = List.rev p
+    Priority (List.rev ((x + 1)::xs))
+  let down (Priority p) = Priority (p @ [0])
+  let add (Priority right) (Priority left) = Priority (right @ left)
+//  let get = Priority << List.rev
+
 (*
  * An operator is like a graph node that contains a list of parents and
  * children.
@@ -31,7 +43,7 @@ type Operator =
     Children: List<ChildData>
     Parents: List<Operator>
     Contents: ref<value>
-    Priority: priority
+    Priority: Priority.priority
     Uid: uid }
 
   member self.ArgCount with get = self.Parents.Count
@@ -147,7 +159,6 @@ and diff =
     | RemovedKey of value
 
 and changes = diff list
-and priority = float
 and link = changes -> changes
 
 

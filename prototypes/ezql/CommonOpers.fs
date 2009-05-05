@@ -134,31 +134,32 @@ let makeToStream uid prio parents =
 (* Projects a field out of a record *)
 let makeProjector field uid prio parents =
   let eval = fun (op:Operator) inputs ->
-               let fieldChanges = List.first (fun diff ->
-                                                match diff with
+               let fieldChanges = List.first (function
                                                 | RecordDiff (field', chg) when (VString field) = field' -> Some chg
                                                 | _ -> None)
                                              (List.hd inputs)
                match fieldChanges with
-               | Some changes -> let record = op.Parents.[0].Value
-                                 match record with
-                                 | VRecord record' -> op.Value <- !record'.[VString field]
-                                 | _ -> failwith "What? The parent of a projector is not a record?"
+               | Some changes -> let (VRecord record) = op.Parents.[0].Value
+                                 op.Value <- !(record.[VString field])
                                  Some (op.Children, changes)
                | None -> None
 
 
   Operator.Build(uid, prio, eval, parents)
   
-(* Projects a field out of a record *)
+(* Indexes a value in a dictionary *)
 let makeIndexer index uid prio (parents:Operator list) =
-  let dict = match parents.[0].Value with
-             | VDict dict -> dict
-             | _ -> failwithf "The parent is not a dictionary!"
-
-  let eval = fun (oper:Operator) inputs ->
-               let env = getOperEnvValues oper
-               let result = dict.[eval env index]
-               setValueAndGetChanges oper result
+  let eval = fun (op:Operator) inputs ->
+               let env = getOperEnvValues op
+               let key = eval env index
+               let indexChanges = List.first (function
+                                                | DictDiff (key', chg) when key = key' -> Some chg
+                                                | _ -> None)
+                                             (List.hd inputs)
+               match indexChanges with
+               | Some changes -> let (VDict dict) = op.Parents.[0].Value
+                                 op.Value <- dict.[key]
+                                 Some (op.Children, changes)
+               | None -> None
 
   Operator.Build(uid, prio, eval, parents)

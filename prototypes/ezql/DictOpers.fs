@@ -119,7 +119,7 @@ let makeGroupby field groupBuilder uid prio parents =
                               Some (List<_>((dictOp, 0, collectByKey)::childrenData), changes.Head)),
                     parents)
 
-    and dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+    and dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
                    (fun op changes ->
                       match changes with
                       | parentChanges::groupChanges -> 
@@ -163,7 +163,7 @@ let makeDictWhere predicateBuilder uid prio parents =
     let predicates = ref Map.empty
     let results = Dictionary<value, value>()
  
-    let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+    let dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
                    (fun op changes ->
                       // changes.Head contains the dictionary changes passed to the where
                       // changes.Tail contains the changes in the inner predicates
@@ -224,7 +224,7 @@ let makeDictSelect projectorBuilder uid prio parents =
     let projectors = ref Map.empty
     let results = Dictionary<value, value>()
 
-    let dictOp = Operator.Build(uid + "_dict", prio + 0.9,
+    let dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
                    (fun op changes ->
                       // changes.Head contains the dictionary changes passed to the select
                       // changes.Tail contains the changes in the inner predicates
