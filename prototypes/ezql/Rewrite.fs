@@ -143,7 +143,6 @@ let rec translateEntities (entities:Set<string>) (types:TypeContext) = function
       let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
                                    [SymbolExpr uniqueId; Lambda ([Identifier "g"], record)])
-      printfn "%A" groupByExpr
       let assign = Def (Identifier allDictName, groupByExpr)                 
       entities.Add(name), assign
 

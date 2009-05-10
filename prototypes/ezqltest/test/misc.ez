@@ -19,7 +19,7 @@ entity Product =
 //lastHum = hum_readings.last(:humidity);;
 
 
-when (entries, ev -> print (Product.all[1]));;
+when (entries, ev -> print (Product.all[1].temperature.sum()));;
 
 /*
 entity Product =

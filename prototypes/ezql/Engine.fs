@@ -33,7 +33,7 @@ let dataflowAnalysis types ast =
 
   //Graph.Viewer.display g' (fun v info -> info.Uid)
   let rootUids = List.map (fun name -> env'.[name].Uid) roots'
-  let operators = Dataflow.makeOperNetwork g' rootUids id
+  let operators = Dataflow.makeOperNetwork g' rootUids id Map.empty
   Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
 
 
