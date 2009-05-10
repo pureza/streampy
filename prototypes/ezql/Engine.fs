@@ -29,7 +29,7 @@ let dataflowAnalysis types ast =
   let g = Graph.empty
   let env = Map.empty
   let roots = []
-  let env', types', g', roots' = List.fold_left dataflow (env, types, g, roots) ast
+  let env', g', roots' = List.fold_left dataflow (env, g, roots) ast
 
   //Graph.Viewer.display g' (fun v info -> info.Uid)
   let rootUids = List.map (fun name -> env'.[name].Uid) roots'

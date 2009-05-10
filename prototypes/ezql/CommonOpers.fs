@@ -129,37 +129,3 @@ let makeToStream uid prio parents =
                Some (op.Children, [Added (VEvent ev)])
 
   Operator.Build(uid, prio, eval, parents)
-
-
-(* Projects a field out of a record *)
-let makeProjector field uid prio parents =
-  let eval = fun (op:Operator) inputs ->
-               let fieldChanges = List.first (function
-                                                | RecordDiff (field', chg) when (VString field) = field' -> Some chg
-                                                | _ -> None)
-                                             (List.hd inputs)
-               match fieldChanges with
-               | Some changes -> let (VRecord record) = op.Parents.[0].Value
-                                 op.Value <- !(record.[VString field])
-                                 Some (op.Children, changes)
-               | None -> None
-
-
-  Operator.Build(uid, prio, eval, parents)
-  
-(* Indexes a value in a dictionary *)
-let makeIndexer index uid prio (parents:Operator list) =
-  let eval = fun (op:Operator) inputs ->
-               let env = getOperEnvValues op
-               let key = eval env index
-               let indexChanges = List.first (function
-                                                | DictDiff (key', chg) when key = key' -> Some chg
-                                                | _ -> None)
-                                             (List.hd inputs)
-               match indexChanges with
-               | Some changes -> let (VDict dict) = op.Parents.[0].Value
-                                 op.Value <- dict.[key]
-                                 Some (op.Children, changes)
-               | None -> None
-
-  Operator.Build(uid, prio, eval, parents)

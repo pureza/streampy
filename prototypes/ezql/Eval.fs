@@ -19,10 +19,20 @@ let rec eval env = function
       | VEvent ev -> ev.[name]
       | VRecord r -> !r.[VString name]
       | _ -> failwith "eval MemberAccess: Not an event!"
+  | ArrayIndex (target, index) ->
+      let tv = eval env target
+      let iv = eval env index
+      match tv with
+      | VDict dict -> dict.[iv]
+      | _ -> failwithf "[]: Not a dictionary"
   | Record fields ->
       // This is extremely ineficient - we should create a node if possible
       VRecord (fields |> List.map (fun (Symbol (name), expr) -> (VString name, ref (eval env expr)))
                       |> Map.of_list)
+  | RecordWith (source, newFields) ->
+      match eval env source with
+      | VRecord fields -> VRecord (List.fold_left (fun fields (Symbol (name), expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
+      | other -> failwithf "RecordWith: the source is not a record: %A" other
   | Lambda (args, body) as fn -> VClosure (env, fn)
   | Let (Identifier name, binder, body) ->
       eval (env.Add(name, eval env binder)) body

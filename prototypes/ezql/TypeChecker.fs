@@ -40,16 +40,23 @@ let rec types (env:TypeContext) = function
       env.Add(name, typ)
   | Expr expr -> typeOf env expr |> ignore
                  env
-  | Entity (Identifier name, ((source, uniqueId), _, members)) ->
+  | Entity (Identifier name, ((source, uniqueId), assocs, members)) ->
       match typeOf env source with
       | TyStream fields ->
-          let allMembers = List.fold_left (fun (acc:Map<string, Type>) (Member (Identifier self, Identifier name, expr)) ->
-                                             let selfType = TyRecord acc
-                                             Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
-                                          (Map.of_list [ for f in fields -> (f, TyInt)])
-                                          members
-                                                           
-          env.Add(name, TyType allMembers)
+          let members1 = List.fold_left (fun (acc:TypeContext) assoc -> 
+                                           match assoc with
+                                           | BelongsTo (Symbol entity) ->
+                                               let fieldType = match env.[String.capitalize entity] with
+                                                               | TyType fields -> TyRecord fields
+                                                               | _ -> failwithf "The entity is not an entity :S"
+                                               acc.Add(entity, fieldType))
+                                        (Map.of_list [ for f in fields -> (f, TyInt)]) assocs
+                                        
+          let members2 = List.fold_left (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr)) ->
+                                           let selfType = TyRecord acc
+                                           Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
+                                        members1 members
+          env.Add(name, TyType members2)
       | _ -> failwithf "The source of the entity '%s' is not a stream" name
 
 and typeOf env = function
@@ -87,9 +94,24 @@ and typeOf env = function
     let type1 = typeOf env expr1
     let type2 = typeOf env expr2
     typeOfOp (oper, type1, type2)
-  | expr.Record fields ->
+  | Record fields ->
       let fieldTypes = [ for (Symbol name, expr) in fields -> (name, typeOf env expr) ]
       TyRecord (Map.of_list fieldTypes)
+  | RecordWith (source, newFields) ->
+      match typeOf env source with
+      | TyRecord fields -> TyRecord (List.fold_left (fun fields (Symbol name, expr) -> fields.Add(name, typeOf env expr)) fields newFields)
+      | _ -> failwith "Source is not a record!"
+  | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
+  | If (cond, thn, els) ->
+      let tyCond = typeOf env cond
+      let tyThn = typeOf env thn
+      let tyEls = typeOf env els
+      if tyCond <> TyBool then failwith "If: The condition doesn't return bool!"
+      if tyThn <> tyEls then failwith "If: Then and else have different return types."
+      tyThn
+  | Seq (expr1, expr2) ->
+      typeOf env expr1 |> ignore
+      typeOf env expr2
   | Id (Identifier name) ->
       match Map.tryfind name env with
       | Some v -> v

@@ -67,7 +67,15 @@ and delayWindowsExpr varExprs types expr =
       if target' <> target
         then delayWindowsExpr varExprs types expr'
         else expr'
-        
+  // Take this out of here!
+  | RecordWith (Id (Identifier name), newFields) ->
+      match varExprs.[name] with
+      | Record fields -> Record (List.fold_left (fun fields (sym, expr) -> fields @ [sym, expr]) fields newFields)
+      | _ -> failwithf "RecordWith: The source is not a record!"
+  | RecordWith (source, newFields) ->
+      match delayWindowsExpr varExprs types source with
+      | Record fields -> Record (List.fold_left (fun fields (sym, expr) -> fields @ [sym, expr]) fields newFields)
+      | _ -> failwithf "RecordWith: The source is not a record!"
   // BinOps in continuous value windows won't be allowed, so this will be removed eventually.        
         (*
   | BinaryExpr (oper, expr1, expr2) ->
@@ -98,7 +106,11 @@ let rec replace expr replacer =
   | ArrayIndex(target, index) -> ArrayIndex (replacer target, replacer index)
   | Lambda (ids, expr) -> Lambda (ids, replacer expr) 
   | BinaryExpr (op, left, right) -> BinaryExpr (op, replacer left, replacer right)
+  | Let (Identifier name, binder, body) -> Let (Identifier name, replacer binder, replacer body)
+  | If (cond, thn, els) -> If (replacer cond, replacer thn, replacer els)
+  | Seq (expr1, expr2) -> Seq (replacer expr1, replacer expr2)
   | Record fields -> Record (List.map (fun (n, e) -> (n, replacer e)) fields)
+  | RecordWith (source, newFields) -> RecordWith (replacer source, List.map (fun (n, e) -> (n, replacer e)) newFields)
   | Time (length, unit) -> Time (replacer length, unit)
   | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ -> expr
   | _ -> failwithf "not implemented: %A" expr
@@ -110,18 +122,28 @@ let rec translateEntities (entities:Set<string>) (types:TypeContext) = function
       let streamFields = match typeOf types source with
                          | TyStream f -> f
                          | _ -> failwith "can't happen!"
-      let initialRecordFields = Map.of_list [ for f in streamFields ->
-                                                (Symbol f, MethodCall (Id (Identifier "g"), Identifier "last",
-                                                                      [SymbolExpr (Symbol f)]))]
-      let recordFields = List.fold_left (fun acc (Member (self, Identifier name, expr)) ->
-                                          let expr' = translateSelf acc expr
-                                          acc.Add(Symbol name, expr'))
-                                        initialRecordFields members
+      let streamFields = Map.of_list [ for f in streamFields ->
+                                         (Symbol f, MethodCall (Id (Identifier "g"), Identifier "last",
+                                                                [SymbolExpr (Symbol f)]))]
+                                                                
+      let assocFields = List.fold_left (fun (acc:Map<symbol, expr>) assoc ->
+                                        match assoc with
+                                        | BelongsTo (Symbol entity) -> 
+                                            let entityIdExpr = acc.[Symbol (entity + "_id")]
+                                            let fieldExpr = ArrayIndex (Id (Identifier ("$" + (String.capitalize entity) + "_all")), entityIdExpr)
+                                            acc.Add(Symbol entity, fieldExpr))
+                                      streamFields assocs
+                                      
+      let allFields = List.fold_left (fun acc (Member (self, Identifier name, expr)) ->
+                                        let expr' = translateSelf acc expr
+                                        acc.Add(Symbol name, expr'))
+                                      assocFields members
+
       let allDictName = "$" + name + "_all"
-      let record = Record (Map.to_list recordFields)
-      //printfn "%A" (Map.to_list recordFields)
+      let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
                                    [SymbolExpr uniqueId; Lambda ([Identifier "g"], record)])
+      printfn "%A" groupByExpr
       let assign = Def (Identifier allDictName, groupByExpr)                 
       entities.Add(name), assign
 
