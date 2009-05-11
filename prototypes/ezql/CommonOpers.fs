@@ -66,7 +66,7 @@ let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
                                   Some (op.Children, [Added (VEvent ev')]))
 
 (* When *)
-let makeWhen = makeEvalOnAdd (fun op inputs ev result -> None)
+let makeWhen = makeEvalOnAdd (fun op inputs ev result -> Some (op.Children, [Added result]))
 
 
 (* A timed window for dynamic values *)

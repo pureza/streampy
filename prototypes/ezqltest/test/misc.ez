@@ -2,6 +2,8 @@ temp_readings = stream (:room_id, :temperature);;
 hum_readings = stream (:room_id, :humidity);;
 entries = stream(:room_id, :product_id);;
 
+lastTemp = temp_readings.last(:temperature);;
+
 entity Room =
   createFrom(temp_readings, :room_id);;
 
@@ -9,17 +11,10 @@ entity Room =
 entity Product =
   createFrom (entries, :product_id)
   belongsTo :room
-  member self.temperature = self.room.temperature.sum();;
+  member x.temperature = x.room.temperature.sum();;
 
 
-
-
-
-//lastTemp = temp_readings.last(:temperature);;
-//lastHum = hum_readings.last(:humidity);;
-
-
-when (entries, ev -> print (Product.all[1].temperature.sum()));;
+x = when (entries, ev -> print (Product.all[ev.product_id].temperature));;
 
 /*
 entity Product =

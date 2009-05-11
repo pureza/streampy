@@ -83,11 +83,12 @@ let rec dataflow (env:NodeContext, (graph:DataflowGraph), roots) = function
 and dataflowE (env:NodeContext) (graph:DataflowGraph) expr =   
   match expr with
   | MethodCall (target, (Identifier name), paramExps) ->
-      let deps, g', target', isDone = dataflowE env graph target
+      let deps, g1, target', isDone = dataflowE env graph target
       if isDone
-        then let n, g'' = makeFinalNode env g' target' deps ("<X>." + name + "()")
-             dataflowMethod env g'' n name paramExps
-        else deps, g', MethodCall (target', (Identifier name), paramExps), false
+        then let n, g2 = makeFinalNode env g1 target' deps ("<X>." + name + "()")
+             let deps', g3, expr' = dataflowMethod env g2 n name paramExps
+             deps', g3, expr', true
+        else deps, g1, MethodCall (target', (Identifier name), paramExps), false
   | ArrayIndex (target, index) ->
       match index with
       | Time (_, _) -> dataflowE env graph (MethodCall (target, Identifier "[]", [index]))
@@ -146,7 +147,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                | _ -> failwith "Invalid duration"
                 let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
                                        (makeWindow duration) graph
-                Set.singleton n, g', Id (Identifier n.Uid), true
+                Set.singleton n, g', Id (Identifier n.Uid)
       | "where" -> dataflowSelectWhere env graph target paramExps makeWhere methName 
       | "select" -> dataflowSelectWhere env graph target paramExps makeSelect methName 
       | "groupby" -> dataflowGroupby env graph target paramExps
@@ -180,7 +181,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                    let whereDeps = target::(Set.to_list deps)
                    let n, g'' = createNode (nextSymbol methName) target.Type whereDeps
                                            (makeDictWhere predBuilder) g'
-                   Set.singleton n, g'', Id (Identifier n.Uid), true
+                   Set.singleton n, g'', Id (Identifier n.Uid)
       | "select" -> let expr, env', arg =
                       match paramExps with
                       | [Lambda ([Identifier arg], body) as fn] ->
@@ -200,7 +201,7 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                     let valueType' = typeOf ((envTypes env).Add(arg, valueType)) expr
                     let n, g'' = createNode (nextSymbol methName) (TyDict valueType') selectDeps
                                             (makeDictSelect projBuilder) g'
-                    Set.singleton n, g'', Id (Identifier n.Uid), true
+                    Set.singleton n, g'', Id (Identifier n.Uid)
       | _ -> failwithf "Unkown method: %s" methName
   | TyInt -> match methName with
              | "[]" -> let duration = match paramExps with
@@ -208,17 +209,17 @@ and dataflowMethod env graph (target:NodeInfo) methName paramExps =
                                       | _ -> failwith "Invalid duration"
                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
                                               (makeDynValWindow duration) graph
-                       Set.singleton n, g', Id (Identifier n.Uid), true
+                       Set.singleton n, g', Id (Identifier n.Uid)
              | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream ["value"]) [target]
                                                    (makeToStream) graph
-                            Set.singleton n, g', Id (Identifier n.Uid), true
+                            Set.singleton n, g', Id (Identifier n.Uid)
              | "sum" -> dataflowAggregate graph target paramExps makeSum methName
              | "count" -> dataflowAggregate graph target paramExps makeCount methName
              | _ -> failwithf "Unkown method: %s" methName
   | TyRecord _ -> match methName with
                   | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream ["value"]) [target]
                                                         (makeToStream) graph
-                                 Set.singleton n, g', Id (Identifier n.Uid), true
+                                 Set.singleton n, g', Id (Identifier n.Uid)
                   | _ -> failwithf "Unkown method of type Record: %s" methName
   | _ -> failwith "Unknown target type"
 
@@ -292,12 +293,12 @@ and makeFinalNode env graph expr deps name =
       let env' = Set.fold_left (fun acc info -> Map.add info.Uid info acc) env deps
       let g'', fieldDeps = List.fold_left (fun (g, fieldDeps) (Symbol field, expr) ->
                                              (* Lets get the dependencies for just this expression *)
-                                             let deps'', g', expr', _ = dataflowE env' g expr
+                                             let deps'', g', expr', isDone = dataflowE env' g expr
                                             
                                              (* Sanity check: at this point, the expression should be completely
                                                 "continualized" and thus, the previous operation must not have
                                                 altered the graph nor the expression itself *)
-                                             assert (g' = g && expr' = expr)
+                                             assert (g' = g && expr' = expr && isDone)
                                              
                                              (* Do we need an evaluator just for this field? *)
                                              let n, g' = makeFinalNode env' g expr deps'' field
@@ -359,7 +360,7 @@ and dataflowAggregate graph target paramExprs opMaker aggrName =
                  | _ -> failwith "Invalid parameters to %s" aggrName
   let n, g' = createNode (nextSymbol aggrName) TyInt [target]
                          (opMaker getField) graph
-  Set.singleton n, g', Id (Identifier n.Uid), true
+  Set.singleton n, g', Id (Identifier n.Uid)
 
 and dataflowGroupby env graph target paramExps =
   let field, expr, env', arg =
@@ -385,7 +386,7 @@ and dataflowGroupby env graph target paramExps =
   let valueType = typeOf ((envTypes env).Add(arg, argType)) expr
   let n, g'' = createNode (nextSymbol "groupby") (TyDict valueType) groupbyDeps
                          (makeGroupby field groupBuilder) g'
-  Set.singleton n, g'', Id (Identifier n.Uid), true
+  Set.singleton n, g'', Id (Identifier n.Uid)
 
 (*
  * Handles stream.where() and stream.select()
@@ -407,7 +408,7 @@ and dataflowSelectWhere env graph target paramExps opMaker methName =
   let opDeps = target::(Set.to_list deps)
   let n, g'' = createNode (nextSymbol methName) target.Type opDeps
                           (opMaker expr'') g'
-  Set.singleton n, g'', Id (Identifier n.Uid), true
+  Set.singleton n, g'', Id (Identifier n.Uid)
 
 
 (*

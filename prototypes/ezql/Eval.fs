@@ -77,18 +77,3 @@ and apply = function
               eval env' body)
       | _ -> failwith "evalClosure: Wrong type"
   | _ -> failwith "This is not a closure"
-(*
-
-and evalClosure = function
-    | VClosure (env, expr) ->
-        match expr with
-        | Lambda (ids, body) ->
-            (fun args ->
-                let ids' = List.map (fun (Identifier name) -> name) ids
-                let env' = List.fold_left (fun e (n, v) -> Map.add n v e)
-                                           env (List.zip ids' (List.map ref args))
-                eval env' body)
-        | _ -> failwith "evalClosure: Wrong type"
-    | _ -> failwith "This is not a closure"
-
-    *)
