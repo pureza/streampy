@@ -137,12 +137,12 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
   | Expr expr -> entities, Expr (transDictAll entities expr)
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) as expr ->
       let streamFields = match typeOf types source with
-                         | TyStream f -> f
+                         | TyStream (TyRecord f) -> f
                          | _ -> failwith "can't happen!"
       // Translate the fields inherited from the stream                         
-      let streamFields = Map.of_list [ for f in streamFields ->
-                                         (Symbol f, MethodCall (Id (Identifier "g"), Identifier "last",
-                                                                [SymbolExpr (Symbol f)]))]
+      let streamFields = Map.of_list [ for pair in streamFields ->
+                                         (Symbol pair.Key, MethodCall (Id (Identifier "g"), Identifier "last",
+                                                                      [SymbolExpr (Symbol pair.Key)]))]
       // Translate associations                                                                
       let assocFields = List.fold_left (fun (acc:Map<symbol, expr>) assoc ->
                                         match assoc with

@@ -15,7 +15,7 @@ type Type =
   | TySymbol
   | TyType of Map<string, Type>
   | TyRecord of Map<string, Type>
-  | TyStream of string list
+  | TyStream of Type
   | TyWindow of Type * WindowType
   | TyDict of Type
   
@@ -44,7 +44,7 @@ let rec types ((env:TypeContext), remaining:RemainingMap) = function
                  env, remaining
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) ->
       match typeOf env source with
-      | TyStream fields ->
+      | TyStream (TyRecord fields) ->
           let members1, remaining' =
             List.fold_left (fun (acc:TypeContext, rem:RemainingMap) assoc -> 
                               match assoc with
@@ -65,13 +65,13 @@ let rec types ((env:TypeContext), remaining:RemainingMap) = function
                                     | Some (TyType fields as e) -> acc.Add(entity, e), rem
                                     | _ -> acc, rem.Add(entityName, fun env -> env.Add(name, TyType (fst (findType env))))
                                   findType env)
-                           (Map.of_list [ for f in fields -> (f, TyInt)], remaining) assocs
+                           (fields, remaining) assocs
                                         
           let members2 = List.fold_left (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr)) ->
                                            let selfType = TyRecord acc
                                            Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
                                         members1 members
-          let env' = env.Add(name, TyType members2).Add(sprintf "$%s_all" name, TyType members2)
+          let env' = env.Add(name, TyType members2).Add(sprintf "$%s_all" name, TyDict (TyRecord members2))
 
           // If there is any entity waiting on this one to be typechecked,
           // now is a good time to do it.
@@ -88,9 +88,9 @@ and typeOf env = function
   | FuncCall (Id (Identifier "stream"), fields) ->
       let fields' = [ for f in fields ->
                         match f with
-                        | SymbolExpr (Symbol name) -> name
+                        | SymbolExpr (Symbol name) -> (name, TyInt)
                         | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
-      TyStream ("timestamp"::fields')
+      TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
   | FuncCall (Id (Identifier "when"), [source; Lambda ([Identifier ev], handler)]) ->
       match typeOf env source with
       | TyStream _ -> ()
@@ -147,16 +147,15 @@ and typeOf env = function
 and typeOfMethodCall env target name paramExps =
   let targetType = typeOf env target
   match targetType with
-  | TyStream fields ->
+  | TyStream (TyRecord fields as evType) ->
       match name with
       | "last" | "sum" | "count" ->
           match paramExps with
-          | [SymbolExpr (Symbol field)] when List.mem field fields -> TyInt
+          | [SymbolExpr (Symbol field)] when Map.mem field fields -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "where" -> 
           match paramExps with
           | [Lambda ([Identifier ev], expr)] -> 
-              let evType = TyRecord (Map.of_list (("timestamp", TyInt)::[ for f in fields -> (f, TyInt) ]))
               if (typeOf (env.Add(ev, evType)) expr) <> TyBool
                 then failwithf "The predicate of the where doesn't return a boolean!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
@@ -164,9 +163,8 @@ and typeOfMethodCall env target name paramExps =
       | "select" -> 
           match paramExps with
           | [Lambda ([Identifier ev], expr)] -> 
-              let evType = TyRecord (Map.of_list (("timestamp", TyInt)::[ for f in fields -> (f, TyInt) ]))
               match typeOf (env.Add(ev, evType)) expr with
-              | TyRecord projFields -> TyStream ((Map.to_list >> (List.map fst)) projFields)
+              | TyRecord projFields as outEvType -> TyStream outEvType
               | _ -> failwithf "The projector of the select doesn't return a record!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps        
       | "[]" ->
@@ -175,27 +173,26 @@ and typeOfMethodCall env target name paramExps =
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "groupby" ->
           match paramExps with
-          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when List.mem field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
+          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when Map.mem field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   // Event Windows
-  | TyWindow (TyStream fields, TimedWindow _) ->
+  | TyWindow (TyStream (TyRecord fields as evType), TimedWindow _) ->
       match name with
       | "last" | "sum" | "count" ->
           match paramExps with
-          | [SymbolExpr (Symbol field)] when List.mem field fields -> TyInt
+          | [SymbolExpr (Symbol field)] when Map.mem field fields -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "where" -> 
           match paramExps with
           | [Lambda ([Identifier ev], expr)] -> 
-              let evType = TyRecord (Map.of_list (("timestamp", TyInt)::[ for f in fields -> (f, TyInt) ]))
               if (typeOf (env.Add(ev, evType)) expr) <> TyBool
                 then failwithf "The predicate of the where doesn't return a boolean!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
           targetType
       | "groupby" ->
           match paramExps with
-          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when List.mem field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
+          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when Map.mem field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyWindow (TyInt, TimedWindow _) ->
@@ -232,7 +229,7 @@ and typeOfMethodCall env target name paramExps =
                 | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "updated" -> match paramExps with
-                     | [] -> TyStream ["value"]
+                     | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | _ -> failwithf "The type %A does not have method %A!" targetType name
