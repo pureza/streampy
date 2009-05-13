@@ -2,6 +2,7 @@
 
 open Ast
 open Types
+open Extensions
 
 type WindowType =
   | TimedWindow of int
@@ -33,30 +34,50 @@ type Type =
 
 
 and TypeContext = Map<string, Type>
+and RemainingMap = Map<string, TypeContext -> TypeContext>
 
-let rec types (env:TypeContext) = function
+let rec types ((env:TypeContext), remaining:RemainingMap) = function
   | Def (Identifier name, expr) ->
       let typ = typeOf env expr
-      env.Add(name, typ)
+      env.Add(name, typ), remaining
   | Expr expr -> typeOf env expr |> ignore
-                 env
+                 env, remaining
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) ->
       match typeOf env source with
       | TyStream fields ->
-          let members1 = List.fold_left (fun (acc:TypeContext) assoc -> 
-                                           match assoc with
-                                           | BelongsTo (Symbol entity) ->
-                                               let fieldType = match env.[String.capitalize entity] with
-                                                               | TyType fields -> TyRecord fields
-                                                               | _ -> failwithf "The entity is not an entity :S"
-                                               acc.Add(entity, fieldType))
-                                        (Map.of_list [ for f in fields -> (f, TyInt)]) assocs
+          let members1, remaining' =
+            List.fold_left (fun (acc:TypeContext, rem:RemainingMap) assoc -> 
+                              match assoc with
+                              | BelongsTo (Symbol entity) ->
+                                  let entityName = String.capitalize entity
+                                  let fieldType = match env.[entityName] with
+                                                  | TyType fields -> TyRecord fields
+                                                  | _ -> failwithf "The entity is not an entity :S"
+                                  let acc' = acc.Add(entity, fieldType)
+                                  acc', rem
+                              | HasMany (Symbol entity) ->
+                                  let entityName = String.capitalize entity |> String.singular
+                                  // If the related entity has already been typechecked, add its type to
+                                  // the accumulator. Otherwise, add a continuation specifying what to do when
+                                  // the entity is typechecked.
+                                  let rec findType env =
+                                    match Map.tryfind entityName env with
+                                    | Some (TyType fields as e) -> acc.Add(entity, e), rem
+                                    | _ -> acc, rem.Add(entityName, fun env -> env.Add(name, TyType (fst (findType env))))
+                                  findType env)
+                           (Map.of_list [ for f in fields -> (f, TyInt)], remaining) assocs
                                         
           let members2 = List.fold_left (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr)) ->
                                            let selfType = TyRecord acc
                                            Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
                                         members1 members
-          env.Add(name, TyType members2)
+          let env' = env.Add(name, TyType members2).Add(sprintf "$%s_all" name, TyType members2)
+
+          // If there is any entity waiting on this one to be typechecked,
+          // now is a good time to do it.
+          match Map.tryfind name remaining' with
+          | Some k -> k env', Map.remove name remaining'
+          | _ -> env', remaining'
       | _ -> failwithf "The source of the entity '%s' is not a stream" name
 
 and typeOf env = function

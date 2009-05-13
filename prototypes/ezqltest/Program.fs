@@ -9,7 +9,7 @@ open Test
 
 //Test.runTests (Test.findTests ())
 //Test.runTests [(Test.findTest "test_aggregatesSum")]
-Test.runTests [(Test.findTest "test_misc")]
+Test.runTests [(Test.findTest "test_entitiesMisc2")]
     
 Console.ReadLine() |> ignore
 

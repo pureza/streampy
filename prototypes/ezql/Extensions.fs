@@ -17,4 +17,7 @@ module Map =
                      Map.add k v' acc) oldMap newMap
 
 
-  
+module String =
+  open System.Text.RegularExpressions
+
+  let singular str = Regex.Match(str, "(.*)s$").Groups.[1].Value

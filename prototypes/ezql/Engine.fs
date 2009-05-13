@@ -22,7 +22,7 @@ let parse code =
 
 
 let typeCheck ast =
-  List.fold_left types Map.empty ast
+  fst (List.fold_left types (Map.empty, Map.empty) ast)
 
 
 let dataflowAnalysis types ast =
@@ -39,8 +39,9 @@ let dataflowAnalysis types ast =
 
 let compile code =
     let ast = parse code
-    let ast' = rewrite (typeCheck ast) ast
-    dataflowAnalysis (typeCheck ast') ast'
+    let types = typeCheck ast
+    let ast' = rewrite types ast
+    dataflowAnalysis types ast'
 
 let mainLoop () =
     let virtualClock = Scheduler.clock () :?> VirtualClock

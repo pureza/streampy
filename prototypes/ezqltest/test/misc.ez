@@ -2,7 +2,6 @@ temp_readings = stream (:room_id, :temperature);;
 hum_readings = stream (:room_id, :humidity);;
 entries = stream(:room_id, :product_id);;
 
-lastTemp = temp_readings.last(:temperature);;
 
 entity Room =
   createFrom(temp_readings, :room_id);;
@@ -15,6 +14,8 @@ entity Product =
 
 
 x = when (entries, ev -> print (Product.all[ev.product_id].temperature));;
+y = when (entries, ev -> print (Product.all[1].temperature.sum()));;
+
 
 /*
 entity Product =
@@ -41,7 +42,18 @@ Room.all = temp_readings
                                        :x           = 10,
                                        :y           = temperature  * 2,
                                        :volume      = g.select(ev -> { :value = ev.volume },
-                                       :products    = Product.all.where(p -> p.room_id = room_id) })  
+                                       :products    = Product.all.where(p -> p.room_id = room_id) })
+
+We don't need Product.all until runtime, when a room is created. On the other hand, we need to dataflow the expression before that. So we could just say "Hey, I don't know what Product.all is, so ignore it for now." and then, during runtime, we would point to the real node. The first part is not really that difficult, but the second is harder because Product.all cannot be a dependency of Room.all (otherwise we have a cycle). Thus, on runtime, Product.all will not belong to the Room's environment and will not be in the set of dependencies of the room.
+
+Another possibility could be: while dataflowing Room.all, when we get to :products, we return an indication that the field needs to be further dataflowed when Product.all is, itself, dataflowed. The problem is, the second phase of dataflow (including the creation of the groupby's final node) would have to be delayed... and then, while dataflowing Product.all, we would get a cycle... What if the creation of the node doesn't need to be delayed? But then, the remaining expression could not introduce new dependencies. hmm.. maybe it could... maybe we can modify the node afterwards, or clone it, modify this copy and add it to the graph to replace the original...
+
+
+##############
+
+In this example, Room.all should precede Product.all to ensure that the corresponding Room instance is created before it is referenced by the Product. Only after the Product.room field is filled should the Room.products field be updated. Hence, Room.products depends on Products.all (i.e. uses Products.all diffs as input), but Products.all should not be an input to Room.all. So, it's OK to have Product.all connected to Room.products, even though Room.all has lower priority.
+
+If Product.all doesn't need to be an input to Room.all, it's OK to create the node for Room.all without Product.all as a dependency. The second problem remains: how can Room.products refer to Product.all when it is created? One idea: what if the second dataflow actually inherits the env and graph from the first, instead of creating a new one? Won't work: the graph is incomplete when Room.all is dataflowed the first time. So, the second time, we need to dataflow with the final env and graph... Or with a graph that contains Product.all...
 
 
 Product.all = entries

@@ -130,9 +130,10 @@ and dataflowE (env:NodeContext) (graph:DataflowGraph) expr =
       | Some info' -> if info'.Type <> TyUnit
                         then Set.singleton info', graph, Id (Identifier info'.Uid), true
                         else Set.empty, graph, expr, false // If the type is unknown, nothing depends on it.
-      | _ -> failwithf "Identifier not found in the graph: %s" name
+      | _ -> failwithf "Identifier not found in the environment: %s" name
   | Integer i -> Set.empty, graph, expr, true
   | String s -> Set.empty, graph, expr, true
+  | Bool b -> Set.empty, graph, expr, true
   | _ -> failwithf "Expression type not supported: %A" expr
 
 and dataflowMethod env graph (target:NodeInfo) methName paramExps =

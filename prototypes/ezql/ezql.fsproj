@@ -74,8 +74,8 @@
     <Compile Include="Parser.fs" />
     <Compile Include="Lexer.fs" />
     <Compile Include="Types.fs" />
-    <Compile Include="Clock.fs" />
     <Compile Include="TypeChecker.fs" />
+    <Compile Include="Clock.fs" />
     <Compile Include="Rewrite.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="Graph.fs" />

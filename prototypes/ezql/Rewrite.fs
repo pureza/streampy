@@ -2,6 +2,7 @@
 
 open Ast
 open TypeChecker
+open Extensions
 
 (*
  * Replaces the given expression with another.
@@ -148,6 +149,13 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                         | BelongsTo (Symbol entity) -> 
                                             let entityIdExpr = acc.[Symbol (entity + "_id")]
                                             let fieldExpr = ArrayIndex (Id (Identifier (entityDict (String.capitalize entity))), entityIdExpr)
+                                            acc.Add(Symbol entity, fieldExpr)
+                                        | HasMany (Symbol entity) ->
+                                            let entityName = String.capitalize entity |> String.singular
+                                            let entityId = String.lowercase (name + "_id")
+                                            let x = Identifier "x"
+                                            let filter = Lambda ([x], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), acc.[Symbol entityId]))
+                                            let fieldExpr = MethodCall (Id (Identifier (entityDict entityName)), Identifier "where", [filter])
                                             acc.Add(Symbol entity, fieldExpr))
                                       streamFields assocs
       // Translate additional member declarations.                                      
