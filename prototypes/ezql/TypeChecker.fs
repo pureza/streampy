@@ -1,6 +1,7 @@
 ﻿#light
 
 open Ast
+open Util
 open Types
 open Extensions
 

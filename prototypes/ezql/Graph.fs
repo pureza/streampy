@@ -105,11 +105,13 @@ module Graph =
   let empty<'a, 'b> : Graph<'a, 'b> = Graph<'a, 'b>.Empty()
   let is_empty (gr:Graph<'a, 'b>) : bool = gr.IsEmpty
   let add (ctx:Context<'a, 'b>) (gr:Graph<'a, 'b>) : Graph<'a, 'b> = gr.Add(ctx)
+  let mem v g = match g with
+                | Extract v (_, _) -> true
+                | _ -> false
   let extract (v:Node<'a>) (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.Extract(v)
   let extractAny (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.ExtractAny()
 
   let labelOf (v:Node<'a>) (graph:Graph<'a, 'b>) = graph.LabelOf(v)
-
   let suc v g = match g with
                 | Extract v ((_, _, _, s), _) -> s
                 | _ -> failwithf "Node doesn't exist."
@@ -129,6 +131,20 @@ module Graph =
     | _ -> acc
 
   let map (fn:Context<'a, 'b> -> Context<'a, 'c>) = fold (fun acc ctx -> add (fn ctx) acc) empty
+  let remove v graph = snd (extract v graph)
+  let nodes graph = fold (fun acc (_, v, _, _) -> v::acc) [] graph
+  
+  (*
+  let removeNetwork v graph =
+    let rec removeNodes roots graph =
+      match roots with
+      | v::vs ->
+          match graph with
+          | Extract v ((_, _, _, s), gr) -> removeNodes (s @ roots) gr
+          | _ -> removeNodes vs graph
+      | _ -> graph
+    removeNodes [v] graph
+    *)
 
   module Algorithms =
     let rec dfs = function
@@ -149,7 +165,7 @@ module Graph =
 
         dfsPostOrder(roots, graph) |> fst |> List.rev
 
-(*
+
   module Viewer =
 
     open System.Windows.Forms
@@ -184,4 +200,4 @@ module Graph =
       form.Show()
       Application.Run(form)
 
-*)
+

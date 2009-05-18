@@ -20,19 +20,8 @@ let connect (parent:Operator) (child:Operator) fn =
     // child knows who is its ith parent
     child.Parents.Insert(index, parent)
 
-// Example eval stack:
-// b = a * c
-//
-// [b, [(0, [Set (VInt 5)])
-//      (1, [])]
-//
-// This means operator b is to be evaluated because input 0 (could be either
-// 'a' or 'c') was set to 5, while the second input stayed the same.
-
-type evalStack = (Operator * (int * changes) list) list
-
 // Joins two evaluation stacks and sorts them by node priority
-let mergeStack (stack:evalStack) (toMerge:evalStack) : evalStack =
+let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
     let list2Map list initial merge =
       List.fold_left (fun acc (k, v) -> 
                         let v' = if Map.mem k acc then merge v acc.[k] else v
@@ -53,7 +42,7 @@ let mergeStack (stack:evalStack) (toMerge:evalStack) : evalStack =
 (*
  * This is where any change is propagated throughout the graph.
  *)
-let rec spread (stack:evalStack) =
+let rec spread (stack:EvalStack) =
     let rec fillLeftArgs (op:Operator) inputs idx : changes list =
         match (List.sort_by fst inputs) with
         | (next, changes)::xs -> // If there were no changes for input idx, cons []

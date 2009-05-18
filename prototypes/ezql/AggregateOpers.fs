@@ -1,5 +1,6 @@
 ﻿#light
 
+open Util
 open Types
 
 (* Last: records one field of the last event of a stream *)

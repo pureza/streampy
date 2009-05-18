@@ -55,6 +55,8 @@ In this example, Room.all should precede Product.all to ensure that the correspo
 
 If Product.all doesn't need to be an input to Room.all, it's OK to create the node for Room.all without Product.all as a dependency. The second problem remains: how can Room.products refer to Product.all when it is created? One idea: what if the second dataflow actually inherits the env and graph from the first, instead of creating a new one? Won't work: the graph is incomplete when Room.all is dataflowed the first time. So, the second time, we need to dataflow with the final env and graph... Or with a graph that contains Product.all...
 
+How about something like: "Hey, here is Room.all. But when you know what Product.all is, tell me because there is something I gotta do..."? First: how do we know that Room.all depends on Products.all? A: We analyze the exception thrown by dataflowE. How do we track these dependencies? Obviously, some sort of continuation... But do we have to pass a k everywhere? Hopefully not in dataflowE, just in dataflow. But dataflowGroupBy (and dataflowE) must return a new continuation... 
+
 
 Product.all = entries
                 .groupby(:product_id, g -> let room_id = g.last(:room_id) in

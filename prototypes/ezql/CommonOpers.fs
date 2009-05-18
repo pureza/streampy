@@ -1,6 +1,7 @@
 ﻿#light
 
 open Ast
+open Util
 open Types
 open Eval
 open Scheduler
@@ -37,7 +38,7 @@ let makeWindow duration uid prio parents =
    is specific to each operator, and is abstracted by the resultHandler
    function.
  *)
-let makeEvalOnAdd resultHandler eventHandler uid prio parents =
+let makeEvalOnAdd resultHandler eventHandler uid prio parents : Operator =
     let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
     let eval = fun op inputs ->
                  let env = getOperEnvValues op
