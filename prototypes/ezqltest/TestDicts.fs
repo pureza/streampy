@@ -125,7 +125,7 @@ let test_dictsSelect (test:Test) =
                        SetKey "2" "{ :a = 5, :b = 50, :c = 92, :d = 165 }" (At  9)
                        SetKey "3" "{ :a = 5, :b = 30, :c = 92, :d = 145 }" (At  9)])
 
-
+(*
 
     test.AssertThat (In "hotRoomsX2"
                       [SetKey "1" " 50" (At 4)
@@ -139,7 +139,7 @@ let test_dictsSelect (test:Test) =
                        DelKey "1"       (At 9)
                        DelKey "2"       (At 9)
                        DelKey "3"       (At 9)])
-
+*)
 
     test.AssertThat (In "weird"
                       [SetKey "1" "45" (At 4)

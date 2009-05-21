@@ -60,7 +60,7 @@ let rec spread (stack:EvalStack) =
     | [] -> ()
     | (op, parentChanges)::xs ->
         //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
-   //     printfn "    Changes = %A" parentChanges
+        //printfn "    Changes = %A" parentChanges
         //printfn "%A" (List.map (fun (o, chgs) -> (o.Uid, chgs)) stack)
         let filledChanges = fillLeftArgs op parentChanges 0
         match op.Eval op filledChanges with

@@ -179,14 +179,14 @@ let runTests (testMethods:MethodInfo list) =
     let test = attr.CreateTest()
     let testName = testMethod.Name
     printfn "- Testing %s\n" testName
-//    try
-    testMethod.Invoke(null, [|box test|]) |> ignore
-    Engine.mainLoop ()
-    let left = testsLeft test
-    if left.IsEmpty
-      then printfn "\t\t\t\t\t\t\t\tPass"
-      else printfn "| Tests left in test '%s'\n%A\n\n" testName left
-//    with
-//      | err -> printfn "Exception:\n %A\n\n" err
+    try
+      testMethod.Invoke(null, [|box test|]) |> ignore
+      Engine.mainLoop ()
+      let left = testsLeft test
+      if left.IsEmpty
+        then printfn "\t\t\t\t\t\t\t\tPass"
+        else printfn "| Tests left in test '%s'\n%A\n\n" testName left
+    with
+      | err -> printfn "Exception:\n %A\n\n" err
 
     Engine.reset ()

@@ -23,7 +23,7 @@ let rec eval env = function
       let tv = eval env target
       let iv = eval env index
       match tv with
-      | VDict dict -> dict.[iv]
+      | VDict dict -> if dict.ContainsKey(iv) then dict.[iv] else failwithf "Dictionary doesn't contain key %A. env = %A" iv env
       | _ -> failwithf "[]: Not a dictionary"
   | Record fields ->
       // This is extremely ineficient - we should create a node if possible

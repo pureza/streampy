@@ -20,19 +20,16 @@ let parse code =
         failwithf "Error near line %d, character %d\n" (pos.Line + 1) pos.Column
 
 
-
 let typeCheck ast =
   fst (List.fold_left types (Map.empty, Map.empty) ast)
-
 
 let dataflowAnalysis types ast =
   let g = Graph.empty
   let env = Map.empty
   let roots = []
-  let env', types', g', roots', k' = List.fold_left dataflow (env, types, g, roots, ForwardDeps.empty) ast
+  let env', types', g', roots' = List.fold_left dataflow (env, types, g, roots) ast
 
 //  Graph.Viewer.display g' (fun v info -> info.Uid)
-//  let rootUids = List.map (fun name -> env'.[name].Uid) roots'
   let operators = Dataflow.makeOperNetwork g' (Graph.nodes g') id Map.empty
   Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
 

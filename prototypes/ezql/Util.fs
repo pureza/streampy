@@ -11,10 +11,10 @@ let toSeconds value unit =
 // Changes the current value of a continuous value if the new value differs
 // from the current one. Also gets the list of changes to propagate.
 let setValueAndGetChanges (op:Operator) v =
-    if v <> op.Value
-      then op.Value <- v
-           Some (op.Children, [Added v])
-      else None
+  if v <> op.Value
+    then op.Value <- v
+         Some (op.Children, [Added v])
+    else None
 
 
 let getOperEnv op = Map.of_list [ for p in op.Parents do

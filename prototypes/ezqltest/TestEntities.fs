@@ -37,4 +37,4 @@ let test_entitiesMisc (test:Test) =
                                    :room_id = 1, :room = { :timestamp = 9, :room_id = 1, :temperature = 23 } }" (At  9)])
 
 [<TestCase ("entities/misc2.ez")>]
-let test_entitiesMisc2 (test:Test) = ()                                                                    
+let test_entitiesMisc2 (test:Test) = ()

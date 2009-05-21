@@ -160,8 +160,9 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                       streamFields assocs
       // Translate additional member declarations.                                      
       let allFields = List.fold_left (fun acc (Member (self, Identifier name, expr)) ->
-                                        let expr' = transSelf acc expr name
-                                        acc.Add(Symbol name, expr'))
+                                        let expr' = transDictAll entities expr
+                                        let expr'' = transSelf acc expr' name
+                                        acc.Add(Symbol name, expr''))
                                       assocFields members
 
       let record = Record (Map.to_list allFields)

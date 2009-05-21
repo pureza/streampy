@@ -51,11 +51,18 @@ let rec types ((env:TypeContext), remaining:RemainingMap) = function
                               match assoc with
                               | BelongsTo (Symbol entity) ->
                                   let entityName = String.capitalize entity
-                                  let fieldType = match env.[entityName] with
-                                                  | TyType fields -> TyRecord fields
-                                                  | _ -> failwithf "The entity is not an entity :S"
-                                  let acc' = acc.Add(entity, fieldType)
-                                  acc', rem
+                                  
+                                  let rec findType env =
+                                    match Map.tryfind entityName env with
+                                    | Some (TyType (fields as e)) -> acc.Add(entity, TyRecord e), rem
+                                    | _ -> acc, rem.Add(entityName, fun env -> env.Add(name, Map.find entity (fst (findType env))))
+                                  findType env
+                                  
+                               //   let fieldType = match env.[entityName] with
+                               //                   | TyType fields -> TyRecord fields
+                               //                   | _ -> failwithf "The entity is not an entity :S"
+                               //   let acc' = acc.Add(entity, fieldType)
+                               //   acc', rem
                               | HasMany (Symbol entity) ->
                                   let entityName = String.capitalize entity |> String.singular
                                   // If the related entity has already been typechecked, add its type to

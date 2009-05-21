@@ -133,18 +133,6 @@ module Graph =
   let map (fn:Context<'a, 'b> -> Context<'a, 'c>) = fold (fun acc ctx -> add (fn ctx) acc) empty
   let remove v graph = snd (extract v graph)
   let nodes graph = fold (fun acc (_, v, _, _) -> v::acc) [] graph
-  
-  (*
-  let removeNetwork v graph =
-    let rec removeNodes roots graph =
-      match roots with
-      | v::vs ->
-          match graph with
-          | Extract v ((_, _, _, s), gr) -> removeNodes (s @ roots) gr
-          | _ -> removeNodes vs graph
-      | _ -> graph
-    removeNodes [v] graph
-    *)
 
   module Algorithms =
     let rec dfs = function
