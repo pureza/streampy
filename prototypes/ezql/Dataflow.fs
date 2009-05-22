@@ -377,6 +377,7 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
     opResult, deps', g3, makeSubExprBuilder arg opResult.Uid g2'
                     
   let opResult, deps, g', subExprBuilder = dataflowSubExpr env types graph
+  //Graph.Viewer.display g' (fun v info -> (sprintf "%s (%s)" info.Name v))
 
   // If the body itself does not depend on the argument (e.g., t -> some-expression-without-t),
   // then it is a "constant" and we can simply mark it as a dependency of the operation.
@@ -528,7 +529,10 @@ and dataflowWhere env types graph target paramExps =
  * Iterate the graph and create the operators and the connections between them.
  *)
 and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators : Map<string, Operator> =
-  let order = Graph.Algorithms.topSort roots graph
+  // GroupBy's should be visited first
+  let next (_, _, _, s) = List.sortBy (fun (x:string) -> if x.StartsWith("groupBy") then 1 else 0) s 
+  let order = Graph.Algorithms.topSort next Graph.node' roots graph
+
   //printfn "order: %A" order
   //printfn "operators: %A" (Map.to_list operators |> List.map fst)
   //Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))

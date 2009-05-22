@@ -111,10 +111,16 @@ module Graph =
   let extract (v:Node<'a>) (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.Extract(v)
   let extractAny (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.ExtractAny()
 
-  let labelOf (v:Node<'a>) (graph:Graph<'a, 'b>) = graph.LabelOf(v)
+  let labelOf (v:Node<'a>) (graph:Graph<'a, 'b>) = graph.LabelOf(v) 
   let suc v g = match g with
                 | Extract v ((_, _, _, s), _) -> s
                 | _ -> failwithf "Node doesn't exist."
+
+  let node' (_, n, _, _) = n
+  let labelOf' (_, _, label, _) = label
+  let pred' (p, _, _, _) = p
+  let suc' (_, _, _, s) = s
+  
 
   let rec fold (fn:'state -> Context<'a, 'b> -> 'state) (initial:'state) (graph:Graph<'a, 'b>) : 'state =
     match graph with
@@ -135,13 +141,34 @@ module Graph =
   let nodes graph = fold (fun acc (_, v, _, _) -> v::acc) [] graph
 
   module Algorithms =
+  (*
     let rec dfs = function
       | [], g -> []
       | v::vs, g -> match g with
                     | Extract v (ctx, g') -> v::(dfs ((suc v g)@vs, g'))
                     | _ -> dfs (vs, g)
+*)
+    type 'a Tree = { root:'a; forest:Tree<'a> list }
 
+    let rec dfsWith next f roots graph =
+      match roots, graph with
+      | [], g -> ([], g)
+      | v::vs, g -> match g with
+                    | Extract v (ctx, g') ->
+                        let v1, g1 = dfsWith next f (next ctx) g'
+                        let v2, g2 = dfsWith next f vs g1
+                        { root = f ctx; forest = v1 }::v2, g2
+                    | _ -> dfsWith next f vs g
 
+      
+    let rec topSort next fn roots graph =
+      let rec postFlatten = function
+        | [] -> []
+        | { root = r; forest = f }::xs -> (postFlatten f)@r::(postFlatten xs)
+      let tree, _ = dfsWith next fn roots graph
+      postFlatten tree |> List.rev
+
+(*
     let topSort roots graph =
         let rec dfsPostOrder = function
           | [], g -> ([], g)
@@ -152,7 +179,7 @@ module Graph =
                         | _ -> dfsPostOrder (vs, g)
 
         dfsPostOrder(roots, graph) |> fst |> List.rev
-
+*)
 
   module Viewer =
 
