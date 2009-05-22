@@ -136,7 +136,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
   | Expr expr -> entities, Expr (transDictAll entities expr)
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) as expr ->
       let streamFields = match typeOf types source with
-                         | TyStream (TyRecord (f, alias)) -> f
+                         | TyStream (TyRecord f) -> f
                          | _ -> failwith "can't happen!"
       // Translate the fields inherited from the stream                         
       let streamFields = Map.of_list [ for pair in streamFields ->

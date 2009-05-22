@@ -168,7 +168,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                        let deps, g', expr' = dataflowE env types g expr
                        Set.union depsAcc deps, g', exprsAcc @ [Symbol field, expr'], unknown
                      with
-                       | UnknownId id -> depsAcc, g, exprsAcc, Set.add id unknown)       // Is the order relevant?
+                       | UnknownId id -> depsAcc, g, exprsAcc, Set.add id unknown)
                   (Set.empty, graph, [], Set.empty) fields
       if not (Set.isEmpty unknown)
         then raise (IncompleteRecord ((deps, g', Record exprs), unknown))
@@ -250,14 +250,14 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps =
                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
                                               (makeDynValWindow duration) graph
                        Set.singleton n, g', Id (Identifier n.Uid)
-             | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt], ""))) [target]
+             | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt]))) [target]
                                                    (makeToStream) graph
                             Set.singleton n, g', Id (Identifier n.Uid)
              | "sum" -> dataflowAggregate graph target paramExps makeSum methName
              | "count" -> dataflowAggregate graph target paramExps makeCount methName
              | _ -> failwithf "Unkown method: %s" methName
   | TyRecord _ -> match methName with
-                  | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt], ""))) [target]
+                  | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt]))) [target]
                                                         (makeToStream) graph
                                  Set.singleton n, g', Id (Identifier n.Uid)
                   | _ -> failwithf "Unkown method of type Record: %s" methName
@@ -429,7 +429,7 @@ and makeFinalNode env types graph expr deps name =
 
       let uids = List.map snd fieldDeps
       let fieldTypes = Map.of_list (List.map (fun (f, n) -> (f, n.Type)) fieldDeps)                                  
-      createNode (nextSymbol name) (TyRecord (fieldTypes, "")) uids
+      createNode (nextSymbol name) (TyRecord fieldTypes) uids
                  // At runtime, we need to find the operators corresponding to the parents
                  (fun uid prio parents ->
                     let parentOps = List.map (fun (f, n) ->

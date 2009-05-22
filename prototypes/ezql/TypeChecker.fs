@@ -16,7 +16,7 @@ type Type =
   | TySymbol
   | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
   | TyEntity of string
-  | TyRecord of Map<string, Type> * string (* string is an alias *)
+  | TyRecord of Map<string, Type>
   | TyStream of Type
   | TyWindow of Type * WindowType
   | TyDict of Type
@@ -55,7 +55,7 @@ let rec types (env:TypeContext) = function
                  env
   | Entity (Identifier name, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with
-      | TyStream (TyRecord (fields, alias)) ->
+      | TyStream (TyRecord fields) ->
           let members1 =
             List.fold (fun (acc:TypeContext) assoc -> 
                          match assoc with
@@ -68,7 +68,7 @@ let rec types (env:TypeContext) = function
                       (fields) assocs
                                   
           let members2 = List.fold (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr)) ->
-                                      let selfType = TyRecord (acc, "")
+                                      let selfType = TyRecord acc
                                       Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
                                    members1 members
                                    
@@ -87,12 +87,12 @@ and typeOf env expr =
                         match f with
                         | SymbolExpr (Symbol name) -> (name, TyInt)
                         | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
-      TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields'), ""))
+      TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
   | FuncCall (Id (Identifier "when"), [source; Lambda ([Identifier ev], handler)]) ->
       match typeOf env source with
       | TyStream _ -> ()
       | _ -> failwithf "The source of the when doesn't reduce to a stream"
-      let evType = TyRecord (Map.of_list ["timestamp", TyInt; "value", TyInt], "")
+      let evType = TyRecord (Map.of_list ["timestamp", TyInt; "value", TyInt])
       typeOf (env.Add(ev, evType)) handler |> ignore
       TyUnit
   | FuncCall (Id (Identifier "print"), [expr]) ->
@@ -105,7 +105,7 @@ and typeOf env expr =
                        | other -> other
                        
       match targetType with
-      | TyRecord (fields, _) ->
+      | TyRecord fields ->
           match Map.tryFind name fields with
           | Some t -> t
           | None -> failwithf "The record doesn't have field '%s'" name
@@ -115,7 +115,7 @@ and typeOf env expr =
           | Some t -> t
           | None -> failwithf "The entity doesn't have field '%s'" name
       | TyType (fields, _) -> match name with
-                              | "all" -> TyDict (TyRecord (fields, ""))
+                              | "all" -> TyDict (TyRecord fields)
                               | _ -> failwithf "The type %A does not have field '%s'" targetType name
       | _ -> failwithf "The target type %A doesn't have any fields." targetType
   | BinaryExpr (oper, expr1, expr2) ->
@@ -126,10 +126,10 @@ and typeOf env expr =
       let fields = Map.of_list [ for (Symbol name, expr) in fields -> (name, typeOf env expr) ]
       match matchingEntity fields env with
       | Some entity -> TyEntity entity
-      | _ -> TyRecord (fields, "")
+      | _ -> TyRecord fields
   | RecordWith (source, newFields) ->
       match typeOf env source with
-      | TyRecord (fields, alias) -> TyRecord (List.fold (fun fields (Symbol name, expr) -> fields.Add(name, typeOf env expr)) fields newFields, "")
+      | TyRecord fields -> TyRecord (List.fold (fun fields (Symbol name, expr) -> fields.Add(name, typeOf env expr)) fields newFields)
       | _ -> failwith "Source is not a record!"
   | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
   | If (cond, thn, els) ->
@@ -156,7 +156,7 @@ and typeOf env expr =
 and typeOfMethodCall env target name paramExps =
   let targetType = typeOf env target
   match targetType with
-  | TyStream (TyRecord (fields, alias) as evType) ->
+  | TyStream (TyRecord fields as evType) ->
       match name with
       | "last" | "sum" | "count" ->
           match paramExps with
@@ -173,7 +173,7 @@ and typeOfMethodCall env target name paramExps =
           match paramExps with
           | [Lambda ([Identifier ev], expr)] -> 
               match typeOf (env.Add(ev, evType)) expr with
-              | TyRecord (projFields, alias) as outEvType -> TyStream outEvType
+              | TyRecord projFields as outEvType -> TyStream outEvType
               | _ -> failwithf "The projector of the select doesn't return a record!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps        
       | "[]" ->
@@ -186,7 +186,7 @@ and typeOfMethodCall env target name paramExps =
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   // Event Windows
-  | TyWindow (TyStream (TyRecord (fields, alias) as evType), TimedWindow _) ->
+  | TyWindow (TyStream (TyRecord fields as evType), TimedWindow _) ->
       match name with
       | "last" | "sum" | "count" ->
           match paramExps with
@@ -238,7 +238,7 @@ and typeOfMethodCall env target name paramExps =
                 | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "updated" -> match paramExps with
-                     | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt], ""))
+                     | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | _ -> failwithf "The type %A does not have method %A!" targetType name
