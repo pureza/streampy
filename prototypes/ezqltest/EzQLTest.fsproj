@@ -34,9 +34,10 @@
     <StartWorkingDirectory>C:\streampy\prototypes\ezqltest\</StartWorkingDirectory>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="FSharp.PowerPack, Version=1.9.6.2, Culture=neutral, PublicKeyToken=a19089b1c74d0809">
+    <Reference Include="FSharp.PowerPack, Version=1.9.6.16, Culture=neutral, PublicKeyToken=a19089b1c74d0809">
       <Name>FSharp.PowerPack</Name>
       <AssemblyName>FSharp.PowerPack.dll</AssemblyName>
+      <SpecificVersion>False</SpecificVersion>
     </Reference>
     <Reference Include="Microsoft.GLEE, Version=1.2.0.0, Culture=neutral, PublicKeyToken=7f84f738e1fc245c">
       <Name>Microsoft.GLEE</Name>
@@ -54,18 +55,6 @@
       <Name>Microsoft.Glee.GraphViewerGDI</Name>
       <AssemblyName>Microsoft.GLEE.GraphViewerGDI.dll</AssemblyName>
       <HintPath>..\ezql\lib\Microsoft.GLEE.GraphViewerGDI.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="QuickGraph, Version=3.2.40228.0, Culture=neutral, PublicKeyToken=f3fb40175eec2af3">
-      <Name>QuickGraph</Name>
-      <AssemblyName>QuickGraph.dll</AssemblyName>
-      <HintPath>..\ezql\lib\QuickGraph.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
-    <Reference Include="QuickGraph.Glee, Version=3.2.40228.0, Culture=neutral, PublicKeyToken=f3fb40175eec2af3">
-      <Name>QuickGraph.Glee</Name>
-      <AssemblyName>QuickGraph.Glee.dll</AssemblyName>
-      <HintPath>..\ezql\lib\QuickGraph.Glee.dll</HintPath>
       <Private>True</Private>
     </Reference>
     <Reference Include="System" />
@@ -90,7 +79,7 @@
   <ItemGroup>
     <ProjectReference Include="..\ezql\ezql.fsproj">
       <Name>ezql</Name>
-      <Project>{d1e5d2c4-42fa-496d-82e7-e5baf0c32b81}</Project>
+      <Project>{af03cfcd-93b4-4c4d-b19b-e769a7873e9f}</Project>
       <Private>True</Private>
     </ProjectReference>
   </ItemGroup>

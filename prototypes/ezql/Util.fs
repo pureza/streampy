@@ -21,7 +21,7 @@ let getOperEnv op = Map.of_list [ for p in op.Parents do
                                     if p <> op.Parents.[0]
                                       then yield (p.Uid, p) ]
 
-let getOperEnvValues = getOperEnv >> Map.mapi (fun k v -> v.Value)
+let getOperEnvValues = getOperEnv >> Map.map (fun k v -> v.Value)
 
 
 let recordToEvent record = Map.fold_left (fun acc k v ->
@@ -29,10 +29,12 @@ let recordToEvent record = Map.fold_left (fun acc k v ->
                                             | VString k' -> Map.add k' !v acc
                                             | _ -> failwithf "Can't happen! %A" k)
                                          Map.empty record
-                                         
+                                             
                                          
 let retry fn rescue =
     try
       fn ()
     with
       | err -> rescue err
+      
+let entityDict entity = sprintf "$%s_all" entity

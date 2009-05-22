@@ -1,6 +1,4 @@
 {
-#light
-
 open System
 open System.Collections
 open Parser
@@ -15,7 +13,7 @@ let ids = Map.of_list ["min",        MIN
                        "or",         OR
                        "if",         IF
                        "then",       THEN
-                       "else",	     ELSE
+                       "else",       ELSE
                        "entity",     ENTITY
                        "createFrom", CREATE_FROM
                        "belongsTo",  BELONGS_TO

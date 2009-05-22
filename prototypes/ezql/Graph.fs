@@ -16,19 +16,19 @@ module private Util =
     open InternalTypes
 
     let (|EmptySet|ConsSet|) (s:Set<'a>) =
-      if Set.is_empty s
+      if Set.isEmpty s
         then EmptySet
-        else let any = Set.choose s
+        else let any = s.MinimumElement
              let s' = Set.remove any s
              ConsSet (any, s')
 
     let (|ExtractPair|_|) key (m:Map<'k, 'v>) =
-      match Map.tryfind key m with
+      match Map.tryFind key m with
       | None -> None
       | Some v -> Some ((key, v), Map.remove key m)
 
     let (|ExtractAnyPair|_|) (m:Map<'k, 'v>) =
-      match Map.first (fun k v -> Some (k, v)) m with
+      match Map.tryPick (fun k v -> Some (k, v)) m with
       | None -> None
       | Some (k, v) -> Some ((k, v), Map.remove k m)
 
@@ -42,7 +42,7 @@ module private Util =
       match adj with
       | EmptySet -> gr
       | ConsSet (v, s') ->
-          if Map.mem v gr
+          if Map.contains v gr
             then updAdj s' fn (Map.add v (fn gr.[v]) gr)
             else failwithf "Map doesn't contain %A" v
 

@@ -1,6 +1,4 @@
-﻿#light
-
-(*
+﻿(*
 let parse code =
     // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
     let lexbuf = Lexing.from_string code

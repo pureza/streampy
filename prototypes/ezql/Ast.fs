@@ -1,5 +1,3 @@
-#light
-
 type prog =
   | Expr of expr
   | Def of id * expr

@@ -1,6 +1,4 @@
-﻿#light
-
-open System
+﻿open System
 open System.Reflection
 open System.Collections.Generic
 open System.IO
@@ -79,17 +77,17 @@ let addSinkTo op action =
 (* A Test *)
 
 let list2Map list merge =
-  List.fold_left (fun acc (k, v) -> 
-                    let v' = if Map.mem k acc then merge v acc.[k] else [v]
-                    Map.add k v' acc)
-                 Map.empty list
+  List.fold (fun acc (k, v) -> 
+               let v' = if Map.contains k acc then merge v acc.[k] else [v]
+               Map.add k v' acc)
+            Map.empty list
 
 type Test =
   { code:string; env:Map<string, Operator>; allFacts:List<FactMap ref> }
   member self.AssertThat((entity:string, facts)) =
     let timeToFact = ref (list2Map facts (fun a b -> a::b))
     self.allFacts.Add(timeToFact)
-    let operOpt = Map.tryfind entity self.env
+    let operOpt = Map.tryFind entity self.env
     match operOpt with
     | Some oper ->
         addSinkTo oper
@@ -97,7 +95,7 @@ type Test =
             | changes::_ ->
                 //printfn "changes = %A" changes
                 let now = Engine.now()
-                let facts = Map.tryfind now (!timeToFact)
+                let facts = Map.tryFind now (!timeToFact)
                 match facts with
                 | Some facts' ->
                     if facts'.Length <> changes.Length
@@ -105,16 +103,16 @@ type Test =
                                      entity now.TotalSeconds changes facts'
                     for fact' in facts' do
                       match fact' with
-                      | Diff fact'' -> if not (List.mem fact'' changes)
+                      | Diff fact'' -> if not (List.contains fact'' changes)
                                          then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
                                                         entity now.TotalSeconds changes facts'
                       | ValueAtKey (k, v) ->
                           match oper.Value with
                           | VDict dict ->
-                              if dict.ContainsKey(k)
-                                then let v' = dict.[k]
+                              if Map.contains k !dict
+                                then let v' = (!dict).[k]
                                      if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %O\n\t Expected: %O\n"
-                                                               entity now.TotalSeconds k dict.[k] v
+                                                               entity now.TotalSeconds k (!dict).[k] v
                                 else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
                                                entity now.TotalSeconds k
                           | _ -> failwithf "The entity '%s' is not a dictionary!" entity
@@ -128,7 +126,7 @@ type Test =
 let init code inputs =
   let env = Engine.compile code
   for inputStream, events in inputs do
-    match Map.tryfind inputStream env with
+    match Map.tryFind inputStream env with
     | Some op -> CSVAdapter.FromString(op, events) |> ignore
     | _ -> failwithf "Cannot find the input stream '%s'" inputStream
   { code = code; env = env; allFacts = List<FactMap ref>() }
@@ -139,15 +137,15 @@ let testsLeft test =
 (* TestCases *)
 
 let parseTestFile fileName =
-    let code, inputs = Array.fold_left (fun (c, i) (n:string) -> 
-                                            if n.StartsWith("#!") 
-                                                then (c, (n.Split([|' '|]).[1], "")::i)
-                                                else if not (List.is_empty i)
-                                                         then let hd = i.Head
-                                                              (c, (fst hd, (snd hd) + n + "\n")::i.Tail)
-                                                         else (c + n + "\r\n", i))
-                                       ("", [])
-                                       (File.ReadAllLines(fileName))
+    let code, inputs = Array.fold (fun (c, i) (n:string) -> 
+                                     if n.StartsWith("#!") 
+                                         then (c, (n.Split([|' '|]).[1], "")::i)
+                                         else if not (List.isEmpty i)
+                                                  then let hd = i.Head
+                                                       (c, (fst hd, (snd hd) + n + "\n")::i.Tail)
+                                                  else (c + n + "\r\n", i))
+                                ("", [])
+                                (File.ReadAllLines(fileName))
     code, inputs
 
 type TestCaseAttribute(srcFile:string) =
@@ -179,14 +177,14 @@ let runTests (testMethods:MethodInfo list) =
     let test = attr.CreateTest()
     let testName = testMethod.Name
     printfn "- Testing %s\n" testName
-    try
-      testMethod.Invoke(null, [|box test|]) |> ignore
-      Engine.mainLoop ()
-      let left = testsLeft test
-      if left.IsEmpty
-        then printfn "\t\t\t\t\t\t\t\tPass"
-        else printfn "| Tests left in test '%s'\n%A\n\n" testName left
-    with
-      | err -> printfn "Exception:\n %A\n\n" err
+   // try
+    testMethod.Invoke(null, [|box test|]) |> ignore
+    Engine.mainLoop ()
+    let left = testsLeft test
+    if left.IsEmpty
+      then printfn "\t\t\t\t\t\t\t\tPass"
+      else printfn "| Tests left in test '%s'\n%A\n\n" testName left
+  //  with
+    //  | err -> printfn "Exception:\n %A\n\n" err
 
     Engine.reset ()

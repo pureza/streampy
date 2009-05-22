@@ -46,15 +46,15 @@ type Operator =
     Priority: Priority.priority
     Uid: uid }
 
-  member self.ArgCount with get = self.Parents.Count
+  member self.ArgCount with get() = self.Parents.Count
   member self.Value
-    with get = !self.Contents
+    with get() = !self.Contents
     and set(v) = self.Contents := v
 
   override self.ToString() = sprintf "{ %s, child = %d }" self.Uid self.Children.Count
 
   interface IComparable with
-    member self.CompareTo(other) = Int32.compare (self.GetHashCode()) (other.GetHashCode())
+    member self.CompareTo(other) = Operators.compare (self.GetHashCode()) (other.GetHashCode())
 
   (* Creates an operator and connects it to its parents *)
   static member Build(uid, prio, eval, parents, ?children, ?contents) =
@@ -81,7 +81,7 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
       with get(field) =
         if field = "timestamp"
           then VInt (self.Timestamp.TotalSeconds)
-          else match Map.tryfind field fields with
+          else match Map.tryFind field fields with
                | Some result -> result
                | None -> failwithf "This event does not contain the field '%s'" field
 
@@ -93,7 +93,7 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
     
     override self.ToString() =
        "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
-            (List.reduce_right (+) [ for pair in fields -> sprintf " %s: %O " pair.Key pair.Value ])
+            (List.reduceBack (+) [ for pair in fields -> sprintf " %s: %O " pair.Key pair.Value ])
              + "}"
 
 and context = Map<string, value>
@@ -103,9 +103,10 @@ and value =
     | VInt of int
     | VString of string
     | VRecord of Map<value, value ref>
-    | VDict of Dictionary<value, value>
+    | VDict of Map<value, value> ref
     | VClosure of context * expr
     | VEvent of Event
+    | VRef of value
     | VNull
 
     override self.ToString() =
@@ -116,7 +117,7 @@ and value =
               | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k (!v))) "" m))
               | VDict m -> 
                   let s = Text.StringBuilder ()
-                  for pair in m do
+                  for pair in !m do
                     s.Append(sprintf " :%O = %O,\n " pair.Key pair.Value) |> ignore
                   if s.Length > 0
                     then s.Remove(0, 1) |> ignore
@@ -124,6 +125,7 @@ and value =
                   sprintf "{ %O }" s
               | VClosure _ -> "..lambda.."
               | VEvent ev -> ev.ToString()
+              | VRef value -> sprintf "@%O" value
               | VNull -> "VNull"
       s
 

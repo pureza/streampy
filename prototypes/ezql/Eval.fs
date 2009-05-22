@@ -23,7 +23,7 @@ let rec eval env = function
       let tv = eval env target
       let iv = eval env index
       match tv with
-      | VDict dict -> if dict.ContainsKey(iv) then dict.[iv] else failwithf "Dictionary doesn't contain key %A. env = %A" iv env
+      | VDict dict -> if Map.contains iv !dict then (!dict).[iv] else failwithf "Dictionary doesn't contain key %A. env = %A" iv env
       | _ -> failwithf "[]: Not a dictionary"
   | Record fields ->
       // This is extremely ineficient - we should create a node if possible
@@ -31,7 +31,7 @@ let rec eval env = function
                       |> Map.of_list)
   | RecordWith (source, newFields) ->
       match eval env source with
-      | VRecord fields -> VRecord (List.fold_left (fun fields (Symbol (name), expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
+      | VRecord fields -> VRecord (List.fold (fun fields (Symbol (name), expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
       | other -> failwithf "RecordWith: the source is not a record: %A" other
   | Lambda (args, body) as fn -> VClosure (env, fn)
   | Let (Identifier name, binder, body) ->
@@ -49,7 +49,7 @@ let rec eval env = function
       eval env expr1 |> ignore
       eval env expr2
   | Id (Identifier name) ->
-      match Map.tryfind name env with
+      match Map.tryFind name env with
       | Some v -> v
       | _ -> failwithf "eval: Unknown variable or identifier: %s" name
   | Integer v -> VInt v
@@ -72,8 +72,8 @@ and apply = function
       | Lambda (ids, body) ->
           (fun args ->
               let ids' = List.map (fun (Identifier name) -> name) ids
-              let env' = List.fold_left (fun e (n, v) -> Map.add n v e)
-                                         env (List.zip ids' args)
+              let env' = List.fold (fun e (n, v) -> Map.add n v e)
+                                   env (List.zip ids' args)
               eval env' body)
       | _ -> failwith "evalClosure: Wrong type"
   | _ -> failwith "This is not a closure"

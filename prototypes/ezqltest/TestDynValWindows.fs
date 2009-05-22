@@ -1,8 +1,4 @@
-﻿#light
-
-#light
-
-open Test
+﻿open Test
 
 [<TestCase ("dynValWindows/create_window.ez")>]
 let test_windowsCreation (test:Test) =

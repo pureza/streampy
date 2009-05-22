@@ -23,19 +23,19 @@ let connect (parent:Operator) (child:Operator) fn =
 // Joins two evaluation stacks and sorts them by node priority
 let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
     let list2Map list initial merge =
-      List.fold_left (fun acc (k, v) -> 
-                        let v' = if Map.mem k acc then merge v acc.[k] else v
-                        Map.add k v' acc)
-                     initial list
+      List.fold (fun acc (k, v) -> 
+                   let v' = if Map.contains k acc then merge v acc.[k] else v
+                   Map.add k v' acc)
+                initial list
 
-    let sortWithOrder = Map.to_list >> List.sort_by (fun (op, _) -> op.Priority)
+    let sortWithOrder = Map.to_list >> List.sortBy (fun (op, _) -> op.Priority)
 
     let stackMap = Map.of_list stack
     let merged = list2Map toMerge stackMap
                           (fun n o -> let o' = Map.of_list o
                                       list2Map n o' (@)
                                         |> Map.to_list
-                                        |> List.sort_by fst)
+                                        |> List.sortBy fst)
     
     merged |> sortWithOrder
     
@@ -44,7 +44,7 @@ let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
  *)
 let rec spread (stack:EvalStack) =
     let rec fillLeftArgs (op:Operator) inputs idx : changes list =
-        match (List.sort_by fst inputs) with
+        match (List.sortBy fst inputs) with
         | (next, changes)::xs -> // If there were no changes for input idx, cons []
                                  if idx < next
                                    then []::(fillLeftArgs op inputs (idx + 1))

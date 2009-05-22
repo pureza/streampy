@@ -1,6 +1,4 @@
-﻿#light
-
-open System
+﻿open System
 open Ast
 open Graph
 open Dataflow

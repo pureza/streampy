@@ -130,3 +130,30 @@ let makeToStream uid prio parents =
                Some (op.Children, [Added (VEvent ev)])
 
   Operator.Build(uid, prio, eval, parents)
+
+
+let makeRef getId uid prio (parents:Operator list) =
+  let objOper = List.hd parents
+  Operator.Build(uid, prio, 
+                 (fun op inputs ->
+                    let objValue = objOper.Value
+                    let id = VRef (getId objValue)
+                    setValueAndGetChanges op id),
+                 parents)
+
+let makeRefProjector field uid prio (parents:Operator list) =
+  let ref = parents.[0]
+  let entityDict = match parents.[1].Value with
+                   | VDict d -> d
+                   | _ -> failwithf "The projector must be connected with the entity's dictionary."
+  
+  Operator.Build(uid, prio, 
+                 (fun op inputs ->
+                    if ref.Value <> VNull
+                      then let (VRef refValue) = ref.Value
+                           let refObject = (!entityDict).[refValue]
+                           match refObject with
+                           | VRecord r -> setValueAndGetChanges op !r.[VString field]
+                           | _ -> failwithf "The referenced object is not an object!"
+                      else None),
+                 parents)

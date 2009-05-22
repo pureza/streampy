@@ -3,6 +3,7 @@
 open Ast
 open TypeChecker
 open Extensions
+open Util
 
 (*
  * Replaces the given expression with another.
@@ -98,8 +99,6 @@ and delayWindowsExpr varExprs types expr =
   | _ -> expr
 
 
-let entityDict entity = sprintf "$%s_all" entity
-
 (*
  * Rewrites entity declarations into groupby operations.
  * 
@@ -124,7 +123,7 @@ let entityDict entity = sprintf "$%s_all" entity
  *                                             let room = Room.all[room_id] in
  *                                             { :product_id  = g.last(:product_id),
  *                                               :room_id     = room_id,
- *                                               :room        = room,
+ *                                               :room        = $ref(room),
  *                                               :temperature = room.temperature })
  *
  * (The "let's" are shown here only to improve readability, they are not
@@ -137,33 +136,36 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
   | Expr expr -> entities, Expr (transDictAll entities expr)
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) as expr ->
       let streamFields = match typeOf types source with
-                         | TyStream (TyRecord f) -> f
+                         | TyStream (TyRecord (f, alias)) -> f
                          | _ -> failwith "can't happen!"
       // Translate the fields inherited from the stream                         
       let streamFields = Map.of_list [ for pair in streamFields ->
                                          (Symbol pair.Key, MethodCall (Id (Identifier "g"), Identifier "last",
                                                                       [SymbolExpr (Symbol pair.Key)]))]
       // Translate associations                                                                
-      let assocFields = List.fold_left (fun (acc:Map<symbol, expr>) assoc ->
-                                        match assoc with
-                                        | BelongsTo (Symbol entity) -> 
-                                            let entityIdExpr = acc.[Symbol (entity + "_id")]
-                                            let fieldExpr = ArrayIndex (Id (Identifier (entityDict (String.capitalize entity))), entityIdExpr)
-                                            acc.Add(Symbol entity, fieldExpr)
-                                        | HasMany (Symbol entity) ->
-                                            let entityName = String.capitalize entity |> String.singular
-                                            let entityId = String.lowercase (name + "_id")
-                                            let x = Identifier "x"
-                                            let filter = Lambda ([x], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), acc.[Symbol entityId]))
-                                            let fieldExpr = MethodCall (Id (Identifier (entityDict entityName)), Identifier "where", [filter])
-                                            acc.Add(Symbol entity, fieldExpr))
-                                      streamFields assocs
+      let assocFields = List.fold (fun (acc:Map<symbol, expr>) assoc ->
+                                     match assoc with
+                                     | BelongsTo (Symbol entity) -> 
+                                         let entityIdExpr = acc.[Symbol (entity + "_id")]
+                                         let indexEntity = ArrayIndex (Id (Identifier (entityDict (String.capitalize entity))), entityIdExpr)
+                                         let fieldExpr = FuncCall(Id (Identifier "$ref"), [indexEntity])
+                                         acc.Add(Symbol entity, fieldExpr)
+                                     | HasMany (Symbol entity) ->
+                                         let entityName = String.capitalize entity |> String.singular
+                                         let entityId = (name + "_id").ToLower()
+                                         let x = Identifier "x"
+                                         let filter = Lambda ([x], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), acc.[Symbol entityId]))
+                                         let whereExpr = MethodCall (Id (Identifier (entityDict entityName)), Identifier "where", [filter])
+                                         let toRef = Lambda ([x], FuncCall (Id (Identifier "$ref"), [Id x]))
+                                         let selectRef = MethodCall (whereExpr, Identifier "select", [toRef])
+                                         acc.Add(Symbol entity, selectRef))
+                                   streamFields assocs
       // Translate additional member declarations.                                      
-      let allFields = List.fold_left (fun acc (Member (self, Identifier name, expr)) ->
-                                        let expr' = transDictAll entities expr
-                                        let expr'' = transSelf acc expr' name
-                                        acc.Add(Symbol name, expr''))
-                                      assocFields members
+      let allFields = List.fold (fun acc (Member (self, Identifier name, expr)) ->
+                                   let expr' = transDictAll entities expr
+                                   let expr'' = transSelf acc expr' name
+                                   acc.Add(Symbol name, expr''))
+                                 assocFields members
 
       let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
@@ -174,7 +176,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
 (* Replaces Entity.all with $Entity_all, everywhere *)
 and transDictAll entities expr =
   let rec replacer expr = match expr with
-                          | MemberAccess (Id (Identifier target), Identifier "all") when Set.mem target entities -> (Id (Identifier (entityDict target)))
+                          | MemberAccess (Id (Identifier target), Identifier "all") when Set.contains target entities -> (Id (Identifier (entityDict target)))
                           | _ -> visit expr replacer
   replacer expr
 
@@ -191,11 +193,11 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
   let rec replacer expr = match expr with
                           | RecordWith (Id (Identifier name), newFields) ->
                               match lookupExpr name varExprs with
-                              | Record fields -> Record (List.fold_left (fun fields (sym, expr) -> fields @ [sym, replacer expr]) fields newFields)
+                              | Record fields -> Record (List.fold (fun fields (sym, expr) -> fields @ [sym, replacer expr]) fields newFields)
                               | _ -> failwithf "RecordWith: The source is not a record!"
                           | RecordWith (source, newFields) ->
                               match replacer source with
-                              | Record fields -> Record (List.fold_left (fun fields (sym, expr) -> fields @ [sym, replacer expr]) fields newFields)
+                              | Record fields -> Record (List.fold (fun fields (sym, expr) -> fields @ [sym, replacer expr]) fields newFields)
                               | _ -> failwithf "RecordWith: The source is not a record!"
                           | _ -> visit expr replacer
 
@@ -209,22 +211,22 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
 
 let rewrite types ast =
   let _, stmts1 =
-    List.fold_left (fun (varExprs, stmts) stmt ->
-                      let varExprs', stmt' = delayWindows varExprs types stmt
-                      varExprs', stmts @ [stmt'])
-                   (Map.empty, []) ast
-                              
+    List.fold (fun (varExprs, stmts) stmt ->
+                 let varExprs', stmt' = delayWindows varExprs types stmt
+                 varExprs', stmts @ [stmt'])
+              (Map.empty, []) ast
+                        
   let _, stmts2 =
-    List.fold_left (fun (entities, stmts) stmt ->
-                      let entities, stmt' = transEntities entities types stmt
-                      entities, stmts @ [stmt'])
-                   (Set.empty, []) stmts1
+    List.fold (fun (entities, stmts) stmt ->
+                 let entities, stmt' = transEntities entities types stmt
+                 entities, stmts @ [stmt'])
+              (Set.empty, []) stmts1
 
   let _, stmts3 =
-    List.fold_left (fun (entities, stmts) stmt ->
-                      let entities, stmt' = transRecordWith entities stmt
-                      entities, stmts @ [stmt'])
-                   (Map.empty, []) stmts2
+    List.fold (fun (entities, stmts) stmt ->
+                 let entities, stmt' = transRecordWith entities stmt
+                 entities, stmts @ [stmt'])
+              (Map.empty, []) stmts2
                    
   stmts3
   
