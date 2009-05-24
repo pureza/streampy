@@ -1,0 +1,61 @@
+temp_readings = stream (:room_id, :temperature);;
+entries = stream(:room_id, :product_id);;
+
+entity Room =
+ createFrom(temp_readings, :room_id)
+ hasMany :products;;
+
+
+entity Product =
+ createFrom (entries, :product_id)
+ belongsTo :room;;
+
+ // member self.temperature = self.room.temperature;;
+
+
+//when (entries, ev -> print (Room.all[1]);
+//                     print (Room.all[1].products[1]);
+//                     print ("\n"));;
+
+
+
+//when (entries, ev -> print (Room.all[ev.room_id]));;
+/*
+
+products = Product.all.select (p -> let room = Room.all[p.room_id] in
+                                   { :product_id = p.product_id,
+                                     :room_id = p.room_id,
+                                     :room = { :room_id = room.room_id,
+                                               :temperature = room.temperature
+} });;
+
+when (entries, ev -> print (products));;
+
+*/
+
+// ISTO FALHA
+roomsPerProducts = Room.all.select (r -> r.products).select(p -> p.room_id);;
+
+//roomsPerProducts = Room.all.select (r -> r.products).select(p -> p.select (h -> h.room_id));;
+
+// Isto crasha
+//roomsPerProducts = Room.all.select (r -> Room.all);;
+
+// Testar isto: a index é um initialOp
+// roomsPerProducts = Room.all.select (r -> r.room_id).select (id -> Room.all[id]);;
+
+//when (temp_readings, ev -> print (roomsPerProducts));;
+
+//when (temp_readings, ev -> print ("--->"); print (Product.all.select(p -> p.product_id)));;
+
+// E ISTO TAMBÉM
+
+
+//roomsPerProducts = Room.all[1].products.select(p -> p.room_id);;
+//when (entries, ev -> print ("--->"); print (roomsPerProducts));;
+
+
+#! temp_readings
+Timestamp, room_id, temperature
+2,               1,      25
+

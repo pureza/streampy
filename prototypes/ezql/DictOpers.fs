@@ -58,7 +58,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
          | VDict dict -> dict
          | _ -> failwithf "Can't happen"   
        let env = getOperEnv op
-       //printfn "%A" changes.Head
+       //printfn "%s_head: %A" op.Uid changes.Head
        let parentChanges = initOnce changes.Head
        let predsToEval = 
          [ for chg in parentChanges do
@@ -242,6 +242,8 @@ let makeDictSelect projectorBuilder uid prio parents =
 
     let dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
                    (fun op changes ->
+                      //printfn "Antes %s: Value = %O Changes = %A" op.Uid op.Value changes
+                      //printfn "Parent = %s" op.Parents.[1].Uid
                       // changes.Head contains the dictionary changes passed to the select
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, projChanges = changes.Head, changes.Tail
@@ -261,11 +263,11 @@ let makeDictSelect projectorBuilder uid prio parents =
                             match change with
                             | [] -> ()
                             | [DictDiff (key, _)] -> 
-                                if not (Set.contains key keys1')
+                                if (not (Set.contains key keys1')) && (Map.contains key (!results))
                                   then results := (!results).Add(key, (subGroupResultOp key projectors).Value)
                                        yield DictDiff (key, [Added (!results).[key]])
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
-                 
+                      //printfn "Depois %s: Value = %O" op.Uid op.Value
                       spreadUnlessEmpty op (changes1 @ changes2)),                      
                    [], contents = VDict results)
     

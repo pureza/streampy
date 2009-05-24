@@ -39,4 +39,4 @@ let test_entitiesMisc (test:Test) =
 
 
 [<TestCase ("entities/misc2.ez")>]
-let test_entitiesMisc2 (test:Test) = ()
+let test_entitiesMisc2 (test:Test) = () 

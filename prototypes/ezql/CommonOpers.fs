@@ -113,12 +113,14 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
                                                      [RecordDiff (VString field, changes)]
                                           | _ -> [])
                           |> List.concat
+                      printfn "Record value = %O changes = %A" oper.Value recordChanges
                       Some (oper.Children, recordChanges)),
                    parents, contents = VRecord result)
 
   for field, op in fields do
     result.[VString field] := op.Value
 
+  printfn "A criar o record %O" recordOp.Value
   recordOp
 
 
@@ -205,9 +207,10 @@ let makeIndexer index uid prio (parents:Operator list) =
  * field and returns them.
  * If it receives an [Added record], it returns [Added record.field]
  *)
-let makeProjector field uid prio parents =
+let makeProjector field uid prio (parents:Operator list) =
   let fieldv = VString field
   let eval = fun (op:Operator) inputs ->
+               //printfn ">>> %s %A" op.Uid inputs
                let fieldChanges =
                  match List.hd inputs with
                  | [Added (VRecord record)] -> Some [Added !record.[fieldv]]
@@ -215,10 +218,15 @@ let makeProjector field uid prio parents =
                                               | RecordDiff (field', chg) when fieldv = field' -> Some chg
                                               | _ -> None)
                                            changes
+               let (VRecord record) = op.Parents.[0].Value
+               let newValue = !(record.[fieldv])
                match fieldChanges with
-               | Some changes -> let (VRecord record) = op.Parents.[0].Value
-                                 op.Value <- !(record.[fieldv])
+               | Some changes -> op.Value <- newValue
                                  Some (op.Children, changes)
-               | None -> None
+               | None -> None (*if op.Value <> newValue
+                           then op.Value <- newValue
+                                Some (op.Children, [Added newValue])
+                           else None *)
 
+  printfn "A criar o projector. Pai = %O" parents.[0].Value
   Operator.Build(uid, prio, eval, parents)
