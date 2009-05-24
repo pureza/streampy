@@ -141,13 +141,7 @@ module Graph =
   let nodes graph = fold (fun acc (_, v, _, _) -> v::acc) [] graph
 
   module Algorithms =
-  (*
-    let rec dfs = function
-      | [], g -> []
-      | v::vs, g -> match g with
-                    | Extract v (ctx, g') -> v::(dfs ((suc v g)@vs, g'))
-                    | _ -> dfs (vs, g)
-*)
+
     type 'a Tree = { root:'a; forest:Tree<'a> list }
 
     let rec dfsWith next f roots graph =
@@ -167,19 +161,6 @@ module Graph =
         | { root = r; forest = f }::xs -> (postFlatten f)@r::(postFlatten xs)
       let tree, _ = dfsWith next fn roots graph
       postFlatten tree |> List.rev
-
-(*
-    let topSort roots graph =
-        let rec dfsPostOrder = function
-          | [], g -> ([], g)
-          | v::vs, g -> match g with
-                        | Extract v (ctx, g') -> let v1, g1 = dfsPostOrder ((suc v g), g')
-                                                 let v2, g2 = dfsPostOrder (vs, g1)
-                                                 v1@(v::v2), g2
-                        | _ -> dfsPostOrder (vs, g)
-
-        dfsPostOrder(roots, graph) |> fst |> List.rev
-*)
 
   module Viewer =
 

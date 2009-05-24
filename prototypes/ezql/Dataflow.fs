@@ -146,9 +146,17 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
   | ArrayIndex (target, index) ->
       match index with
       | Time (_, _) -> dataflowE env types graph (MethodCall (target, Identifier "[]", [index]))
-      | _ -> let depsTrg, g', target' = dataflowE env types graph target
-             let depsIdx, g'', index' = dataflowE env types g' index
-             Set.union depsTrg depsIdx, g'', ArrayIndex (target', index')
+      | _ -> let depsTrg, g1, target' = dataflowE env types graph target
+             let depsIdx, g2, index' = dataflowE env types g1 index
+             let deps = Set.union depsTrg depsIdx
+             match typeOf types target with
+             | TyDict (TyEntity entity) -> 
+                 let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"
+                 let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"
+                 let n, g5 = createNode (nextSymbol "[]") (TyEntity entity) [t; i]
+                                        (makeIndexer (Id (Identifier i.Uid))) g4
+                 Set.singleton n, g5, Id (Identifier n.Uid)
+             | _ -> deps, g2, ArrayIndex (target', index')
   | FuncCall (fn, paramExps) -> dataflowFuncCall env types graph fn paramExps expr
   | MemberAccess (target, (Identifier name)) ->
       let deps, g1, target' = dataflowE env types graph target
@@ -156,10 +164,16 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       | TyRef (TyEntity entityType) ->
           // If it's a reference, create a special projector
           let entityDict = env.[entityDict entityType]
-          let ref, g2 = makeFinalNode env types g1 target' deps "eval"
+          let ref, g2 = makeFinalNode env types g1 target' deps "target->xxx"
           let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)
+      | TyEntity entity ->
+          let (TyType (fields, _)) = types.[entity]
+          let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
+          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
+                                 (makeProjector name) g2
+          Set.singleton n, g3, Id (Identifier n.Uid) 
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
   | Record fields ->
       let deps, g', exprs, unknown =
@@ -175,9 +189,10 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
         else deps, g', Record exprs
   | Let (Identifier name, binder, body) ->
       let deps1, g1, binder' = dataflowE env types graph binder
-      let env' = env.Add(name, NodeInfo.AsUnknown(name))                                      // FIXME: Create a final node for deps1 and use it?
-      let deps2, g2, body' = dataflowE env' types g1 body
-      Set.union deps1 deps2, g2, Let (Identifier name, binder', body')
+      let n, g2 = makeFinalNode env types g1 binder' deps1 name
+      let env', types' = env.Add(name, n), types.Add(name, n.Type)
+      let deps2, g3, body' = dataflowE env' types' g2 body
+      Set.add n deps2, g3, Let (Identifier name, Id (Identifier n.Uid), body')
   | If (cond, thn, els) ->
       let deps1, g1, cond' = dataflowE env types graph cond
       let deps2, g2, thn' = dataflowE env types g1 thn

@@ -37,45 +37,49 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
     // Connects the resulting node to the dictionary operator.
     // The diff is converted into a DictDiff before being passed to the child.
     connect final dictOp (fun changes -> [DictDiff (key, changes)])
-
-  let parentDict = match (List.hd parents).Value with
-                       | VDict dict -> dict
-                       | _ -> failwithf "Can't happen"   
-
+       
   let makeInit () =
-    let initialChanges = ref (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
-                                          (DictDiff (x.Key, [Added x.Value]))::acc)
-                                       [] (!parentDict))
-    fun changes -> let changes' = changes @ !initialChanges
-                   initialChanges := []
-                   changes'
+    match (parents.Head).Value with
+    | VDict dict -> let initialChanges = ref (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
+                                                         (DictDiff (x.Key, [Added x.Value]))::acc)
+                                                       [] (!dict))
+                    fun changes -> let changes' = changes @ !initialChanges
+                                   initialChanges := []
+                                   changes'
+    | _ -> id
+    
     
   let initOnce = makeInit ()
 
   Operator.Build(uid, prio,
     (fun op changes ->
-      let env = getOperEnv op
-      let parentChanges = initOnce changes.Head
-      let predsToEval = 
-        [ for chg in parentChanges do
-            match chg with
-            | DictDiff (key, diff) ->
-                if not (Map.contains key !subgroups) then buildSubGroup key env op
+       let parentDict =
+         match (parents.Head).Value with
+         | VDict dict -> dict
+         | _ -> failwithf "Can't happen"   
+       let env = getOperEnv op
+       //printfn "%A" changes.Head
+       let parentChanges = initOnce changes.Head
+       let predsToEval = 
+         [ for chg in parentChanges do
+             match chg with
+             | DictDiff (key, diff) ->
+                 if not (Map.contains key !subgroups) then buildSubGroup key env op
 
-                // The link between this operator and the group's circuit ignores everything
-                // that is not related to that group.
-                let link = (fun changes -> [ for diff in changes do
-                                               match diff with
-                                               | DictDiff (key', v) when key = key' -> yield! v
-                                               | _ -> () ])
-                let keyOp = subGroupStartOp key subgroups
-                // Manually set the value of the subgroup's initial operator
-                keyOp.Value <- (!parentDict).[key]
-                yield subGroupStartOp key subgroups, 0, link
-            | RemovedKey (key) -> ()
-            | chg -> failwithf "%s received invalid changes: %A" uid chg ]
+                 // The link between this operator and the group's circuit ignores everything
+                 // that is not related to that group.
+                 let link = (fun changes -> [ for diff in changes do
+                                                match diff with
+                                                | DictDiff (key', v) when key = key' -> yield! v
+                                                | _ -> () ])
+                 let keyOp = subGroupStartOp key subgroups
+                 // Manually set the value of the subgroup's initial operator
+                 keyOp.Value <- (!parentDict).[key]
+                 yield subGroupStartOp key subgroups, 0, link
+             | RemovedKey (key) -> ()
+             | chg -> printfn "%s received invalid changes: %A" uid chg ]
 
-      Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges)), parents)
+       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges)), parents)
 
      
 let makeGroupby field groupBuilder uid prio parents =

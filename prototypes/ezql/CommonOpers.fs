@@ -157,3 +157,68 @@ let makeRefProjector field uid prio (parents:Operator list) =
                            | _ -> failwithf "The referenced object is not an object!"
                       else None),
                  parents)
+
+ 
+(* Indexes a value in a dictionary 
+ * It has two parents: the dictionary and the index.
+ *
+ * When the dictionary changes but the index doesn't, it filters the changes to
+ * the particular index in the dictionary and returns them.
+ * When the index changes, it sets the new value and returns the change as a
+   [Added <new value>].
+ *)
+let makeIndexer index uid prio (parents:Operator list) =
+  let eval = fun (op:Operator) inputs ->
+               let env = getOperEnvValues op
+               let key = eval env index
+               let (VDict dict) = op.Parents.[0].Value
+               
+               match inputs with
+               | [x::xs as change; []] ->
+                   // The dictionary changed: filter only the changes to our key.
+                   let indexChanges = List.tryPick (function
+                                                      | DictDiff (key', chg) when key = key' -> Some chg
+                                                      | _ -> None)
+                                                   change
+                   match indexChanges with
+                   | Some changes -> op.Value <- (!dict).[key]
+                                     Some (op.Children, changes)
+                   | None -> None
+               | _ -> // The index changed: return [Added <new value>]
+                      if Map.contains key (!dict)
+                        then op.Value <- (!dict).[key]
+                             Some (op.Children, [Added op.Value])
+                        else None         
+            
+
+  Operator.Build(uid, prio, eval, parents)
+
+
+(* Projects a field out of a record 
+ * Has one parent: the record.
+ *
+ * This operator expects to kinds of changes:
+ * - RecordDiff (field, change): no explanation needed.
+ * - Added record: See the indexer above.
+ *
+ * If it receives [RecordDiff's], it filters the changes to some particular
+ * field and returns them.
+ * If it receives an [Added record], it returns [Added record.field]
+ *)
+let makeProjector field uid prio parents =
+  let fieldv = VString field
+  let eval = fun (op:Operator) inputs ->
+               let fieldChanges =
+                 match List.hd inputs with
+                 | [Added (VRecord record)] -> Some [Added !record.[fieldv]]
+                 | changes -> List.tryPick (function
+                                              | RecordDiff (field', chg) when fieldv = field' -> Some chg
+                                              | _ -> None)
+                                           changes
+               match fieldChanges with
+               | Some changes -> let (VRecord record) = op.Parents.[0].Value
+                                 op.Value <- !(record.[fieldv])
+                                 Some (op.Children, changes)
+               | None -> None
+
+  Operator.Build(uid, prio, eval, parents)

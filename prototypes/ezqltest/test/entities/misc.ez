@@ -4,7 +4,8 @@ entries = stream(:room_id, :product_id);;
 
 
 entity Room =
-  createFrom(temp_readings, :room_id);;
+  createFrom(temp_readings, :room_id)
+  hasMany :products;;
 
 
 entity Product =
@@ -13,8 +14,16 @@ entity Product =
   member x.temperature = x.room.temperature.sum();;
 
 
-x = when (entries, ev -> print (Product.all[ev.product_id].temperature));;
+//x = when (entries, ev -> print (Product.all[ev.product_id].temperature));;
 y = when (entries, ev -> print (Product.all[1].temperature.sum()));;
+
+products = Product.all.select (p -> let room = Room.all[p.room_id] in
+                                    { :product_id = p.product_id,
+                                      :temperature = p.temperature,
+                                      :room_id = p.room_id,
+                                      :room = { :room_id = room.room_id,
+                                                :temperature = room.temperature } });;
+
 
 
 #! hum_readings
