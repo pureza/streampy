@@ -44,6 +44,7 @@ type Operator =
     Parents: List<Operator>
     Contents: ref<value>
     Priority: Priority.priority
+    AllChanges: changes ref
     Uid: uid }
 
   member self.ArgCount with get() = self.Parents.Count
@@ -66,7 +67,8 @@ type Operator =
                       | None -> ref VNull
     let oper = { Uid = uid; Priority = prio; Eval = eval;
                  Parents = List<_>(Seq.of_list parents);
-                 Children = theChildren; Contents = theContents }
+                 Children = theChildren; Contents = theContents
+                 AllChanges = ref [] }
 
     List.iteri (fun i parent -> parent.Children.Add((oper, i, id))) parents
     oper
@@ -108,6 +110,11 @@ and value =
     | VEvent of Event
     | VRef of value
     | VNull
+    
+    member self.Clone() =
+      match self with
+      | VDict dict -> VDict (ref !dict)
+      | other -> other
 
     override self.ToString() =
       let s = match self with

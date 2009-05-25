@@ -17,9 +17,7 @@ let setValueAndGetChanges (op:Operator) v =
     else None
 
 
-let getOperEnv op = Map.of_list [ for p in op.Parents do
-                                    if p <> op.Parents.[0]
-                                      then yield (p.Uid, p) ]
+let getOperEnv op = Map.of_list [ for p in op.Parents -> (p.Uid, p) ]
 
 let getOperEnvValues = getOperEnv >> Map.map (fun k v -> v.Value)
 
@@ -38,3 +36,32 @@ let retry fn rescue =
       | err -> rescue err
       
 let entityDict entity = sprintf "$%s_all" entity
+
+let rec incorporateChanges changes value =
+  List.fold (fun value x -> incorporateChange x value) value changes
+
+and incorporateChange change value =
+   match change with
+   | Added v -> v
+   | Expired _ -> value
+   | RecordDiff (field, changes) ->
+       match value with
+       | VRecord record -> record.[field] := incorporateChanges changes !record.[field]
+                           value
+       | _ -> failwithf "%A is not a record!" value
+   | DictDiff (key, changes) ->
+       match value with
+       | VDict dict ->
+           let v' = if (!dict).ContainsKey(key)
+                      then incorporateChanges changes (!dict).[key]
+                      else incorporateChanges changes VNull
+           dict := Map.add key v' !dict
+           VDict dict
+       | _ -> failwithf "%A is not a dictionary!" value
+   | RemovedKey key ->
+       match value with
+       | VDict dict -> dict := Map.remove key !dict
+                       VDict dict
+       | _ -> failwithf "%A is not a dictionary!" value
+       
+let rebuildValue changes = incorporateChanges changes VNull

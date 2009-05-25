@@ -2,6 +2,7 @@
 
 open System
 open System.Text.RegularExpressions
+open Extensions
 open Ast
 open Util
 open Types
@@ -486,6 +487,23 @@ and removeNetwork root deps graph =
       List.fold (fun (deps, g) s -> removeNetwork s deps g) (deps', g') s
   | _ -> deps, graph
 
+(*
+and renameNetwork renamer root graph =
+  let rec rebuildGraph (trees:Graph.Algorithms.Tree<Graph.Context<string, NodeInfo>> list) graph =
+    List.fold (fun acc x -> addTree x acc) graph trees
+  and addTree tree graph =
+    let g' = rebuildGraph tree.forest graph
+    let (pred, n, info, s) = tree.root
+    
+    // Keep only the parents that kept their names
+    let pred' = List.filter (fun parent -> Graph.mem parent g') pred
+    let info' = { info with Uid = n; ParentUids = List.map (fun p -> if Graph.mem p g' then p else renamer p) info.ParentUids }
+    Graph.add (pred', n, info', s) g'
+    
+  let renamer' (p, n, info, s) = (p, renamer n, info, List.map renamer s)  
+  let tree, g' = Graph.Algorithms.dfsWith Graph.suc' renamer' [root] graph
+  rebuildGraph tree g'
+*)  
 
 (*
  * Handles stream.select()
@@ -544,6 +562,12 @@ and dataflowWhere env types graph target paramExps =
  * Iterate the graph and create the operators and the connections between them.
  *)
 and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators : Map<string, Operator> =
+  let spreadInitialChanges initialChanges =
+    for (op:Operator, changes) in initialChanges do
+      op.AllChanges := changes
+    let stack = List.fold (fun stack (op, changes) -> mergeStack stack (toEvalStack op.Children changes)) [] initialChanges
+    spread stack
+
   // GroupBy's should be visited first
   let next (_, _, _, s) = List.sortBy (fun (x:string) -> if x.StartsWith("groupBy") then 1 else 0) s 
   let order = Graph.Algorithms.topSort next Graph.node' roots graph
@@ -557,21 +581,23 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators 
                             (Map.empty, Priority.initial) order |> fst
 
   // Fold the graph with the right order, returning a map of all the operators
-  let operators' =
-    Graph.foldSeq (fun operators (pred, uid, info, succ) ->
+  let operators', initialChanges =
+    Graph.foldSeq (fun (operators, changes) (pred, uid, info, succ) ->
                      // If the operator already exists, skip it.
                      if Map.contains uid operators
-                       then operators
+                       then operators, changes
                        else //printfn "Vou criar o %s que tem como pais %A %A" uid info.ParentUids pred
                             let parents = List.map (fun uid -> match Map.tryFind uid operators with
                                                                | Some op -> op
                                                                | _ -> (!theRootOps).[uid])
                                                     info.ParentUids
                             let op = info.MakeOper uid (fixPrio orderPrio.[uid]) parents
+                            let changes' = if op.Value <> VNull then (op, [Added (op.Value.Clone())])::changes else changes
                             //printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
-                            Map.add uid op operators)
-                  operators graph order
+                            Map.add uid op operators, changes')
+                  (operators, []) graph order
+  spreadInitialChanges initialChanges
   if Map.isEmpty !theRootOps then theRootOps := operators'
-  operators'                  
+  operators'               
 
 and theRootOps : Map<string, Operator> ref = ref Map.empty

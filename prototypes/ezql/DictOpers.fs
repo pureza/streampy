@@ -75,9 +75,11 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
                  let keyOp = subGroupStartOp key subgroups
                  // Manually set the value of the subgroup's initial operator
                  keyOp.Value <- (!parentDict).[key]
+                 keyOp.AllChanges := [Added keyOp.Value]
                  yield subGroupStartOp key subgroups, 0, link
              | RemovedKey (key) -> ()
-             | chg -> printfn "%s received invalid changes: %A" uid chg ]
+             | Added (VDict dict) when (!dict).IsEmpty -> () // Received on parent initialization
+             | chg -> printfn "%A received invalid changes: %A" uid chg ]
 
        Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges)), parents)
 
@@ -139,12 +141,19 @@ let makeGroupby field groupBuilder uid prio parents =
                    (fun op changes ->
                       match changes with
                       | parentChanges::groupChanges -> 
-                          List.iteri (fun i chg ->
-                                        match chg with
-                                        | [] -> ()
-                                        | [DictDiff (key, _)] -> results := (!results).Add(key, op.Parents.[i + 1].Value)
-                                        | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
-                                     groupChanges
+                          let groupChanges' =
+                            List.mapi (fun i chg ->
+                                         match chg with
+                                         | [DictDiff (key, _)] ->
+                                             let added = not ((!results).ContainsKey(key))
+                                             let value = op.Parents.[i + 1].Value
+                                             results := (!results).Add(key, value)
+                                             // If the key was just added, return [Added <value>]. Otherwise just return the original change.
+                                             if added then [DictDiff (key, [Added value])] else chg
+                                         | [] -> []
+                                         | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
+                                      groupChanges
+
                           let allChanges =
                             (List.collect (fun chg ->
                                              match chg with
@@ -155,14 +164,15 @@ let makeGroupby field groupBuilder uid prio parents =
                                                  results := (!results).Add(key, op.Parents.[1].Value)
                                                  [DictDiff (key, [Added (!results).[key]])]
                                              | _ -> [])
-                                        parentChanges) @ (List.concat groupChanges)
+                                        parentChanges) @ (List.concat groupChanges')
                           spreadUnlessEmpty op allChanges
                       | _ -> failwith "Empty changes?"),
                    [groupOp], contents = VDict results)
 
     { groupOp with
         Children = dictOp.Children;
-        Contents = dictOp.Contents }
+        Contents = dictOp.Contents;
+        AllChanges = dictOp.AllChanges }
 
 
 (*
@@ -195,9 +205,12 @@ let makeDictWhere predicateBuilder uid prio parents =
                                        match change with
                                        | DictDiff (key, v) ->
                                            match (subGroupResultOp key predicates).Value, Map.contains key !results with
-                                           // Add/modify they key, wether we already contain it or not.
-                                           | VBool true, _ -> results := (!results).Add(key, parentDict.[key])
-                                                              yield key, change
+                                           // If we already have the key, modify it and yield the diff.
+                                           | VBool true, true -> results := (!results).Add(key, parentDict.[key])
+                                                                 yield key, change
+                                           // If we don't have the key, add it and yield an [Added ...] diff.
+                                           | VBool true, false -> results := (!results).Add(key, parentDict.[key])
+                                                                  yield key, DictDiff (key, [Added parentDict.[key]])
                                            // Remove the key if we contain it.
                                            | VBool false, true -> results := (!results).Remove(key)
                                                                   yield key, RemovedKey key
@@ -207,6 +220,7 @@ let makeDictWhere predicateBuilder uid prio parents =
                                              then results := (!results).Remove(key)
                                                   yield key, change
                                              else ()
+                                       | Added (VDict dict) when (!dict).IsEmpty -> () // Received on parent initialization
                                        | _ -> failwithf "Invalid change received in dict/where: %A" change ]
                       let keys1' = Set.of_list keys1
 
@@ -232,8 +246,9 @@ let makeDictWhere predicateBuilder uid prio parents =
     connect whereOp dictOp id
 
     { whereOp with
-        Children = dictOp.Children;
-        Contents = dictOp.Contents }
+        Children   = dictOp.Children;
+        Contents   = dictOp.Contents;
+        AllChanges = dictOp.AllChanges }
 
 
 let makeDictSelect projectorBuilder uid prio parents =
@@ -275,5 +290,6 @@ let makeDictSelect projectorBuilder uid prio parents =
     connect selectOp dictOp id
 
     { selectOp with
-        Children = dictOp.Children;
-        Contents = dictOp.Contents }
+        Children   = dictOp.Children;
+        Contents   = dictOp.Contents;
+        AllChanges = dictOp.AllChanges }

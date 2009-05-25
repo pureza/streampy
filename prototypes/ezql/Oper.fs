@@ -3,7 +3,9 @@
 open System
 open System.Collections.Generic
 open Microsoft.FSharp.Text.StructuredFormat
+open Extensions
 open Ast
+open Util
 open Types
 open Eval
 
@@ -38,6 +40,18 @@ let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
                                         |> List.sortBy fst)
     
     merged |> sortWithOrder
+
+
+let checkConsistency op changes =
+  op.AllChanges := !op.AllChanges @ changes
+  if op.Value <> VNull
+    then let rebuilt = rebuildValue !op.AllChanges
+         if op.Value <> rebuilt
+           then printfn "Operator %O doesn't meet the 'all changes must be seen' invariant.\n Value is %A\n Rebuild value gives %A\n Changes propagated: %A\n"
+                        op op.Value rebuilt !op.AllChanges 
+
+let toEvalStack children changes : EvalStack =
+  [ for child, idx, link in children -> (child, [(idx, (link changes))]) ]
     
 (*
  * This is where any change is propagated throughout the graph.
@@ -60,14 +74,12 @@ let rec spread (stack:EvalStack) =
     | [] -> ()
     | (op, parentChanges)::xs ->
         //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
+        //printfn "    Changes = %A\n" parentChanges
         let filledChanges = fillLeftArgs op parentChanges 0
-        let wathever = op.Eval op filledChanges
-        //printfn "    Value = %O" op.Value
-        //printfn "    Changes = %A" parentChanges
-        //printfn "%A" (List.map (fun (o, chgs) -> (o.Uid, chgs)) stack)
-        
-        match wathever with
-        | Some (children, changes) -> spread (mergeStack xs [ for child, idx, link in children -> (child, [(idx, (link changes))]) ])
+        match op.Eval op filledChanges with
+        | Some (children, changes) -> 
+            checkConsistency op changes
+            spread (mergeStack xs (toEvalStack children changes))
         | _ -> spread xs
 
 

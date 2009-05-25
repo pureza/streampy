@@ -86,7 +86,7 @@ let makeDynValWindow duration uid prio parents =
 (* Evaluator: this operator evaluates some expression and records its result *)
 let makeEvaluator expr uid prio parents =
   let operEval = fun oper allChanges ->
-                   let env = Map.of_list [ for p in oper.Parents -> (p.Uid, p.Value) ]
+                   let env = getOperEnvValues oper
                    let result = eval env expr
                    setValueAndGetChanges oper result
 
@@ -113,14 +113,14 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
                                                      [RecordDiff (VString field, changes)]
                                           | _ -> [])
                           |> List.concat
-                      printfn "Record value = %O changes = %A" oper.Value recordChanges
+                      //printfn "Record value = %O changes = %A" oper.Value recordChanges
                       Some (oper.Children, recordChanges)),
                    parents, contents = VRecord result)
 
   for field, op in fields do
     result.[VString field] := op.Value
 
-  printfn "A criar o record %O" recordOp.Value
+  //printfn "A criar o record %O" recordOp.Value
   recordOp
 
 
@@ -228,5 +228,5 @@ let makeProjector field uid prio (parents:Operator list) =
                                 Some (op.Children, [Added newValue])
                            else None *)
 
-  printfn "A criar o projector. Pai = %O" parents.[0].Value
+  //printfn "A criar o projector. Pai = %O" parents.[0].Value
   Operator.Build(uid, prio, eval, parents)

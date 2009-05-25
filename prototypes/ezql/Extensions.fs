@@ -6,6 +6,12 @@
         static member FromSeconds sec  = DateTime.MinValue.AddSeconds(float(sec))
 
 module Map =
+  let appendToList key value map =
+    let v' = if Map.contains key map
+               then map.[key] @ [value]
+               else [value]
+    Map.add key v' map
+
   let merge strategy oldMap newMap =
     Map.fold_left (fun acc k v ->
                      let v' = if Map.contains k acc
