@@ -33,7 +33,7 @@ roomsPerProducts = Room.all
 
 roomsPerProducts2 = Room.all
                       .select (r -> r.products)
-                      .select (products -> products.select (p -> p.room_id));;
+                      .select (products -> products.select (p -> p.room.room_id));;
 
 #! hum_readings
 Timestamp, room_id, humidity

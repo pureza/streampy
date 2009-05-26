@@ -113,8 +113,9 @@ and value =
     
     member self.Clone() =
       match self with
-      | VDict dict -> VDict (ref !dict)
+      | VDict dict -> VDict (ref (Map.map (fun k (v:value) -> v.Clone()) !dict))
       | VRecord record -> VRecord (Map.map (fun k (v:value ref) -> ref ((!v).Clone())) record)
+      | VRef ref -> VRef (ref.Clone())
       | other -> other
 
     override self.ToString() =

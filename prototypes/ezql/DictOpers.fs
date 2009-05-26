@@ -279,7 +279,7 @@ let makeDictSelect projectorBuilder uid prio parents =
                       // changes.Head contains the dictionary changes passed to the select
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, projChanges = changes.Head, changes.Tail
-                                                       
+                                                 
                       let keys1, changes1 =
                         List.unzip [ for chg in parentChanges do
                                        match chg with
@@ -294,10 +294,10 @@ let makeDictSelect projectorBuilder uid prio parents =
                         [ for change in projChanges do
                             match change with
                             | [] -> ()
-                            | [DictDiff (key, _)] -> 
+                            | [DictDiff (key, innerChanges)] -> 
                                 if (not (Set.contains key keys1')) && (Map.contains key (!results))
                                   then results := (!results).Add(key, (subGroupResultOp key projectors).Value)
-                                       yield DictDiff (key, [Added (!results).[key]])
+                                       yield DictDiff (key, innerChanges)
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
                       //printfn "Depois %s: Value = %O" op.Uid op.Value
                       spreadUnlessEmpty op (changes1 @ changes2)),                      
