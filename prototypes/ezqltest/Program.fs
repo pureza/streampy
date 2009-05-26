@@ -7,7 +7,6 @@ open Test
 
 //Test.runTests [(Test.findTest "test_streamsWhere")]
 //Test.runTests [(Test.findTest "test_streamsSelect")]
-//Test.runTests [(Test.findTest "test_streamsGroupby")];
 
 Test.runTests [(Test.findTest "test_entitiesMisc2")]
 //Test.runTests [(Test.findTest "test_entitiesMisc")]

@@ -60,28 +60,45 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
        let env = getOperEnv op
        //printfn "%s_head: %A" op.Uid changes.Head
        let parentChanges = initOnce changes.Head
-       let predsToEval = 
-         [ for chg in parentChanges do
+       
+       printfn ""
+       // Changes to new keys should be converted to [Added <value>]
+       let parentChanges' =
+         [ for chg in parentChanges ->
              match chg with
-             | DictDiff (key, diff) ->
-                 if not (Map.contains key !subgroups) then buildSubGroup key env op
-
-                 // The link between this operator and the group's circuit ignores everything
-                 // that is not related to that group.
-                 let link = (fun changes -> [ for diff in changes do
-                                                match diff with
-                                                | DictDiff (key', v) when key = key' -> yield! v
-                                                | _ -> () ])
+             | DictDiff (key, _) ->
+                 printfn "DictDiff %A" key
+                 let created = if (Map.contains key !subgroups)
+                                 then false
+                                 else buildSubGroup key env op
+                                      true
+                                
                  let keyOp = subGroupStartOp key subgroups
-                 // Manually set the value of the subgroup's initial operator
                  keyOp.Value <- (!parentDict).[key]
-                 keyOp.AllChanges := [Added keyOp.Value]
-                 yield subGroupStartOp key subgroups, 0, link
-             | RemovedKey (key) -> ()
-             | Added (VDict dict) when (!dict).IsEmpty -> () // Received on parent initialization
-             | chg -> printfn "%A received invalid changes: %A" uid chg ]
+                
+                 if created
+                   then //keyOp.AllChanges := [Added keyOp.Value]
+                        DictDiff (key, [Added keyOp.Value])
+                   else chg
+             | _ -> chg ]
+       printfn ""
+       let predsToEval =
+         [ for chg in parentChanges do
+                        match chg with
+                        | DictDiff (key, diff) ->
+                            // The link between this operator and the group's circuit ignores everything
+                            // that is not related to that group.
+                            let link = (fun changes -> [ for diff in changes do
+                                                           match diff with
+                                                           | DictDiff (key', v) when key = key' -> yield! v
+                                                           | _ -> () ])
+                                                           
+                            yield subGroupStartOp key subgroups, 0, link
+                        | RemovedKey (key) -> ()
+                        | Added (VDict dict) when (!dict).IsEmpty -> () // Received on parent initialization
+                        | chg -> printfn "%A received invalid changes: %A" uid chg ]
 
-       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges)), parents)
+       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges')), parents)
 
      
 let makeGroupby field groupBuilder uid prio parents =
