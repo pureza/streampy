@@ -11,21 +11,21 @@ entity Product =
   belongsTo :room;;
 
 
+roomsPerProducts = Room.all.select (r -> r.products)
+                           .select (products -> products.select (p -> p));;
 
-
-//roomsPerProducts = Room.all.select (r -> r.products.select(p -> p.room_id));;
-
-roomsPerProducts = Room.all.select (r -> r.products);;
 when (entries, ev -> print (roomsPerProducts));;
+when (entries, ev -> print ("\n"));;
+
 
 #! temp_readings
 Timestamp, room_id, temperature
-2,               1,      25
-6,               2,      50
+1,               1,      25
+2,               2,      50
+
 
 #! entries
 Timestamp, room_id, product_id
 4,               1,          2
 6,               2,          2
-7,               1,          3
 

@@ -44,7 +44,7 @@ type Operator =
     Parents: List<Operator>
     Contents: ref<value>
     Priority: Priority.priority
-    AllChanges: changes ref
+    AllChanges: changes list ref
     Uid: uid }
 
   member self.ArgCount with get() = self.Parents.Count
@@ -170,6 +170,42 @@ and diff =
 
 and changes = diff list
 and link = changes -> changes
+
+let rec cloneDiff = function
+  | Added value -> Added (value.Clone())
+  | Expired value -> Expired (value.Clone())
+  | DictDiff (key, changes) -> DictDiff (key.Clone(), cloneChanges changes)
+  | RecordDiff (key, changes) -> RecordDiff (key.Clone(), cloneChanges changes)
+  | RemovedKey key -> RemovedKey (key.Clone())
+  
+and cloneChanges = List.map cloneDiff
+
+(*
+ * Merge two lists of changes
+ * Most of the time this operation is a simple append, except when the new
+ * changes include a DictDiff or a RecordDiff. If this happens, we have to
+ * merge them carefully to avoid repeated DictDiffs for the same key or
+ * RecordDiffs for the same field.
+ *)
+let rec mergeChanges (old:changes) (neu:changes) =
+  match neu with
+  | x::xs -> match x with
+             | DictDiff (key, changes) | RecordDiff (key, changes) ->
+                 let old' = mergeKeyChanges old x
+                 mergeChanges old' xs
+             | _ -> mergeChanges (old @ neu) xs
+  | [] -> old
+  
+and mergeKeyChanges old toMerge =
+  match old with
+  | x::xs -> match x, toMerge with
+             | DictDiff (key, changes), DictDiff (key', changes') when key = key' ->
+                 (DictDiff (key, changes @ changes'))::xs
+             | RecordDiff (key, changes), RecordDiff (key', changes') when key = key' ->
+                 (RecordDiff (key, changes @ changes'))::xs
+             | _ -> x::(mergeKeyChanges xs toMerge)
+  | _ -> [toMerge]
+
 
 // Example eval stack:
 // b = a * c

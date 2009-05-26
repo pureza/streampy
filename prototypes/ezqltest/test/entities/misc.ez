@@ -24,7 +24,16 @@ products = Product.all.select (p -> let room = Room.all[p.room_id] in
                                       :room = { :room_id = room.room_id,
                                                 :temperature = room.temperature } });;
 
+// for r in Room.all
+//   for p in r.products
+//     select p.room.room_id    
+roomsPerProducts = Room.all
+                     .select (r -> r.products
+                                     .select(p -> p.room.room_id));;
 
+roomsPerProducts2 = Room.all
+                      .select (r -> r.products)
+                      .select (products -> products.select (p -> p.room_id));;
 
 #! hum_readings
 Timestamp, room_id, humidity

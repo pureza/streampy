@@ -1,6 +1,7 @@
 ﻿#light
 
 open Test
+open Types
 
 [<TestCase ("entities/misc.ez")>]
 let test_entitiesMisc (test:Test) =
@@ -37,6 +38,24 @@ let test_entitiesMisc (test:Test) =
                      SetKey "3" "{ :product_id = 3, :temperature = 48,
                                    :room_id = 1, :room = { :room_id = 1, :temperature = 23 } }" (At  9)])                                 
 
+  let complicatedDiffs =
+    [SetKeyRaw "1" (VDict (ref Map.empty))                                      (At 2)     // Room 1 is created
+     SetKeyRaw "1" (VDict (ref (Map.of_list [VInt 1, VInt 1])))                 (At 3)     // Room 1 contains product 1
+     SetKeyRaw "3" (VDict (ref Map.empty))                                      (At 4)     // Room 3 is created
+     SetKeyRaw "1" (VDict (ref (Map.of_list [VInt 1, VInt 1; VInt 2, VInt 1]))) (At 4)     // Room 1 now contains product 2
+     SetKeyRaw "1" (VDict (ref (Map.of_list [VInt 1, VInt 1])))                 (At 6)     // Product 2 leaves room 1
+     SetKeyRaw "2" (VDict (ref (Map.of_list [VInt 2, VInt 2])))                 (At 6)     // Product 2 enters room 2
+     SetKeyRaw "1" (VDict (ref (Map.of_list [VInt 1, VInt 1; VInt 3, VInt 1]))) (At 7)     // Product 3 enters room 1
+     SetKeyRaw "1" (VDict (ref (Map.of_list [VInt 3, VInt 1])))                 (At 8)     // Product 1 leaves room 1
+     SetKeyRaw "2" (VDict (ref (Map.of_list [VInt 1, VInt 2; VInt 2, VInt 2]))) (At 8)     // Product 1 enters room 2
+     SetKeyRaw "2" (VDict (ref (Map.of_list [VInt 1, VInt 2])))                 (At 9)     // Product 2 leaves room 2
+     SetKeyRaw "3" (VDict (ref (Map.of_list [VInt 2, VInt 3])))                 (At 9)]    // Product 2 enters room 3
+
+  test.AssertThat (In "roomsPerProducts" complicatedDiffs)
+  test.AssertThat (In "roomsPerProducts2" complicatedDiffs)
 
 [<TestCase ("entities/misc2.ez")>]
-let test_entitiesMisc2 (test:Test) = () 
+let test_entitiesMisc2 (test:Test) = ()
+
+                                                                                             
+                    

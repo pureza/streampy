@@ -37,7 +37,37 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
     // Connects the resulting node to the dictionary operator.
     // The diff is converted into a DictDiff before being passed to the child.
     connect final dictOp (fun changes -> [DictDiff (key, changes)])
-       
+  
+  (* Initialize the necessary subgroups and normalize changes *)  
+  let rec initNewGroups op changes =
+     let parentDict =
+         match (parents.Head).Value with
+         | VDict dict -> dict
+         | _ -> failwithf "Can't happen"   
+     let env = getOperEnv op
+     [ for chg in changes do
+         match chg with
+         | DictDiff (key, _) ->
+             let created = if (Map.contains key !subgroups)
+                             then false
+                             else buildSubGroup key env op
+                                  true
+                            
+             let keyOp = subGroupStartOp key subgroups
+             keyOp.Value <- (!parentDict).[key]
+            
+             // Convert changes to new keys to the form DictDiff (key, [Added <value>])
+             yield! if created then [DictDiff (key, [Added keyOp.Value])] else [chg]
+         | Added (VDict dict) ->
+             assert ((List.length changes) = 1)
+             // This may happen during initialization. We to create the
+             // appropriate DictDiffs from the initial dictionary and recurse
+             yield! initNewGroups op (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
+                                                 (DictDiff (x.Key, [Added x.Value]))::acc)
+                                               [] (!dict))
+         | _ -> yield! [chg] ]
+
+(*       
   let makeInit () =
     match (parents.Head).Value with
     | VDict dict -> let initialChanges = ref (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
@@ -50,40 +80,12 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
     
     
   let initOnce = makeInit ()
-
+*)
   Operator.Build(uid, prio,
     (fun op changes ->
-       let parentDict =
-         match (parents.Head).Value with
-         | VDict dict -> dict
-         | _ -> failwithf "Can't happen"   
-       let env = getOperEnv op
-       //printfn "%s_head: %A" op.Uid changes.Head
-       let parentChanges = initOnce changes.Head
-       
-       printfn ""
-       // Changes to new keys should be converted to [Added <value>]
-       let parentChanges' =
-         [ for chg in parentChanges ->
-             match chg with
-             | DictDiff (key, _) ->
-                 printfn "DictDiff %A" key
-                 let created = if (Map.contains key !subgroups)
-                                 then false
-                                 else buildSubGroup key env op
-                                      true
-                                
-                 let keyOp = subGroupStartOp key subgroups
-                 keyOp.Value <- (!parentDict).[key]
-                
-                 if created
-                   then //keyOp.AllChanges := [Added keyOp.Value]
-                        DictDiff (key, [Added keyOp.Value])
-                   else chg
-             | _ -> chg ]
-       printfn ""
+       let parentChanges' = initNewGroups op changes.Head
        let predsToEval =
-         [ for chg in parentChanges do
+         [ for chg in parentChanges' do
                         match chg with
                         | DictDiff (key, diff) ->
                             // The link between this operator and the group's circuit ignores everything
@@ -94,9 +96,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
                                                            | _ -> () ])
                                                            
                             yield subGroupStartOp key subgroups, 0, link
-                        | RemovedKey (key) -> ()
-                        | Added (VDict dict) when (!dict).IsEmpty -> () // Received on parent initialization
-                        | chg -> printfn "%A received invalid changes: %A" uid chg ]
+                        | _ -> () ]
 
        Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges')), parents)
 

@@ -223,8 +223,7 @@ let makeProjector field uid prio (parents:Operator list) =
                match fieldChanges with
                | Some changes -> op.Value <- newValue
                                  Some (op.Children, changes)
-               | None -> printfn "%s: None? Inputs = %A" op.Uid inputs
-                         None (*if op.Value <> newValue
+               | None -> None (*if op.Value <> newValue
                            then op.Value <- newValue
                                 Some (op.Children, [Added newValue])
                            else None *)

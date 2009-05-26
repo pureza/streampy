@@ -46,5 +46,6 @@ let mainLoop () =
 
 let reset () = Scheduler.reset ()
                theRootOps := Map.empty
+               theForwardDeps.Reset ()
 
 let now () = Scheduler.clock().Now

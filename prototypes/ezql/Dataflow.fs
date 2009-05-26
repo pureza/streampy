@@ -71,7 +71,8 @@ module ForwardDeps =
   type ForwardDepsRep = Map<uid, action list>
 
   type ForwardDepsRec = { Add : uid * action -> unit; Contains : uid -> bool
-                          Resolve : uid * NodeContext * TypeContext * DataflowGraph -> DataflowGraph }
+                          Resolve : uid * NodeContext * TypeContext * DataflowGraph -> DataflowGraph
+                          Reset : unit -> unit }
 
   let add uid action map : ForwardDepsRep =
     Map.add uid (if Map.contains uid map
@@ -85,12 +86,14 @@ module ForwardDeps =
   let resolve name (map:ForwardDepsRep) env types graph =
     List.fold (fun g a -> a env types g) graph map.[name]
 
-
-let theForwardDeps : ForwardDeps.ForwardDepsRec =
+let initTheForwardDeps () : ForwardDeps.ForwardDepsRec =
   let deps = ref ForwardDeps.empty
   { Add = fun (uid, action) -> deps := ForwardDeps.add uid action !deps
     Contains = fun uid -> ForwardDeps.mem uid !deps
-    Resolve = fun (uid, env, types, graph) -> ForwardDeps.resolve uid !deps env types graph }
+    Resolve = fun (uid, env, types, graph) -> ForwardDeps.resolve uid !deps env types graph
+    Reset = fun () -> deps := ForwardDeps.empty }    
+
+let theForwardDeps : ForwardDeps.ForwardDepsRec = initTheForwardDeps ()
 
 let nextSymbol =
   let counter = ref 0
@@ -563,8 +566,8 @@ and dataflowWhere env types graph target paramExps =
  *)
 and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators : Map<string, Operator> =
   let spreadInitialChanges initialChanges =
-    for (op:Operator, changes) in initialChanges do
-      op.AllChanges := changes
+    for (op:Operator, (changes:changes)) in initialChanges do
+      op.AllChanges := [changes]
     let stack = List.fold (fun stack (op, changes) -> mergeStack stack (toEvalStack op.Children changes)) [] initialChanges
     spread stack
 

@@ -21,8 +21,14 @@ let At (timestamp:int) =
 
 let After time = DateTime.FromSeconds(time)
 
+let tryEval expr =
+  try
+    eval Map.empty (Parser.expr Lexer.token (Lexing.from_string expr))
+  with
+    | e -> failwithf "Error parsing '%s'" expr
+
 let AddedOrExpired factMaker eventTimestamp expr factTimestamp =
-  let value = eval Map.empty (Parser.expr Lexer.token (Lexing.from_string expr))
+  let value = tryEval expr
   match value with
   | VRecord fields -> 
       let fields' = Map.fold_left (fun acc k v -> match k with
@@ -43,13 +49,14 @@ let Set expr (timestamp:DateTime) =
 let Del eventTimestamp expr (timestamp:DateTime) =
     Expired eventTimestamp (sprintf "{ :value = %s }" expr) timestamp
 
-let SetKey keyExpr expr timestamp =
-  let key = eval Map.empty (Parser.expr Lexer.token (Lexing.from_string keyExpr))
-  let value = eval Map.empty (Parser.expr Lexer.token (Lexing.from_string expr))
+let SetKeyRaw keyExpr value timestamp =
+  let key = tryEval keyExpr
   (timestamp, ValueAtKey (key, value))
 
+let SetKey keyExpr expr timestamp = SetKeyRaw keyExpr (tryEval expr) timestamp
+
 let DelKey keyExpr (timestamp:DateTime) =
-  let key = eval Map.empty (Parser.expr Lexer.token (Lexing.from_string keyExpr))
+  let key = tryEval keyExpr
   (timestamp, (fact.Diff (RemovedKey key)))
 
 
@@ -177,14 +184,14 @@ let runTests (testMethods:MethodInfo list) =
     let test = attr.CreateTest()
     let testName = testMethod.Name
     printfn "- Testing %s\n" testName
-   // try
+    //try
     testMethod.Invoke(null, [|box test|]) |> ignore
     Engine.mainLoop ()
     let left = testsLeft test
     if left.IsEmpty
       then printfn "\t\t\t\t\t\t\t\tPass"
       else printfn "| Tests left in test '%s'\n%A\n\n" testName left
-  //  with
+    //with
     //  | err -> printfn "Exception:\n %A\n\n" err
 
     Engine.reset ()

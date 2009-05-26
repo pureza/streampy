@@ -35,7 +35,7 @@ let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
     let stackMap = Map.of_list stack
     let merged = list2Map toMerge stackMap
                           (fun n o -> let o' = Map.of_list o
-                                      list2Map n o' (@)
+                                      list2Map n o' (fun n o -> mergeChanges o n)
                                         |> Map.to_list
                                         |> List.sortBy fst)
     
@@ -43,14 +43,14 @@ let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
 
 
 let checkConsistency op changes =
-  op.AllChanges := !op.AllChanges @ changes
+  op.AllChanges := !op.AllChanges @ [(cloneChanges changes)]
   if op.Value <> VNull
     then let rebuilt = rebuildValue !op.AllChanges
          if op.Value <> rebuilt
-           then printfn "Operator %O doesn't meet the 'all changes must be seen' invariant.\n Value is %A\n Rebuild value gives %A\n Changes propagated: %A\n"
+           then printfn "Operator %O doesn't meet the 'all changes must be seen' invariant.\n Value is %O\n Rebuilt value gives %O\n Changes propagated: %A\n"
                         op op.Value rebuilt !op.AllChanges 
 
-let toEvalStack children changes : EvalStack =
+let toEvalStack children (changes:changes) : EvalStack =
   [ for child, idx, link in children -> (child, [(idx, (link changes))]) ]
     
 (*
@@ -73,13 +73,13 @@ let rec spread (stack:EvalStack) =
     match stack with
     | [] -> ()
     | (op, parentChanges)::xs ->
-        //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
-        //printfn "    Changes = %A\n" parentChanges
+        printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
+        printfn "    Changes = %A\n" parentChanges
         let filledChanges = fillLeftArgs op parentChanges 0
         match op.Eval op filledChanges with
-        | Some (children, changes) -> 
+        | Some (children, changes) ->
             checkConsistency op changes
-            spread (mergeStack xs (toEvalStack children changes))
+            spread (mergeStack xs (toEvalStack children (cloneChanges changes)))
         | _ -> spread xs
 
 

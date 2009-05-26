@@ -42,7 +42,7 @@ let rec incorporateChanges changes value =
 
 and incorporateChange change value =
    match change with
-   | Added v -> v
+   | Added v -> v.Clone()
    | Expired _ -> value
    | RecordDiff (field, changes) ->
        match value with
@@ -64,4 +64,4 @@ and incorporateChange change value =
                        VDict dict
        | _ -> failwithf "%A is not a dictionary!" value
        
-let rebuildValue changes = incorporateChanges changes VNull
+let rebuildValue changes = List.fold (fun value changes -> incorporateChanges changes value) VNull changes
