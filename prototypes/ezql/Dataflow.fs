@@ -401,7 +401,7 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
   // If the body itself does not depend on the argument (e.g., t -> some-expression-without-t),
   // then it is a "constant" and we can simply mark it as a dependency of the operation.
   // To ensure it doesn't depend on the argument, check if it is present in g3.
-  let opDeps = target::(Set.to_list (if Graph.mem opResult.Uid g' then Set.add opResult deps else deps))
+  let opDeps = target::(Set.to_list (if Graph.contains opResult.Uid g' then Set.add opResult deps else deps))
 
   let n, g4 = createNode nodeUid (TyDict resType) opDeps
                          (opMaker subExprBuilder) g'

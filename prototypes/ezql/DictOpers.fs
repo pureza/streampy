@@ -21,7 +21,7 @@ let spreadUnlessEmpty op changes =
    The value of this operators is manually set by the methods that use it.
  *)
 let makeInitialOp uid prio parents =
-  let eval = fun op inputs -> Some (op.Children, List.hd inputs)
+  let eval = fun (op, inputs) -> Some (op.Children, List.hd inputs)
 
   Operator.Build(uid, prio, eval, parents)
 
@@ -82,7 +82,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
   let initOnce = makeInit ()
 *)
   Operator.Build(uid, prio,
-    (fun op changes ->
+    (fun (op, changes) ->
        let parentChanges' = initNewGroups op changes.Head
        let predsToEval =
          [ for chg in parentChanges' do
@@ -134,7 +134,7 @@ let makeGroupby field groupBuilder uid prio parents =
       connect final dictOp (fun changes -> [DictDiff (key, changes)])
 
     and groupOp = Operator.Build(uid, prio,
-                    (fun op changes ->
+                    (fun (op, changes) ->
                        let env = getOperEnv op
                        let children = 
                          [ for change in changes.Head ->
@@ -155,7 +155,7 @@ let makeGroupby field groupBuilder uid prio parents =
                     parents)
 
     and dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
-                   (fun op changes ->
+                   (fun (op, changes) ->
                       match changes with
                       | parentChanges::groupChanges -> 
                           let groupChanges' =
@@ -207,7 +207,7 @@ let makeDictWhere predicateBuilder uid prio parents =
     let results = ref Map.empty
  
     let dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
-                   (fun op changes ->
+                   (fun (op, changes) ->
                       // changes.Head contains the dictionary changes passed to the where
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, predChanges = changes.Head, changes.Tail
@@ -273,7 +273,7 @@ let makeDictSelect projectorBuilder uid prio parents =
     let results = ref Map.empty
 
     let dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
-                   (fun op changes ->
+                   (fun (op, changes) ->
                       //printfn "Antes %s: Value = %O Changes = %A" op.Uid op.Value changes
                       //printfn "Parent = %s" op.Parents.[1].Uid
                       // changes.Head contains the dictionary changes passed to the select

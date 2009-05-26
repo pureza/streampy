@@ -5,7 +5,7 @@ open Types
 
 (* Last: records one field of the last event of a stream *)
 let makeLast getField uid prio parents =
-  let eval = fun op inputs -> 
+  let eval = fun (op, inputs) -> 
                let added = List.tryPick (fun diff -> match diff with
                                                      | Added (VEvent ev) -> Some (VEvent ev)
                                                      | _ -> None)
@@ -17,7 +17,7 @@ let makeLast getField uid prio parents =
 
 (* Sum *)
 let makeSum getField uid prio parents =
-  let eval = fun (op:Operator) inputs -> 
+  let eval = fun ((op:Operator), inputs) -> 
                let initial = if op.Value = VNull then VInt 0 else op.Value
                let balance = List.fold (fun acc diff -> 
                                           match diff with
@@ -31,7 +31,7 @@ let makeSum getField uid prio parents =
   
 (* Count *)
 let makeCount getField uid prio parents =
-  let eval = fun (op:Operator) inputs -> 
+  let eval = fun ((op:Operator), inputs) -> 
                let initial = if op.Value = VNull then VInt 0 else op.Value
                let balance = List.fold (fun acc diff -> 
                                           match diff with

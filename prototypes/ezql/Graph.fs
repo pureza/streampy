@@ -105,9 +105,9 @@ module Graph =
   let empty<'a, 'b> : Graph<'a, 'b> = Graph<'a, 'b>.Empty()
   let is_empty (gr:Graph<'a, 'b>) : bool = gr.IsEmpty
   let add (ctx:Context<'a, 'b>) (gr:Graph<'a, 'b>) : Graph<'a, 'b> = gr.Add(ctx)
-  let mem v g = match g with
-                | Extract v (_, _) -> true
-                | _ -> false
+  let contains v g = match g with
+                     | Extract v (_, _) -> true
+                     | _ -> false
   let extract (v:Node<'a>) (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.Extract(v)
   let extractAny (gr:Graph<'a, 'b>) : Option<Context<'a, 'b>> * Graph<'a, 'b> = gr.ExtractAny()
 

@@ -39,7 +39,7 @@ module Priority =
  *)
 [<ReferenceEquality>]
 type Operator =
-  { Eval: Operator -> changes list -> (ChildData List * changes) option
+  { Eval: Operator * changes list -> (ChildData List * changes) option
     Children: List<ChildData>
     Parents: List<Operator>
     Contents: ref<value>

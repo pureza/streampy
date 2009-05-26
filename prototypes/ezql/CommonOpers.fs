@@ -8,27 +8,30 @@ open Scheduler
 
 (* A stream: propagates received events *)
 let makeStream uid prio parents =
-  let eval = fun op inputs -> match inputs with
-                              | [[Added (VEvent ev)] as changes] -> Some (op.Children, changes)
-                              | _ -> failwith "stream: Invalid arguments!"
+  let eval = fun (op, inputs) ->
+               match inputs with
+               | [[Added (VEvent ev)] as changes] -> Some (op.Children, changes)
+               | _ -> failwith "stream: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents)
 
 (* A simple window - does not schedule expiration of events. *)
 let makeSimpleWindow uid prio parents =
-  let eval = fun op inputs -> match inputs with
-                              | changes::_ -> Some (op.Children, changes)
-                              | _ -> failwith "Simple window: Invalid arguments!"
+  let eval = fun (op, inputs) ->
+               match inputs with
+               | changes::_ -> Some (op.Children, changes)
+               | _ -> failwith "Simple window: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents)
   
 (* A timed window *)
 let makeWindow duration uid prio parents =
-  let eval = fun op inputs -> match inputs with
-                              | [[Added (VEvent ev)] as changes] ->
-                                  Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired (VEvent ev)])
-                                  Some (op.Children, changes)
-                              | _ -> failwith "timed window: Invalid arguments!"
+  let eval = fun (op, inputs) ->
+               match inputs with
+               | [[Added (VEvent ev)] as changes] ->
+                   Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired (VEvent ev)])
+                   Some (op.Children, changes)
+               | _ -> failwith "timed window: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents)
 
@@ -40,7 +43,7 @@ let makeWindow duration uid prio parents =
  *)
 let makeEvalOnAdd resultHandler eventHandler uid prio parents : Operator =
     let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
-    let eval = fun op inputs ->
+    let eval = fun (op, inputs) ->
                  let env = getOperEnvValues op
                  match inputs with
                  | [Added (VEvent ev)]::_ ->
@@ -72,7 +75,7 @@ let makeWhen = makeEvalOnAdd (fun op inputs ev result -> Some (op.Children, [Add
 
 (* A timed window for dynamic values *)
 let makeDynValWindow duration uid prio parents =
-  let eval = fun (op:Operator) inputs ->
+  let eval = fun ((op:Operator), inputs) ->
                match inputs with
                | [[Added something] as changes] ->
                    if op.Value <> VNull
@@ -85,10 +88,10 @@ let makeDynValWindow duration uid prio parents =
 
 (* Evaluator: this operator evaluates some expression and records its result *)
 let makeEvaluator expr uid prio parents =
-  let operEval = fun oper allChanges ->
-                   let env = getOperEnvValues oper
+  let operEval = fun (op, allChanges) ->
+                   let env = getOperEnvValues op
                    let result = eval env expr
-                   setValueAndGetChanges oper result
+                   setValueAndGetChanges op result
 
   let initialContents = try
                           let env = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
@@ -103,7 +106,7 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
   assert (parents = (List.map snd fields))
 
   let recordOp = Operator.Build(uid, prio,
-                   (fun oper allChanges ->
+                   (fun (op, allChanges) ->
                       let recordChanges =
                         allChanges
                           |> List.mapi (fun i changes ->
@@ -114,7 +117,7 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
                                           | _ -> [])
                           |> List.concat
                       //printfn "Record value = %O changes = %A" oper.Value recordChanges
-                      Some (oper.Children, recordChanges)),
+                      Some (op.Children, recordChanges)),
                    parents, contents = VRecord result)
 
   for field, op in fields do
@@ -126,7 +129,7 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
 
 (* Converts a dynamic value into a stream of changes to the value *)
 let makeToStream uid prio parents =
-  let eval = fun (op:Operator) inputs ->
+  let eval = fun ((op:Operator), inputs) ->
                let value = op.Parents.[0].Value
                let ev = Event (Scheduler.clock().Now, Map.of_list ["value", value])
                Some (op.Children, [Added (VEvent ev)])
@@ -137,7 +140,7 @@ let makeToStream uid prio parents =
 let makeRef getId uid prio (parents:Operator list) =
   let objOper = List.hd parents
   Operator.Build(uid, prio, 
-                 (fun op inputs ->
+                 (fun (op, inputs) ->
                     let objValue = objOper.Value
                     let id = VRef (getId objValue)
                     setValueAndGetChanges op id),
@@ -150,7 +153,7 @@ let makeRefProjector field uid prio (parents:Operator list) =
                    | _ -> failwithf "The projector must be connected with the entity's dictionary."
   
   Operator.Build(uid, prio, 
-                 (fun op inputs ->
+                 (fun (op, inputs) ->
                     if ref.Value <> VNull
                       then let (VRef refValue) = ref.Value
                            let refObject = (!entityDict).[refValue]
@@ -170,7 +173,7 @@ let makeRefProjector field uid prio (parents:Operator list) =
    [Added <new value>].
  *)
 let makeIndexer index uid prio (parents:Operator list) =
-  let eval = fun (op:Operator) inputs ->
+  let eval = fun ((op:Operator), inputs) ->
                let env = getOperEnvValues op
                let key = eval env index
                let (VDict dict) = op.Parents.[0].Value
@@ -209,7 +212,7 @@ let makeIndexer index uid prio (parents:Operator list) =
  *)
 let makeProjector field uid prio (parents:Operator list) =
   let fieldv = VString field
-  let eval = fun (op:Operator) inputs ->
+  let eval = fun ((op:Operator), inputs) ->
                //printfn ">>> %s %A" op.Uid inputs
                let fieldChanges =
                  match List.hd inputs with

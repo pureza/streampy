@@ -67,19 +67,13 @@ let rec spread (stack:EvalStack) =
         | [] when idx < op.ArgCount -> [ for i in [1 .. (op.ArgCount - idx)] -> [] ]
         | _ -> []
 
-//    for op, changes in stack do
-//      printfn "[%O %A]" op changes
-//    printfn ""
     match stack with
     | [] -> ()
     | (op, parentChanges)::xs ->
-      //  if op.Uid = "select28_dict" || op.Uid = "select28"
-      //    then printfn "ola"
-     //          printfn "ola"
         //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
         //printfn "    Changes = %A\n" parentChanges
         let filledChanges = fillLeftArgs op parentChanges 0
-        match op.Eval op filledChanges with
+        match op.Eval (op, filledChanges) with
         | Some (children, changes) ->
             checkConsistency op changes
             spread (mergeStack xs (toEvalStack children (cloneChanges changes)))
