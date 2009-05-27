@@ -16,8 +16,7 @@ open Eval
 
 type uid = string
 
-[<StructuralEquality(false)>]
-[<StructuralComparison(false)>]
+[<ReferenceEquality>]
 type NodeInfo =
   { Uid:uid
     Type:Type
@@ -31,11 +30,6 @@ type NodeInfo =
         match other with
         | :? NodeInfo as other' -> Operators.compare self.Uid other'.Uid
         | _ -> failwith "Go away. Other is not even a NodeInfo."
-
-    override self.Equals(other) =
-      match other with
-        | :? NodeInfo as other' -> self.Uid = other'.Uid
-        | _ -> false
 
     (* Creates a node with type "Unknown", no parents and an evaluation
        function that will never be called.
@@ -173,7 +167,9 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)
       | TyEntity entity ->
-          let (TyType (fields, _)) = types.[entity]
+          let fields = match types.[entity] with
+                       | TyType (fields, _) -> fields
+                       | _ -> failwithf "entity is not a TyType?!"
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
@@ -318,7 +314,8 @@ and dataflowFuncCall env types graph fn paramExps expr =
                                            | _ -> failwithf "The type of an entity is not a TyType?!"
                         | _ -> failwithf "Only entities may be referenced"
           let getId = fun entity -> match entity with
-                                     | VRecord m -> !m.[VString refType]
+                                    | VRecord m -> !m.[VString refType]
+                                    | _ -> failwithf "The entity is not a record?!"
           let n, g2 = makeFinalNode env types g1 expr' deps' "{ }"
           let ref, g3 = createNode (nextSymbol "ref") (TyRef (typeOf types expr)) [n]
                                    (makeRef getId) g2
@@ -336,6 +333,7 @@ and dataflowGroupby env types graph target paramExps =
   let argMaker = match argType with
                  | TyStream _ -> makeStream
                  | TyWindow (TyStream _, TimedWindow _) -> makeSimpleWindow
+                 | _ -> failwithf "GroupBy's argument must be a stream or an event window."
   let field, body, arg =
     match paramExps with
     | [SymbolExpr (Symbol field); Lambda ([Identifier arg], body) as fn] ->
@@ -464,10 +462,14 @@ and makeFinalNode env types graph expr deps name =
 and dataflowAggregate graph target paramExprs opMaker aggrName =
   let field = match paramExprs with
               | [SymbolExpr (Symbol name)] -> name
-              | _ -> ""      
+              | _ -> ""
+  let getMaker name = function
+    | VEvent ev -> ev.[name]
+    | other -> failwithf "getMaker expects events but was called with a %A" other
+                   
   let getField = match paramExprs, target.Type with
-                 | [SymbolExpr (Symbol name)], TyStream _ -> (fun (VEvent ev) -> ev.[name])
-                 | [SymbolExpr (Symbol name)], TyWindow (TyStream _, TimedWindow _) -> (fun (VEvent ev) -> ev.[name])
+                 | [SymbolExpr (Symbol name)], TyStream _ -> getMaker name
+                 | [SymbolExpr (Symbol name)], TyWindow (TyStream _, TimedWindow _) -> getMaker name
                  | [], TyInt -> id
                  | [], TyWindow (TyInt, TimedWindow _) -> id
                  | _ -> failwith "Invalid parameters to %s" aggrName
@@ -528,6 +530,7 @@ and dataflowSelect env types graph target paramExps =
   // Find the type of the resulting stream
   let inEvType = match target.Type with
                  | TyStream evType -> evType
+                 | _ -> failwithf "stream.select can only be applied to streams"
   let resultType = TyStream (typeOf (types.Add(arg, inEvType)) expr')
  
   // Depends on the stream and on the dependencies of the predicate.

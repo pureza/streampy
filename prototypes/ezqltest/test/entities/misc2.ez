@@ -1,17 +1,13 @@
 temp_readings = stream (:room_id, :temperature);;
 entries = stream(:room_id, :product_id);;
 
-entity Room =
-  createFrom(temp_readings, :room_id)
-  hasMany :products;;
-
-
 entity Product =
   createFrom (entries, :product_id)
   belongsTo :room;;
 
-
-
+entity Room =
+  createFrom(temp_readings, :room_id)
+  hasMany :products;;
 
 #! temp_readings
 Timestamp, room_id, temperature

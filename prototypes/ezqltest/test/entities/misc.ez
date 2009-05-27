@@ -5,7 +5,10 @@ entries = stream(:room_id, :product_id);;
 
 entity Room =
   createFrom(temp_readings, :room_id)
-  hasMany :products;;
+  hasMany :products
+
+  // This attribute is a window
+  member self.temp2Secs = self.temperature[2 sec];;
 
 
 entity Product =
@@ -34,6 +37,9 @@ roomsPerProducts = Room.all
 roomsPerProducts2 = Room.all
                       .select (r -> r.products)
                       .select (products -> products.select (p -> p.room.room_id));;
+
+
+temp2SecsPerRoom = Room.all.select (r -> r.temp2Secs.sum());;
 
 #! hum_readings
 Timestamp, room_id, humidity

@@ -116,14 +116,12 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
                                                      [RecordDiff (VString field, changes)]
                                           | _ -> [])
                           |> List.concat
-                      //printfn "Record value = %O changes = %A" oper.Value recordChanges
                       Some (op.Children, recordChanges)),
                    parents, contents = VRecord result)
 
   for field, op in fields do
     result.[VString field] := op.Value
 
-  //printfn "A criar o record %O" recordOp.Value
   recordOp
 
 
@@ -155,7 +153,9 @@ let makeRefProjector field uid prio (parents:Operator list) =
   Operator.Build(uid, prio, 
                  (fun (op, inputs) ->
                     if ref.Value <> VNull
-                      then let (VRef refValue) = ref.Value
+                      then let refValue = match ref.Value with
+                                          | VRef refValue -> refValue
+                                          | _ -> failwithf "ref value is not a VRef?!"
                            let refObject = (!entityDict).[refValue]
                            match refObject with
                            | VRecord r -> setValueAndGetChanges op !r.[VString field]
@@ -176,7 +176,9 @@ let makeIndexer index uid prio (parents:Operator list) =
   let eval = fun ((op:Operator), inputs) ->
                let env = getOperEnvValues op
                let key = eval env index
-               let (VDict dict) = op.Parents.[0].Value
+               let dict = match op.Parents.[0].Value with
+                          | VDict dict -> dict
+                          | _ -> failwithf "The parent of the indexer is not a dictionary?!"
                
                match inputs with
                | [x::xs as change; []] ->
@@ -213,7 +215,6 @@ let makeIndexer index uid prio (parents:Operator list) =
 let makeProjector field uid prio (parents:Operator list) =
   let fieldv = VString field
   let eval = fun ((op:Operator), inputs) ->
-               //printfn ">>> %s %A" op.Uid inputs
                let fieldChanges =
                  match List.hd inputs with
                  | [Added (VRecord record)] -> Some [Added !record.[fieldv]]
@@ -221,15 +222,13 @@ let makeProjector field uid prio (parents:Operator list) =
                                               | RecordDiff (field', chg) when fieldv = field' -> Some chg
                                               | _ -> None)
                                            changes
-               let (VRecord record) = op.Parents.[0].Value
+               let record = match op.Parents.[0].Value with
+                            | VRecord r -> r
+                            | _ -> failwithf "The parent of the projector is not a record?!"
                let newValue = !(record.[fieldv])
                match fieldChanges with
                | Some changes -> op.Value <- newValue
                                  Some (op.Children, changes)
-               | None -> None (*if op.Value <> newValue
-                           then op.Value <- newValue
-                                Some (op.Children, [Added newValue])
-                           else None *)
+               | None -> None
 
-  //printfn "A criar o projector. Pai = %O" parents.[0].Value
   Operator.Build(uid, prio, eval, parents)

@@ -12,12 +12,15 @@ module Priority =
   
   let initial = Priority [0]
   let of_list = Priority
+
   let next (Priority p) =
-    let (x::xs) = List.rev p
-    Priority (List.rev ((x + 1)::xs))
+    match List.rev p with
+    | [] -> failwithf "Can't happen"
+    | x::xs -> Priority (List.rev ((x + 1)::xs))
+    
   let down (Priority p) = Priority (p @ [0])
   let add (Priority right) (Priority left) = Priority (right @ left)
-//  let get = Priority << List.rev
+
 
 (*
  * An operator is like a graph node that contains a list of parents and
@@ -39,13 +42,13 @@ module Priority =
  *)
 [<ReferenceEquality>]
 type Operator =
-  { Eval: Operator * changes list -> (ChildData List * changes) option
+  { Uid: uid
     Children: List<ChildData>
     Parents: List<Operator>
-    Contents: ref<value>
     Priority: Priority.priority
     AllChanges: changes list ref
-    Uid: uid }
+    Contents: ref<value>
+    Eval: Operator * changes list -> (ChildData List * changes) option }
 
   member self.ArgCount with get() = self.Parents.Count
   member self.Value
@@ -92,6 +95,11 @@ and Event(timestamp:DateTime, fields:Map<string, value>) =
     override self.Equals(otherObj:obj) =
         let other = unbox<Event>(otherObj)
         other.Timestamp = self.Timestamp && self.Fields = other.Fields
+        
+    override self.GetHashCode() =
+      let hash1 = self.Timestamp.GetHashCode ()
+      let hash2 = self.Fields.GetHashCode()
+      ((hash1 <<< 5) + hash1) ^^^ hash2
     
     override self.ToString() =
        "{ @ " + timestamp.TotalSeconds.ToString() + " " + 

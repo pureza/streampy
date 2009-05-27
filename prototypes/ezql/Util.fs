@@ -1,6 +1,7 @@
 ﻿#light
 
 open Types
+open Ast
 
 let toSeconds value unit =
   match unit with

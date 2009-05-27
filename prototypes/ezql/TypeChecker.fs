@@ -110,7 +110,9 @@ and typeOf env expr =
           | Some t -> t
           | None -> failwithf "The record doesn't have field '%s'" name
       | TyEntity t ->
-          let (TyType (fields, _)) = env.[t]
+          let fields = match env.[t] with
+                       | TyType (fields, _) -> fields
+                       | _ -> failwithf "The entity is not a TyType?!"
           match Map.tryFind name fields with
           | Some t -> t
           | None -> failwithf "The entity doesn't have field '%s'" name

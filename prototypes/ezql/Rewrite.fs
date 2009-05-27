@@ -163,7 +163,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
       // Translate additional member declarations.                                      
       let allFields = List.fold (fun acc (Member (self, Identifier name, expr)) ->
                                    let expr' = transDictAll entities expr
-                                   let expr'' = transSelf acc expr' name
+                                   let expr'' = transSelf acc expr' self
                                    acc.Add(Symbol name, expr''))
                                  assocFields members
 
@@ -183,7 +183,7 @@ and transDictAll entities expr =
 (* Replaces self.field with the expression that originates field. *)
 and transSelf (fieldExprs:Map<symbol, expr>) expr self =
   let rec replacer expr = match expr with
-                          | MemberAccess (Id (Identifier self), Identifier field) -> fieldExprs.[Symbol field]
+                          | MemberAccess (Id self', Identifier field) when self = self' -> fieldExprs.[Symbol field]
                           | _ -> visit expr replacer
 
   replacer expr                            
