@@ -15,6 +15,7 @@ type Type =
   | TyString
   | TySymbol
   | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
+  | TyLambda of List<string * Type> * Type
   | TyEntity of string
   | TyRecord of Map<string, Type>
   | TyStream of Type
@@ -30,6 +31,7 @@ type Type =
     | TyString -> "string"
     | TySymbol -> "symbol"
     | TyType _ -> "type"
+    | TyLambda _ -> "lambda"
     | TyEntity typ -> sprintf "instanceOf %O" typ
     | TyRecord _ -> "record"
     | TyStream _ -> "stream"
@@ -99,6 +101,21 @@ and typeOf env expr =
       typeOf env expr |> ignore
       TyUnit
   | FuncCall (Id (Identifier "$ref"), [expr]) -> TyRef (typeOf env expr)
+  | FuncCall (f, args) ->
+      let curry1 = function
+        | TyLambda (x::y::xs, returnType) -> TyLambda (y::xs, returnType)
+        | TyLambda ([x], returnType) -> returnType
+        | _ -> failwithf "Too many arguments"
+      
+      let param's, returnType = 
+        match typeOf env f with
+        | TyLambda (param's, returnType) -> param's, returnType
+        | _ -> failwithf "Called function is not a function!"
+      let curriedParams = Seq.take args.Length param's |> Seq.to_list
+      let matching = List.forall2 (fun arg (param, paramType) -> (typeOf env arg) = paramType) args curriedParams
+      if matching
+        then List.fold (fun acc arg -> curry1 acc) (TyLambda (param's, returnType)) args
+        else failwithf "Parameters don't match argument types in function call"
   | MemberAccess (target, Identifier name) ->
       let targetType = match typeOf env target with
                        | TyRef t -> t
@@ -134,6 +151,10 @@ and typeOf env expr =
       | TyRecord fields -> TyRecord (List.fold (fun fields (Symbol name, expr) -> fields.Add(name, typeOf env expr)) fields newFields)
       | _ -> failwith "Source is not a record!"
   | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
+  | Lambda (args, expr) ->
+      let env' = List.fold (fun (env:TypeContext) (Identifier id) -> env.Add(id, TyInt)) env args
+      let argTypes = List.foldBack (fun (Identifier id) acc -> (id, TyInt)::acc) args []
+      TyLambda (argTypes, typeOf env' expr)
   | If (cond, thn, els) ->
       let tyCond = typeOf env cond
       let tyThn = typeOf env thn
@@ -175,7 +196,7 @@ and typeOfMethodCall env target name paramExps =
           match paramExps with
           | [Lambda ([Identifier ev], expr)] -> 
               match typeOf (env.Add(ev, evType)) expr with
-              | TyRecord projFields as outEvType -> TyStream outEvType
+              | TyRecord projFields -> TyStream (TyRecord (projFields.Add("timestamp", TyInt)))
               | _ -> failwithf "The projector of the select doesn't return a record!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps        
       | "[]" ->

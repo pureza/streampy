@@ -114,7 +114,7 @@ and value =
     | VString of string
     | VRecord of Map<value, value ref>
     | VDict of Map<value, value> ref
-    | VClosure of context * expr
+    | VClosure of context * expr // This is just the lambda expression, doesn't include the captured environment
     | VEvent of Event
     | VRef of value
     | VNull

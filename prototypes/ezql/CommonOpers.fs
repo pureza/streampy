@@ -232,3 +232,11 @@ let makeProjector field uid prio (parents:Operator list) =
                | None -> None
 
   Operator.Build(uid, prio, eval, parents)
+  
+// Doesn't do anything.
+// TODO: Remove this operator
+let makeClosure expr uid prio parents =
+  let eval = fun (op:Operator, inputs) -> None
+  Operator.Build(uid, prio, eval, parents)
+  
+       

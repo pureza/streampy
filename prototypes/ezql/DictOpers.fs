@@ -31,7 +31,8 @@ let makeInitialOp uid prio parents =
  *)     
 let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (parents:Operator list) =
   let rec buildSubGroup key env headOp =
-    let initial, final = groupBuilder prio env
+    let initials, final = groupBuilder prio env
+    let initial = List.hd initials
     subgroups := (!subgroups).Add(key, (initial, final))
 
     // Connects the resulting node to the dictionary operator.
@@ -126,7 +127,8 @@ let makeGroupby field groupBuilder uid prio parents =
         >> List.map DictDiff
 
     let rec buildSubGroup key env =
-      let initial, final = groupBuilder prio env
+      let initials, final = groupBuilder prio env
+      let initial = List.hd initials
       substreams := (!substreams).Add(key, initial)
       connect groupOp initial id
       // Connects the resulting node to the dictionary operator.

@@ -1,13 +1,33 @@
 temp_readings = stream (:room_id, :temperature);;
+hum_readings = stream (:room_id, :humidity);;
 entries = stream(:room_id, :product_id);;
 
-lastTemp = temp_readings.last(:temperature);;
+entity Product =
+  createFrom (entries, :product_id)
+  belongsTo :room;;
 
-x = let g = t -> t * 2 in
-    let x2 = v -> v.sum() + g(v) in
-    x2 (lastTemp);;
 
-when (entries, ev -> print (x));;
+entity Room =
+  createFrom(temp_readings, :room_id)
+  hasMany :products
+
+  member self.productIds = self.products.select (p -> p.product_id);;
+
+productIdsPerRoom = Room.all.select (r -> r.productIds);;
+
+
+#! hum_readings
+Timestamp, room_id, humidity
+0,         1, 70
+1,         2, 80
+2,         3, 90
+3,         1, 71
+4,         2, 81
+5,         3, 91
+6,         1, 72
+7,         2, 82
+8,         3, 92
+
 
 #! temp_readings
 Timestamp, room_id, temperature
@@ -26,4 +46,3 @@ Timestamp, room_id, product_id
 7,               1,          3
 8,               2,          1
 9,               3,          2
-

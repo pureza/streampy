@@ -4,7 +4,7 @@ open Extensions.DateTimeExtensions
 open Ast
 open Types
 
-let rec eval env = function
+let rec eval (env:Map<string, value>) = function
   | FuncCall (Id (Identifier "print"), paramExps) -> // TODO: Put this in some sort of global environment
       let v = eval env paramExps.Head
       printfn "%O" v
