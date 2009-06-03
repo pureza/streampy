@@ -337,10 +337,14 @@ and dataflowFuncCall env types graph fn paramExps expr =
       | _ -> invalid_arg "paramExps"
           
   | Id (Identifier func) when func <> "print" ->
+      let rec getReturnType argCount funType =
+        match argCount, funType with
+        | 0, _ -> funType
+        | n, TyArrow (type1, type2) when n > 0 -> getReturnType (n - 1) type2
+        | _ -> failwithf "%A must be of type TyArrow!" funType
+  
       let fn = env.[func]
-      let returnType = match fn.Type with
-                       | TyLambda (_, ret) -> ret
-                       | _ -> failwithf "The function is not a function!"
+      let returnType = getReturnType paramExps.Length fn.Type
       let args, body = match fn.Expr with
                        | Lambda (args, body) -> List.map (fun (Param (Identifier arg, _)) -> arg) args, body
                        | _ -> failwithf "The function is not a function!"

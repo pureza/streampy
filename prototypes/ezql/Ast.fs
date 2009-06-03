@@ -58,7 +58,8 @@ and Type =
   | TyString
   | TySymbol
   | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
-  | TyLambda of List<string * Type> * Type
+  | TyArrow of Type * Type
+  //| TyLambda of List<string * Type> * Type
   | TyEntity of string
   | TyRecord of Map<string, Type>
   | TyStream of Type
@@ -74,7 +75,8 @@ and Type =
     | TyString -> "string"
     | TySymbol -> "symbol"
     | TyType _ -> "type"
-    | TyLambda _ -> "lambda"
+    | TyArrow (type1, type2) -> sprintf "%O -> %O" type1 type2
+   // | TyLambda _ -> "lambda"
     | TyEntity typ -> sprintf "instanceOf %O" typ
     | TyRecord _ -> "record"
     | TyStream _ -> "stream"

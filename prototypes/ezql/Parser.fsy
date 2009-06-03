@@ -9,7 +9,7 @@ open Ast
 %token <int> INTEGER
 %token <bool> BOOLEAN
 %token <string> STRING
-%token LET IN WITH IF THEN ELSE
+%token LET IN WITH IF THEN ELSE FUN
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE ASSIGN
 %token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV MOD COMMA
 %token SEMICOLON2
@@ -21,7 +21,7 @@ open Ast
 %token ENTITY CREATE_FROM BELONGS_TO HAS_MANY MEMBER
 
 %nonassoc LET IN
-%right ARROW
+%left ARROW
 %right SEMICOLON
 %nonassoc IF THEN ELSE
 %left OR
@@ -73,7 +73,7 @@ expr:   expr DOT ID                                        { MemberAccess ($1, I
                                                              | _ -> FuncCall ($1, $3) }
       | LPAREN expr RPAREN                                 { $2 }
       | expr LBRACKET expr RBRACKET                        { ArrayIndex ($1, $3) }
-      | parameters ARROW expr                              { Lambda ($1, $3) }
+      | FUN parameters ARROW expr                          { Lambda ($2, $4) }
       | expr SEMICOLON expr                                { Seq ($1, $3) }
       | binaryExpr                                         { $1 }
       | IF expr THEN expr ELSE expr                        { If ($2, $4, $6) }
@@ -107,13 +107,9 @@ conditional:   expr GT   expr                              { BinaryExpr (Greater
 symbol: COLON ID                                           { Symbol $2 }
 
 Type:   INT                                                { TyInt }
-    //  | ArrowType                                          { TyInt }
-    //  | LPAREN Type RPAREN                                 { $2 }
+      | Type ARROW Type                                    { TyArrow ($1, $3) }
+      | LPAREN Type RPAREN                                 { $2 }
       
-ArrowType:   Type ARROW ArrowType                          { $1::$3 }
-           | Type                                          { [$1] }      
-
-
 // (), id or id1 id2 ... idN
 parameters:   LPAREN RPAREN                                { [] }
             | parameter moreParams                         { $1::$2 }

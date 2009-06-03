@@ -14,6 +14,7 @@ let ids = Map.of_list ["min",        MIN
                        "if",         IF
                        "then",       THEN
                        "else",       ELSE
+                       "fun",        FUN
                        "entity",     ENTITY
                        "createFrom", CREATE_FROM
                        "belongsTo",  BELONGS_TO

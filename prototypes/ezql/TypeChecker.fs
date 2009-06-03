@@ -68,20 +68,22 @@ and typeOf env expr =
       typeOf env expr |> ignore
       TyUnit
   | FuncCall (Id (Identifier "$ref"), [expr]) -> TyRef (typeOf env expr)
-  | FuncCall (f, args) ->
-      let curry1 = function
-        | TyLambda (x::y::xs, returnType) -> TyLambda (y::xs, returnType)
-        | TyLambda ([x], returnType) -> returnType
-        | _ -> failwithf "Too many arguments"
+  | FuncCall (f, param's) ->
+      let rec getReturnType argCount funType =
+        match argCount, funType with
+        | 0, _ -> funType
+        | n, TyArrow (type1, type2) when n > 0 -> getReturnType (n - 1) type2
+        | _ -> failwithf "%A must be of type TyArrow!" funType
       
-      let param's, returnType = 
-        match typeOf env f with
-        | TyLambda (param's, returnType) -> param's, returnType
-        | _ -> failwithf "Called function is not a function!"
-      let curriedParams = Seq.take args.Length param's |> Seq.to_list
-      let matching = List.forall2 (fun arg (param, paramType) -> (typeOf env arg) = paramType) args curriedParams
+      let rec arrow2list = function
+        | TyArrow (type1, type2) -> type1::(arrow2list type2)
+        | other -> [other]
+        
+      let funType = typeOf env f
+      let argTypes = arrow2list funType |> Seq.take param's.Length |> Seq.to_list      
+      let matching = List.forall2 (fun arg paramType -> (typeOf env arg) = paramType) param's argTypes
       if matching
-        then List.fold (fun acc arg -> curry1 acc) (TyLambda (param's, returnType)) args
+        then getReturnType param's.Length funType
         else failwithf "Parameters don't match argument types in function call"
   | MemberAccess (target, Identifier name) ->
       let targetType = match typeOf env target with
@@ -119,9 +121,14 @@ and typeOf env expr =
       | _ -> failwith "Source is not a record!"
   | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
   | Lambda (args, expr) ->
-      let env' = List.fold (fun (env:TypeContext) (Param (Identifier id, _)) -> env.Add(id, TyInt)) env args
-      let argTypes = List.foldBack (fun (Param (Identifier id, _)) acc -> (id, TyInt)::acc) args []
-      TyLambda (argTypes, typeOf env' expr)
+      let env', argTypes =
+        List.fold (fun (env:TypeContext, argTypes) (Param (Identifier id, typ)) ->
+                     match typ with
+                     | Some typ' -> env.Add(id, typ'), argTypes @ [typ']
+                     | None -> failwithf "I have no idea what's the type of argument %A" id)
+                  (env, []) args
+      List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes (typeOf env' expr)
+      //TyLambda (argTypes, typeOf env' expr)
   | If (cond, thn, els) ->
       let tyCond = typeOf env cond
       let tyThn = typeOf env thn
