@@ -266,7 +266,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "select" ->
           let arg, body =
             match paramExps with
-            | [Lambda ([Identifier arg], body) as fn] ->
+            | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
                 arg, body
             | _ -> failwith "Invalid parameter to dict/select"
           let projType = typeOf (types.Add(arg, valueType)) body
@@ -299,7 +299,7 @@ and dataflowFuncCall env types graph fn paramExps expr =
       Set.singleton n, g', Id (Identifier n.Uid)
   | Id (Identifier "when") ->
       match paramExps with
-      | [target; Lambda ([Identifier arg], handler)] ->
+      | [target; Lambda ([Param (Identifier arg, _)], handler)] ->
           // Dataflow the target
           let depsTarget, g1, target' = dataflowE env types graph target
           let depTarget = match Set.to_list depsTarget with
@@ -312,7 +312,7 @@ and dataflowFuncCall env types graph fn paramExps expr =
           // Create a node for the when operator
           let allDeps = depTarget::(Set.to_list depsHandler)
           let n, g3 = createNode (nextSymbol "when") TyUnit allDeps expr
-                                 (makeWhen (Lambda ([Identifier arg], handler'))) g2
+                                 (makeWhen (Lambda ([Param (Identifier arg, None)], handler'))) g2
           Set.singleton n, g3, Id (Identifier n.Uid)
       | _ -> failwithf "Invalid parameters to when: %A" paramExps
   | Id (Identifier "$ref") ->
@@ -342,7 +342,7 @@ and dataflowFuncCall env types graph fn paramExps expr =
                        | TyLambda (_, ret) -> ret
                        | _ -> failwithf "The function is not a function!"
       let args, body = match fn.Expr with
-                       | Lambda (args, body) -> List.map (fun (Identifier arg) -> arg) args, body
+                       | Lambda (args, body) -> List.map (fun (Param (Identifier arg, _)) -> arg) args, body
                        | _ -> failwithf "The function is not a function!"
                        
       // Extend the environment with the arguments
@@ -393,13 +393,13 @@ and dataflowGroupby env types graph target paramExps =
                  | _ -> failwithf "GroupBy's argument must be a stream or an event window."
   let field, body, arg =
     match paramExps with
-    | [SymbolExpr (Symbol field); Lambda ([Identifier arg], body) as fn] ->
+    | [SymbolExpr (Symbol field); Lambda ([Param (Identifier arg, _)], body) as fn] ->
         let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = []; Expr = Id (Identifier arg) }
         field, body, arg
     | _ -> failwith "Invalid parameter to groupby"
   let valueType = typeOf (types.Add(arg, argType)) body
     
-  dataflowDictOps env types graph target [Lambda ([Identifier arg], body)]
+  dataflowDictOps env types graph target [Lambda ([Param (Identifier arg, None)], body)]
                   argType argMaker valueType (makeGroupby field) (nextSymbol "groupBy")
 
 (*
@@ -434,7 +434,7 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
   and dataflowSubExpr (env:NodeContext) (types:TypeContext) (graph:DataflowGraph) =
     let body, env', types', g1, arg =
       match paramExps with
-      | [Lambda ([Identifier arg], body) as fn] ->
+      | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
           let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = []; Expr = Id (Identifier arg) }
           body, env.Add(arg, argInfo), types.Add(arg, argType), graph.Add([], arg, argInfo, []), arg
       | _ -> invalid_arg "paramExps"
@@ -573,7 +573,7 @@ and renameNetwork renamer root graph =
 and dataflowSelect env types graph target paramExps expr =
   let subExpr, env', types', arg =
     match paramExps with
-    | [Lambda ([Identifier arg], body) as fn] ->
+    | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
         body,
         // Put the argument as an Unknown node into the environment
         // This way it will be ignored by the dataflow algorithm
@@ -582,7 +582,7 @@ and dataflowSelect env types graph target paramExps expr =
         arg
     | _ -> failwith "Invalid parameter to where"
   let deps, g', expr' = dataflowE env' types' graph subExpr
-  let expr'' = Lambda ([Identifier arg], expr')
+  let expr'' = Lambda ([Param (Identifier arg, None)], expr')
  
   // Find the type of the resulting stream
   let inEvType = match target.Type with
@@ -605,7 +605,7 @@ and dataflowSelect env types graph target paramExps expr =
 and dataflowWhere env types graph target paramExps expr =
   let subExpr, env', types', arg =
     match paramExps with
-    | [Lambda ([Identifier arg], body) as fn] ->
+    | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
         body,
         // Put the argument as an Unknown node into the environment
         // This way it will be ignored by the dataflow algorithm
@@ -614,7 +614,7 @@ and dataflowWhere env types graph target paramExps expr =
         arg
     | _ -> failwith "Invalid parameter to where"
   let deps, g', expr' = dataflowE env' types' graph subExpr
-  let expr'' = Lambda ([Identifier arg], expr')
+  let expr'' = Lambda ([Param (Identifier arg, None)], expr')
  
   // Depends on the stream and on the dependencies of the predicate.
   let opDeps = target::(Set.to_list deps)

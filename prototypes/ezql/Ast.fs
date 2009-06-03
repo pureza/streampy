@@ -9,7 +9,7 @@ and expr =
   | MethodCall of expr * id * expr list
   | FuncCall of expr * expr list
   | MemberAccess of expr * id
-  | Lambda of id list * expr
+  | Lambda of param list * expr
   | If of expr * expr * expr
   | ArrayIndex of expr * expr
   | Seq of expr * expr
@@ -41,6 +41,8 @@ and timeUnit = Min | Sec
 
 and id = Identifier of string
 
+and param = Param of id * Type option
+
 and symbol = Symbol of string
 
 and createFrom = expr * symbol
@@ -49,4 +51,37 @@ and association =
   | HasMany of symbol
 and attribute = Member of id * id * expr  
 
+and Type =
+  | TyUnit
+  | TyBool
+  | TyInt
+  | TyString
+  | TySymbol
+  | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
+  | TyLambda of List<string * Type> * Type
+  | TyEntity of string
+  | TyRecord of Map<string, Type>
+  | TyStream of Type
+  | TyWindow of Type * WindowType
+  | TyDict of Type
+  | TyRef of Type
+  
+  override self.ToString() =
+    match self with
+    | TyUnit -> "()"
+    | TyBool -> "bool"
+    | TyInt -> "int"
+    | TyString -> "string"
+    | TySymbol -> "symbol"
+    | TyType _ -> "type"
+    | TyLambda _ -> "lambda"
+    | TyEntity typ -> sprintf "instanceOf %O" typ
+    | TyRecord _ -> "record"
+    | TyStream _ -> "stream"
+    | TyWindow _ -> "window"
+    | TyDict _ -> "dict"
+    | TyRef t -> sprintf "ref<%O>" t
+
+and WindowType =
+  | TimedWindow of int    
 

@@ -5,42 +5,9 @@ open Util
 open Types
 open Extensions
 
-type WindowType =
-  | TimedWindow of int
-
-type Type =
-  | TyUnit
-  | TyBool
-  | TyInt
-  | TyString
-  | TySymbol
-  | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
-  | TyLambda of List<string * Type> * Type
-  | TyEntity of string
-  | TyRecord of Map<string, Type>
-  | TyStream of Type
-  | TyWindow of Type * WindowType
-  | TyDict of Type
-  | TyRef of Type
-  
-  override self.ToString() =
-    match self with
-    | TyUnit -> "()"
-    | TyBool -> "bool"
-    | TyInt -> "int"
-    | TyString -> "string"
-    | TySymbol -> "symbol"
-    | TyType _ -> "type"
-    | TyLambda _ -> "lambda"
-    | TyEntity typ -> sprintf "instanceOf %O" typ
-    | TyRecord _ -> "record"
-    | TyStream _ -> "stream"
-    | TyWindow _ -> "window"
-    | TyDict _ -> "dict"
-    | TyRef t -> sprintf "ref<%O>" t
 
 
-and TypeContext = Map<string, Type>
+type TypeContext = Map<string, Type>
 and RemainingMap = Map<string, TypeContext -> TypeContext>
 
 let matchingEntity fields types =
@@ -90,7 +57,7 @@ and typeOf env expr =
                         | SymbolExpr (Symbol name) -> (name, TyInt)
                         | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
       TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
-  | FuncCall (Id (Identifier "when"), [source; Lambda ([Identifier ev], handler)]) ->
+  | FuncCall (Id (Identifier "when"), [source; Lambda ([Param (Identifier ev, _)], handler)]) ->
       match typeOf env source with
       | TyStream _ -> ()
       | _ -> failwithf "The source of the when doesn't reduce to a stream"
@@ -152,8 +119,8 @@ and typeOf env expr =
       | _ -> failwith "Source is not a record!"
   | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
   | Lambda (args, expr) ->
-      let env' = List.fold (fun (env:TypeContext) (Identifier id) -> env.Add(id, TyInt)) env args
-      let argTypes = List.foldBack (fun (Identifier id) acc -> (id, TyInt)::acc) args []
+      let env' = List.fold (fun (env:TypeContext) (Param (Identifier id, _)) -> env.Add(id, TyInt)) env args
+      let argTypes = List.foldBack (fun (Param (Identifier id, _)) acc -> (id, TyInt)::acc) args []
       TyLambda (argTypes, typeOf env' expr)
   | If (cond, thn, els) ->
       let tyCond = typeOf env cond
@@ -187,14 +154,14 @@ and typeOfMethodCall env target name paramExps =
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "where" -> 
           match paramExps with
-          | [Lambda ([Identifier ev], expr)] -> 
+          | [Lambda ([Param (Identifier ev, _)], expr)] -> 
               if (typeOf (env.Add(ev, evType)) expr) <> TyBool
                 then failwithf "The predicate of the where doesn't return a boolean!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
           targetType
       | "select" -> 
           match paramExps with
-          | [Lambda ([Identifier ev], expr)] -> 
+          | [Lambda ([Param (Identifier ev, _)], expr)] -> 
               match typeOf (env.Add(ev, evType)) expr with
               | TyRecord projFields -> TyStream (TyRecord (projFields.Add("timestamp", TyInt)))
               | _ -> failwithf "The projector of the select doesn't return a record!"
@@ -205,7 +172,7 @@ and typeOfMethodCall env target name paramExps =
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "groupby" ->
           match paramExps with
-          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
+          | [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   // Event Windows
@@ -217,14 +184,14 @@ and typeOfMethodCall env target name paramExps =
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | "where" -> 
           match paramExps with
-          | [Lambda ([Identifier ev], expr)] -> 
+          | [Lambda ([Param (Identifier ev, _)], expr)] -> 
               if (typeOf (env.Add(ev, evType)) expr) <> TyBool
                 then failwithf "The predicate of the where doesn't return a boolean!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
           targetType
       | "groupby" ->
           match paramExps with
-          | [SymbolExpr (Symbol field); Lambda ([Identifier g], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
+          | [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyWindow (TyInt, TimedWindow _) ->
@@ -238,13 +205,14 @@ and typeOfMethodCall env target name paramExps =
       match name with
       | "where" -> 
           match paramExps with
-          | [Lambda ([Identifier g], expr)] -> if (typeOf (env.Add(g, valueType)) expr) <> TyBool
-                                                 then failwithf "The predicate of the where doesn't return a boolean!"
+          | [Lambda ([Param (Identifier g, _)], expr)] ->
+              if (typeOf (env.Add(g, valueType)) expr) <> TyBool
+                then failwithf "The predicate of the where doesn't return a boolean!"
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
           targetType
       | "select" -> 
           let valueType' = match paramExps with
-                           | [Lambda ([Identifier g], expr)] -> typeOf (env.Add(g, valueType)) expr
+                           | [Lambda ([Param (Identifier g, _)], expr)] -> typeOf (env.Add(g, valueType)) expr
                            | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
           TyDict valueType'
       | "[]" -> match paramExps with

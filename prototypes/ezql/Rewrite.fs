@@ -154,9 +154,9 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                          let entityName = String.capitalize entity |> String.singular
                                          let entityId = (name + "_id").ToLower()
                                          let x = Identifier "x"
-                                         let filter = Lambda ([x], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), acc.[Symbol entityId]))
+                                         let filter = Lambda ([Param (x, None)], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), acc.[Symbol entityId]))
                                          let whereExpr = MethodCall (Id (Identifier (entityDict entityName)), Identifier "where", [filter])
-                                         let toRef = Lambda ([x], FuncCall (Id (Identifier "$ref"), [Id x]))
+                                         let toRef = Lambda ([Param (x, None)], FuncCall (Id (Identifier "$ref"), [Id x]))
                                          let selectRef = MethodCall (whereExpr, Identifier "select", [toRef])
                                          acc.Add(Symbol entity, selectRef))
                                    streamFields assocs
@@ -169,7 +169,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
 
       let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
-                                   [SymbolExpr uniqueId; Lambda ([Identifier "g"], record)])
+                                   [SymbolExpr uniqueId; Lambda ([Param (Identifier "g", None)], record)])
       let assign = Def (Identifier (entityDict name), groupByExpr)                 
       entities.Add(name), assign
 

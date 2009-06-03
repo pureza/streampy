@@ -71,7 +71,7 @@ and apply = function
       match expr with
       | Lambda (ids, body) ->
           (fun args ->
-              let ids' = List.map (fun (Identifier name) -> name) ids
+              let ids' = List.map (fun (Param (Identifier name, _)) -> name) ids
               let env' = List.fold (fun e (n, v) -> Map.add n v e)
                                    env (List.zip ids' args)
               eval env' body)

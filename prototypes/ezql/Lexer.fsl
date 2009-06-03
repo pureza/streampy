@@ -18,7 +18,8 @@ let ids = Map.of_list ["min",        MIN
                        "createFrom", CREATE_FROM
                        "belongsTo",  BELONGS_TO
                        "hasMany",    HAS_MANY
-                       "member",     MEMBER]
+                       "member",     MEMBER
+                       "int",        INT]
 let tokenize text =
   if ids.ContainsKey(text)
       then ids.[text]

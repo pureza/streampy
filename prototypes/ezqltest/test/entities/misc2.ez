@@ -3,9 +3,9 @@ entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-x = let g = t -> t * 2 in
-    let x2 = v -> v.sum() + g(v) in
-    x2 (lastTemp);;
+x = let g = t:int -> t * 2 in
+    let x2 = v:int f:int -> v.sum() + f(v) in
+    x2 (lastTemp, g);;
 
 when (entries, ev -> print (x));;
 
