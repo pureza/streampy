@@ -1,72 +1,36 @@
-temp_readings = stream (:room_id, :temperature);;
-hum_readings = stream (:room_id, :humidity);;
-entries = stream(:room_id, :product_id);;
+stocks = stream (:symbol, :price);;
 
+entity Company =
+  createFrom stocks
 
-entity Room =
-  createFrom(temp_readings, :room_id);;
-
-
-entity Product =
-  createFrom (entries, :product_id)
-  belongsTo :room
-  member x.temperature = x.room.temperature.sum();;
-
-
-x = when (entries, ev -> print (Product.all[ev.product_id].temperature));;
-y = when (entries, ev -> print (Product.all[1].temperature.sum()));;
-
-
-/*
-entity Product =
-  createFrom (entries, :product_id)
-  belongsTo :room
+  member self.qty = 0
+  member self.profit = 0
+  member self.buyPrice = 0
+  member self.sellPrice = 0
   
-  member self.temperature = self.room.temperature;;
+  member self.sell() =
+    self.profit += (self.price - self.buyPrice) * self.qty
+    self.sellPrice = self.price
+    self.qty = 0
+
+  member self.buy(n) =
+    self.profit -= n * self.price
+    self.qty += n
+    self.buyPrice = self.price;;
 
 
-entity Room =
-  createFrom(temp_readings, :room_id)
-  discrete volume
+toSell = Company.where (c -> c.totalQty > 0 && (c.price > c.buyPrice * 1.03 or c.price < c.buyPrice * 0.98));;
 
-  hasMany :products
-  member self.x = 10
-  member self.y = self.temperature * 2;;
+when (toSell.updated(), ev -> for c in toSell
+                                c.sell());;
 
-
-Room.all = temp_readings
-             .groupby(:room_id, g -> let room_id = g.last(:room_id) in
-                                     let temperature = g.last(:temperature) in
-                                     { :room_id     = room_id ,
-                                       :temperature = temperature ,
-                                       :x           = 10,
-                                       :y           = temperature  * 2,
-                                       :volume      = g.select(ev -> { :value = ev.volume },
-                                       :products    = Product.all.where(p -> p.room_id = room_id) })
-
-We don't need Product.all until runtime, when a room is created. On the other hand, we need to dataflow the expression before that. So we could just say "Hey, I don't know what Product.all is, so ignore it for now." and then, during runtime, we would point to the real node. The first part is not really that difficult, but the second is harder because Product.all cannot be a dependency of Room.all (otherwise we have a cycle). Thus, on runtime, Product.all will not belong to the Room's environment and will not be in the set of dependencies of the room.
-
-Another possibility could be: while dataflowing Room.all, when we get to :products, we return an indication that the field needs to be further dataflowed when Product.all is, itself, dataflowed. The problem is, the second phase of dataflow (including the creation of the groupby's final node) would have to be delayed... and then, while dataflowing Product.all, we would get a cycle... What if the creation of the node doesn't need to be delayed? But then, the remaining expression could not introduce new dependencies. hmm.. maybe it could... maybe we can modify the node afterwards, or clone it, modify this copy and add it to the graph to replace the original...
+balance = initialBalance + Company.all.select (c -> c.profit).sum();;
 
 
-##############
+toBuy = Company.where (c -> c.price > 1.03 * c.price@(3 days));;
 
-In this example, Room.all should precede Product.all to ensure that the corresponding Room instance is created before it is referenced by the Product. Only after the Product.room field is filled should the Room.products field be updated. Hence, Room.products depends on Products.all (i.e. uses Products.all diffs as input), but Products.all should not be an input to Room.all. So, it's OK to have Product.all connected to Room.products, even though Room.all has lower priority.
-
-If Product.all doesn't need to be an input to Room.all, it's OK to create the node for Room.all without Product.all as a dependency. The second problem remains: how can Room.products refer to Product.all when it is created? One idea: what if the second dataflow actually inherits the env and graph from the first, instead of creating a new one? Won't work: the graph is incomplete when Room.all is dataflowed the first time. So, the second time, we need to dataflow with the final env and graph... Or with a graph that contains Product.all...
-
-How about something like: "Hey, here is Room.all. But when you know what Product.all is, tell me because there is something I gotta do..."? First: how do we know that Room.all depends on Products.all? A: We analyze the exception thrown by dataflowE. How do we track these dependencies? Obviously, some sort of continuation... But do we have to pass a k everywhere? Hopefully not in dataflowE, just in dataflow. But dataflowGroupBy (and dataflowE) must return a new continuation... 
-
-
-Product.all = entries
-                .groupby(:product_id, g -> let room_id = g.last(:room_id) in
-                                           let room = Room.all[room_id] in
-                                           { :product_id  = g.last(:product_id),
-                                             :room_id     = room_id,
-                                             :room        = room,
-                                             :temperature = room.temperature })
-
-*/
+when (toBuy.updated(), ev -> for c in toSell
+                               if c.price * 10 < balance then c.buy(10));;
 
 #! hum_readings
 Timestamp, room_id, humidity

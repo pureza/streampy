@@ -18,28 +18,28 @@ entity Product =
 
 
 //x = when (entries, ev -> print (Product.all[ev.product_id].temperature));;
-y = when (entries, ev -> print (Product.all[1].temperature.sum()));;
+y = when (entries, fun ev -> print (Product.all[1].temperature.sum()));;
 
-products = Product.all.select (p -> let room = Room.all[p.room_id] in
-                                    { :product_id = p.product_id,
-                                      :temperature = p.temperature,
-                                      :room_id = p.room_id,
-                                      :room = { :room_id = room.room_id,
-                                                :temperature = room.temperature } });;
+products = Product.all.select (fun p -> let room = Room.all[p.room_id] in
+                                        { product_id = p.product_id,
+                                          temperature = p.temperature,
+                                          room_id = p.room_id,
+                                          room = { room_id = room.room_id,
+                                                   temperature = room.temperature } });;
 
 // for r in Room.all
 //   for p in r.products
 //     select p.room.room_id    
 roomsPerProducts = Room.all
-                     .select (r -> r.products
-                                     .select(p -> p.room.room_id));;
+                     .select (fun r -> r.products
+                                          .select(fun p -> p.room.room_id));;
 
 roomsPerProducts2 = Room.all
-                      .select (r -> r.products)
-                      .select (products -> products.select (p -> p.room.room_id));;
+                      .select (fun r -> r.products)
+                      .select (fun products -> products.select (fun p -> p.room.room_id));;
 
 
-temp2SecsPerRoom = Room.all.select (r -> r.temp2Secs.sum());;
+temp2SecsPerRoom = Room.all.select (fun r -> r.temp2Secs.sum());;
 
 #! hum_readings
 Timestamp, room_id, humidity

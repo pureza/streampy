@@ -3,9 +3,44 @@ entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-x = let g = fun (t:int) -> t * 2 in
-    let x2 = fun (v:int) (f:int -> int) -> v.sum() + g(v) in
-    x2 (lastTemp, g);;
+//def something (t:int) =
+//  fun (u:int) -> t * u[2 sec].sum()
+
+// Test:
+//  - Functions with several parameters
+//  - Currying
+//x = let g = fun (a:int) (f:int -> int) -> f(a) in
+//    g (1) (fun (x:int) -> lastTemp + x);;
+
+
+
+// Test:
+//  - Functions that return functions
+//  - Closures
+//  - Currying
+//  - Passing records to functions
+/*
+x = let g = fun (t:int) -> fun (u:{ a:int }) -> t * (u.a[2 sec].sum()) in
+    let u = g (1) in
+    u ({ a = lastTemp });;
+*/
+
+// Test:
+//  - Record fields containing functions
+//x = let z = { a = { b = { c = fun (t:int) -> t } } } in
+//    (z.a.b.c)(lastTemp);;
+
+
+// Test:
+//  - Record fields containing functions that return functions
+x = let z = { a = fun (x:int) -> fun (y:int) -> x + y } in
+    z.a(lastTemp)(1);;
+
+// DOESN'T WORK
+//x = let z = { a = fun (x:int) -> x, b = fun (x:int) -> x * 2 } in
+//    let f = fun (x:int) -> (if lastTemp > 25 then z.a else z.b) in 
+//    f(1)(lastTemp);;
+
 
 when (x.updated(), fun ev -> print (x));;
 

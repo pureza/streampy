@@ -23,20 +23,20 @@ let test_entitiesMisc (test:Test) =
                      Set "100" (At  9)])
 
   test.AssertThat (In "products"
-                    [SetKey "1" "{ :product_id = 1, :temperature = 25,
-                                   :room_id = 1, :room = { :room_id = 1, :temperature = 25 } }" (At  3)
-                     SetKey "2" "{ :product_id = 2, :temperature = 25,
-                                   :room_id = 1, :room = { :room_id = 1, :temperature = 25 } }" (At  4)
-                     SetKey "2" "{ :product_id = 2, :temperature = 75,
-                                   :room_id = 2, :room = { :room_id = 2, :temperature = 50 } }" (At  6)
-                     SetKey "3" "{ :product_id = 3, :temperature = 25,
-                                   :room_id = 1, :room = { :room_id = 1, :temperature = 25 } }" (At  7)
-                     SetKey "1" "{ :product_id = 1, :temperature = 75,
-                                   :room_id = 2, :room = { :room_id = 2, :temperature = 50 } }" (At  8)
-                     SetKey "2" "{ :product_id = 2, :temperature = 105,
-                                   :room_id = 3, :room = { :room_id = 3, :temperature = 30 } }" (At  9)
-                     SetKey "3" "{ :product_id = 3, :temperature = 48,
-                                   :room_id = 1, :room = { :room_id = 1, :temperature = 23 } }" (At  9)])                                 
+                    [SetKey "1" "{ product_id = 1, temperature = 25,
+                                   room_id = 1, room = { room_id = 1, temperature = 25 } }" (At  3)
+                     SetKey "2" "{ product_id = 2, temperature = 25,
+                                   room_id = 1, room = { room_id = 1, temperature = 25 } }" (At  4)
+                     SetKey "2" "{ product_id = 2, temperature = 75,
+                                   room_id = 2, room = { room_id = 2, temperature = 50 } }" (At  6)
+                     SetKey "3" "{ product_id = 3, temperature = 25,
+                                   room_id = 1, room = { room_id = 1, temperature = 25 } }" (At  7)
+                     SetKey "1" "{ product_id = 1, temperature = 75,
+                                   room_id = 2, room = { room_id = 2, temperature = 50 } }" (At  8)
+                     SetKey "2" "{ product_id = 2, temperature = 105,
+                                   room_id = 3, room = { room_id = 3, temperature = 30 } }" (At  9)
+                     SetKey "3" "{ product_id = 3, temperature = 48,
+                                   room_id = 1, room = { room_id = 1, temperature = 23 } }" (At  9)])                                 
 
   let complicatedDiffs =
     [SetKeyRaw "1" (VDict (ref Map.empty))                                      (At 2)     // Room 1 is created

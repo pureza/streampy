@@ -6,18 +6,18 @@ open Test
 let test_windowsCreation (test:Test) =
 
   test.AssertThat (In "temps_3secs"
-                      [Added   2 "{ :room_id = 1, :temperature = 25 }" (At  2)
-                       Added   4 "{ :room_id = 3, :temperature = 45 }" (At  4)
-                       Added   5 "{ :room_id = 1, :temperature = 25 }" (At  5)
-                       Expired 2 "{ :room_id = 1, :temperature = 25 }" (At  5)
-                       Added   6 "{ :room_id = 2, :temperature = 50 }" (At  6)
-                       Added   7 "{ :room_id = 3, :temperature = 30 }" (At  7)
-                       Expired 4 "{ :room_id = 3, :temperature = 45 }" (At  7)
-                       Expired 5 "{ :room_id = 1, :temperature = 25 }" (At  8)
-                       Added   9 "{ :room_id = 1, :temperature = 23 }" (At  9)
-                       Expired 6 "{ :room_id = 2, :temperature = 50 }" (At  9)
-                       Expired 7 "{ :room_id = 3, :temperature = 30 }" (At 10)
-                       Expired 9 "{ :room_id = 1, :temperature = 23 }" (At 12)]) 
+                      [Added   2 "{ room_id = 1, temperature = 25 }" (At  2)
+                       Added   4 "{ room_id = 3, temperature = 45 }" (At  4)
+                       Added   5 "{ room_id = 1, temperature = 25 }" (At  5)
+                       Expired 2 "{ room_id = 1, temperature = 25 }" (At  5)
+                       Added   6 "{ room_id = 2, temperature = 50 }" (At  6)
+                       Added   7 "{ room_id = 3, temperature = 30 }" (At  7)
+                       Expired 4 "{ room_id = 3, temperature = 45 }" (At  7)
+                       Expired 5 "{ room_id = 1, temperature = 25 }" (At  8)
+                       Added   9 "{ room_id = 1, temperature = 23 }" (At  9)
+                       Expired 6 "{ room_id = 2, temperature = 50 }" (At  9)
+                       Expired 7 "{ room_id = 3, temperature = 30 }" (At 10)
+                       Expired 9 "{ room_id = 1, temperature = 23 }" (At 12)]) 
 
   test.AssertThat (In "lastTemp"
                     [Set "25" (At  2)
@@ -27,12 +27,12 @@ let test_windowsCreation (test:Test) =
                      Set "30" (At  7)
                      Set "23" (At  9)])
 
-  let rewriteTests = [Added   4 "{ :room_id = 3, :temperature = 45 }" (At  4)
-                      Added   6 "{ :room_id = 2, :temperature = 50 }" (At  6)
-                      Added   7 "{ :room_id = 3, :temperature = 30 }" (At  7)
-                      Expired 4 "{ :room_id = 3, :temperature = 45 }" (At  7)
-                      Expired 6 "{ :room_id = 2, :temperature = 50 }" (At  9)
-                      Expired 7 "{ :room_id = 3, :temperature = 30 }" (At 10)]
+  let rewriteTests = [Added   4 "{ room_id = 3, temperature = 45 }" (At  4)
+                      Added   6 "{ room_id = 2, temperature = 50 }" (At  6)
+                      Added   7 "{ room_id = 3, temperature = 30 }" (At  7)
+                      Expired 4 "{ room_id = 3, temperature = 45 }" (At  7)
+                      Expired 6 "{ room_id = 2, temperature = 50 }" (At  9)
+                      Expired 7 "{ room_id = 3, temperature = 30 }" (At 10)]
 
   test.AssertThat (In "hotTemps_3secs" rewriteTests)
   test.AssertThat (In "hotTemps_3secsb" rewriteTests)

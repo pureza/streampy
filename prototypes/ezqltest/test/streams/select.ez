@@ -8,21 +8,21 @@ lastHum = hum_readings.last(:humidity);;
 // hot depends on ev
 
 temp_readingsX2 = temp_readings
-                   .select(ev -> { :temperatureX2 = ev.temperature * 2 });;
+                   .select(fun ev -> { temperatureX2 = ev.temperature * 2 });;
 
 
 // Doesn't depend on ev
 just10 = temp_readings
-           .select(ev -> { :a = 10 });;
+           .select(fun ev -> { a = 10 });;
 
 combination = temp_readings
-                .select(ev -> { :a = ev.temperature * 2, :b = 10, :c = lastHum });;
+                .select(fun ev -> { a = ev.temperature * 2, b = 10, c = lastHum });;
 
 // select + where
 complex = temp_readings
-            .where (ev -> ev.temperature > 20)
-            .select (ev -> { :a = ev.temperature * 2, :b = 10, :c = lastHum })
-            .where (ev -> ev.c == 60);;
+            .where (fun ev -> ev.temperature > 20)
+            .select (fun ev -> { a = ev.temperature * 2, b = 10, c = lastHum })
+            .where (fun ev -> ev.c == 60);;
 
 
 #! hum_readings

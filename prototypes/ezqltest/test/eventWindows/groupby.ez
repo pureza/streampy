@@ -3,12 +3,12 @@ hum_readings = stream (:room_id, :humidity);;
 
 
 tempsPerRoom = temp_readings[3 sec]
-                 .groupby(:room_id, g -> g.last(:temperature));;
+                 .groupby(:room_id, fun g -> g.last(:temperature));;
 
 
 // The group does not depend on anything!
 allRooms20 = temp_readings[3 sec]
-               .groupby(:room_id, g -> 20);;
+               .groupby(:room_id, fun g -> 20);;
 
 
 #! hum_readings

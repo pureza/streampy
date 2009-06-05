@@ -6,39 +6,39 @@ lastHum = hum_readings.last(:humidity);;
 
 // Current temperature per room
 tempsPerRoom = temp_readings
-                 .groupby(:room_id, g -> g.last(:temperature));;
+                 .groupby(:room_id, fun g -> g.last(:temperature));;
 
 
 // The group does not depend on g
 lastTempAllRooms = temp_readings
-                     .groupby(:room_id, g -> lastTemp);;
+                     .groupby(:room_id, fun g -> lastTemp);;
 
 
 // The group does not depend on anything!
 allRooms20 = temp_readings
-               .groupby(:room_id, g -> 20);;
+               .groupby(:room_id, fun g -> 20);;
 
 
 // Current temperature per room, with a more complex expression
 tempsPerRoom2 = temp_readings
                 .groupby(:room_id,
-                         g -> g.last(:temperature) + (lastTemp - lastTemp) * 2);;
+                         fun g -> g.last(:temperature) + (lastTemp - lastTemp) * 2);;
 
 // The expression depends on hum_readings
 lastHumPerRoom = temp_readings
                    .groupby(:room_id,
-                            g -> lastHum);;
+                            fun g -> lastHum);;
 
 // The expression depends on temp_readings and hum_readings
 lastHumLastTempPerRoom = temp_readings
-                           .groupby(:room_id, g -> g.last(:temperature) + lastHum);;
+                           .groupby(:room_id, fun g -> g.last(:temperature) + lastHum);;
 
 
 // The result is a record
 someRecordPerRoom =
   temp_readings
-    .groupby(:room_id, g -> { :a = 5, :b = g.last(:temperature),
-                              :c = lastHum, :d = g.last(:temperature) + lastHum });;
+    .groupby(:room_id, fun g -> { a = 5, b = g.last(:temperature),
+                                  c = lastHum, d = g.last(:temperature) + lastHum });;
 
 
 #! hum_readings

@@ -4,25 +4,25 @@ open Test
 
 [<TestCase ("streams/where.ez")>]
 let test_streamsWhere (test:Test) =
-    let everything = [Added 0 "{ :temperature = 30 }" (At  0)
-                      Added 3 "{ :temperature = 15 }" (At  3)
-                      Added 4 "{ :temperature = 50 }" (At  4)]
+    let everything = [Added 0 "{ temperature = 30 }" (At  0)
+                      Added 3 "{ temperature = 15 }" (At  3)
+                      Added 4 "{ temperature = 50 }" (At  4)]
 
     test.AssertThat (In "hot_readings"
-                      [Added 0 "{ :temperature = 30 }" (At  0)
-                       Added 4 "{ :temperature = 50 }" (At  4)]) 
+                      [Added 0 "{ temperature = 30 }" (At  0)
+                       Added 4 "{ temperature = 50 }" (At  4)]) 
 
     test.AssertThat (In "all_readings" everything) 
     
     test.AssertThat (In "all_readings2" everything) 
 
     test.AssertThat (In "wet_readings"
-                      [Added 3 "{ :temperature = 15 }" (At  3)
-                       Added 4 "{ :temperature = 50 }" (At  4)]) 
+                      [Added 3 "{ temperature = 15 }" (At  3)
+                       Added 4 "{ temperature = 50 }" (At  4)]) 
                        
     test.AssertThat (In "hot_wet_readings"
-                      [Added 3 "{ :temperature = 15 }" (At  3)
-                       Added 4 "{ :temperature = 50 }" (At  4)]) 
+                      [Added 3 "{ temperature = 15 }" (At  3)
+                       Added 4 "{ temperature = 50 }" (At  4)]) 
 
     test.AssertThat (In "lastTemp"
                       [Set "30" (At  0)
@@ -32,22 +32,22 @@ let test_streamsWhere (test:Test) =
 [<TestCase ("streams/select.ez")>]
 let test_streamsSelect (test:Test) =
     test.AssertThat (In "temp_readingsX2"
-                      [Added 0 "{ :temperatureX2 =  60 }" (At  0)
-                       Added 3 "{ :temperatureX2 =  30 }" (At  3)
-                       Added 4 "{ :temperatureX2 = 100 }" (At  4)])
+                      [Added 0 "{ temperatureX2 =  60 }" (At  0)
+                       Added 3 "{ temperatureX2 =  30 }" (At  3)
+                       Added 4 "{ temperatureX2 = 100 }" (At  4)])
 
     test.AssertThat (In "just10"
-                      [Added 0 "{ :a = 10 }" (At  0)
-                       Added 3 "{ :a = 10 }" (At  3)
-                       Added 4 "{ :a = 10 }" (At  4)])
+                      [Added 0 "{ a = 10 }" (At  0)
+                       Added 3 "{ a = 10 }" (At  3)
+                       Added 4 "{ a = 10 }" (At  4)])
 
     test.AssertThat (In "combination"
-                      [Added 0 "{ :a =  60, :b = 10, :c = 40 }" (At  0)
-                       Added 3 "{ :a =  30, :b = 10, :c = 60 }" (At  3)
-                       Added 4 "{ :a = 100, :b = 10, :c = 60 }" (At  4)])
+                      [Added 0 "{ a =  60, b = 10, c = 40 }" (At  0)
+                       Added 3 "{ a =  30, b = 10, c = 60 }" (At  3)
+                       Added 4 "{ a = 100, b = 10, c = 60 }" (At  4)])
                        
     test.AssertThat (In "complex"
-                      [Added 4 "{ :a = 100, :b = 10, :c = 60 }" (At  4)])
+                      [Added 4 "{ a = 100, b = 10, c = 60 }" (At  4)])
 
 
 
@@ -127,19 +127,19 @@ let test_streamsGroupby (test:Test) =
 
 
     test.AssertThat (In "someRecordPerRoom"
-                      [SetKey "1" "{ :a = 5, :b = 25, :c = 90, :d = 115 }" (At  2)
-                       SetKey "1" "{ :a = 5, :b = 25, :c = 71, :d =  96 }" (At  3)
-                       SetKey "1" "{ :a = 5, :b = 25, :c = 81, :d = 106 }" (At  4)
-                       SetKey "3" "{ :a = 5, :b = 45, :c = 81, :d = 126 }" (At  4)
-                       SetKey "1" "{ :a = 5, :b = 25, :c = 91, :d = 116 }" (At  5)
-                       SetKey "3" "{ :a = 5, :b = 45, :c = 91, :d = 136 }" (At  5)
-                       SetKey "1" "{ :a = 5, :b = 25, :c = 72, :d =  97 }" (At  6)
-                       SetKey "3" "{ :a = 5, :b = 45, :c = 72, :d = 117 }" (At  6)
-                       SetKey "2" "{ :a = 5, :b = 50, :c = 72, :d = 122 }" (At  6)
-                       SetKey "1" "{ :a = 5, :b = 25, :c = 82, :d = 107 }" (At  7)
-                       SetKey "2" "{ :a = 5, :b = 50, :c = 82, :d = 132 }" (At  7)
-                       SetKey "3" "{ :a = 5, :b = 30, :c = 82, :d = 112 }" (At  7)
-                       SetKey "1" "{ :a = 5, :b = 25, :c = 92, :d = 117 }" (At  8)
-                       SetKey "2" "{ :a = 5, :b = 50, :c = 92, :d = 142 }" (At  8)
-                       SetKey "3" "{ :a = 5, :b = 30, :c = 92, :d = 122 }" (At  8)
-                       SetKey "1" "{ :a = 5, :b = 23, :c = 92, :d = 115 }" (At  9)])
+                      [SetKey "1" "{ a = 5, b = 25, c = 90, d = 115 }" (At  2)
+                       SetKey "1" "{ a = 5, b = 25, c = 71, d =  96 }" (At  3)
+                       SetKey "1" "{ a = 5, b = 25, c = 81, d = 106 }" (At  4)
+                       SetKey "3" "{ a = 5, b = 45, c = 81, d = 126 }" (At  4)
+                       SetKey "1" "{ a = 5, b = 25, c = 91, d = 116 }" (At  5)
+                       SetKey "3" "{ a = 5, b = 45, c = 91, d = 136 }" (At  5)
+                       SetKey "1" "{ a = 5, b = 25, c = 72, d =  97 }" (At  6)
+                       SetKey "3" "{ a = 5, b = 45, c = 72, d = 117 }" (At  6)
+                       SetKey "2" "{ a = 5, b = 50, c = 72, d = 122 }" (At  6)
+                       SetKey "1" "{ a = 5, b = 25, c = 82, d = 107 }" (At  7)
+                       SetKey "2" "{ a = 5, b = 50, c = 82, d = 132 }" (At  7)
+                       SetKey "3" "{ a = 5, b = 30, c = 82, d = 112 }" (At  7)
+                       SetKey "1" "{ a = 5, b = 25, c = 92, d = 117 }" (At  8)
+                       SetKey "2" "{ a = 5, b = 50, c = 92, d = 142 }" (At  8)
+                       SetKey "3" "{ a = 5, b = 30, c = 92, d = 122 }" (At  8)
+                       SetKey "1" "{ a = 5, b = 23, c = 92, d = 115 }" (At  9)])

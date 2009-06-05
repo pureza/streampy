@@ -11,9 +11,9 @@ entity Room =
   createFrom(temp_readings, :room_id)
   hasMany :products
 
-  member self.productIds = self.products.select (p -> p.product_id);;
+  member self.productIds = self.products.select (fun p -> p.product_id);;
 
-productIdsPerRoom = Room.all.select (r -> r.productIds);;
+productIdsPerRoom = Room.all.select (fun r -> r.productIds);;
 
 
 #! hum_readings

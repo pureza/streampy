@@ -18,6 +18,8 @@ module Map =
                                 then strategy acc.[k] v
                                 else v
                      Map.add k v' acc) oldMap newMap
+                     
+  let union a b = merge (fun va vb -> vb) a b
 
 
 module String =

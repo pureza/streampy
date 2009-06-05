@@ -10,26 +10,26 @@ lastTemp = temps_3secs.last(:temperature);;
 
 // Test the rewrite mechanism
 hotTemps_3secs = temp_readings
-                   .where(ev -> ev.temperature > 25)[3 sec];;
+                   .where(fun ev -> ev.temperature > 25)[3 sec];;
 
 hotTemps_3secsb = temp_readings[3 sec]
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25)
-                    .where(ev -> ev.temperature > 25);;
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25)
+                    .where(fun ev -> ev.temperature > 25);;
 
 a = temps_3secs;;
 b = a;;
-hotTemps_3secsc = b.where(ev -> ev.temperature > 25);;
+hotTemps_3secsc = b.where(fun ev -> ev.temperature > 25);;
 
 // Windows inside groups
 tempsPerRoom = temp_readings
-                 .groupby(:room_id, g -> g[5 sec].last(:temperature));;
+                 .groupby(:room_id, fun g -> g[5 sec].last(:temperature));;
 
 
 #! hum_readings

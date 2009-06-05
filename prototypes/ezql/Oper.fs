@@ -9,6 +9,8 @@ open Util
 open Types
 open Eval
 
+exception SpreadException of Operator * EvalStack
+
 (*
  * Connect parent with child.
  * fn transforms the output of oper before it is delivered to child.
@@ -73,10 +75,13 @@ let rec spread (stack:EvalStack) =
         //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
         //printfn "    Changes = %A\n" parentChanges
         let filledChanges = fillLeftArgs op parentChanges 0
-        match op.Eval (op, filledChanges) with
-        | Some (children, changes) ->
-            checkConsistency op changes
-            spread (mergeStack xs (toEvalStack children (cloneChanges changes)))
-        | _ -> spread xs
+        try
+          match op.Eval (op, filledChanges) with
+          | Some (children, changes) ->
+              checkConsistency op changes
+              spread (mergeStack xs (toEvalStack children (cloneChanges changes)))
+          | _ -> spread xs
+        with
+          | ex -> raise (SpreadException (op, xs))
 
 

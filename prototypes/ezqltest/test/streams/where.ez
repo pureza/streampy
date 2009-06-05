@@ -8,27 +8,27 @@ lastHum = hum_readings.last(:humidity);;
 // hot depends on ev
 
 hot_readings = temp_readings
-                 .where(ev -> ev.temperature > 20);;
+                 .where(fun ev -> ev.temperature > 20);;
 
 
 // all_readings doesn't depend on ev
 all_readings = temp_readings
-                 .where(ev -> 30 > 20);;
+                 .where(fun ev -> 30 > 20);;
 
 
 // slightly more complex expression that is always true
 all_readings2 = all_readings 
-                  .where(ev -> ev.temperature * 2 == 
+                  .where(fun ev -> ev.temperature * 2 == 
                               temp_readings.last(:temperature) +
                               temp_readings.last(:temperature));;
 
 // correlated with humidity
 wet_readings = all_readings2 
-                 .where(ev -> lastHum > 50);;
+                 .where(fun ev -> lastHum > 50);;
 
 // The predicate is always true
 hot_wet_readings = wet_readings
-                     .where (ev -> ev.temperature > lastTemp - 1);;
+                     .where (fun ev -> ev.temperature > lastTemp - 1);;
 
 
 #! hum_readings

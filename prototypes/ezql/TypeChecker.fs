@@ -111,13 +111,13 @@ and typeOf env expr =
     let type2 = typeOf env expr2
     typeOfOp (oper, type1, type2)
   | Record fields ->
-      let fields = Map.of_list [ for (Symbol name, expr) in fields -> (name, typeOf env expr) ]
+      let fields = Map.of_list [ for (name, expr) in fields -> (name, typeOf env expr) ]
       match matchingEntity fields env with
       | Some entity -> TyEntity entity
       | _ -> TyRecord fields
   | RecordWith (source, newFields) ->
       match typeOf env source with
-      | TyRecord fields -> TyRecord (List.fold (fun fields (Symbol name, expr) -> fields.Add(name, typeOf env expr)) fields newFields)
+      | TyRecord fields -> TyRecord (List.fold (fun fields (name, expr) -> fields.Add(name, typeOf env expr)) fields newFields)
       | _ -> failwith "Source is not a record!"
   | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
   | Lambda (args, expr) ->
@@ -127,7 +127,8 @@ and typeOf env expr =
                      | Some typ' -> env.Add(id, typ'), argTypes @ [typ']
                      | None -> failwithf "I have no idea what's the type of argument %A" id)
                   (env, []) args
-      List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes (typeOf env' expr)
+      let funType = List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes (typeOf env' expr)
+      funType
       //TyLambda (argTypes, typeOf env' expr)
   | If (cond, thn, els) ->
       let tyCond = typeOf env cond
@@ -239,6 +240,7 @@ and typeOfMethodCall env target name paramExps =
                      | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
   | _ -> failwithf "The type %A does not have method %A!" targetType name
  
 

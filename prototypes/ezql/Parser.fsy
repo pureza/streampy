@@ -21,7 +21,7 @@ open Ast
 %token ENTITY CREATE_FROM BELONGS_TO HAS_MANY MEMBER
 
 %nonassoc LET IN
-%left ARROW
+%right ARROW
 %right SEMICOLON
 %nonassoc IF THEN ELSE
 %left OR
@@ -108,7 +108,16 @@ symbol: COLON ID                                           { Symbol $2 }
 
 Type:   INT                                                { TyInt }
       | Type ARROW Type                                    { TyArrow ($1, $3) }
+      | recordType                                         { $1 }
       | LPAREN Type RPAREN                                 { $2 }
+
+recordType: LBRACE fieldTypes RBRACE                       { TyRecord (Map.of_list $2) }
+
+fieldTypes: ID COLON Type moreFieldTypes                   { ($1, $3)::$4 }
+
+moreFieldTypes:                                            { [] }
+                | COMMA ID COLON Type moreFieldTypes       { ($2, $4)::$5 }
+
       
 // (), id or id1 id2 ... idN
 parameters:   LPAREN RPAREN                                { [] }
@@ -120,15 +129,15 @@ moreParams:                                                { [] }
 parameter:   ID                                            { (Param (Identifier $1, None)) }
            | LPAREN ID COLON Type RPAREN                   { (Param (Identifier $2, Some $4)) }
 
-// Records: { :a = 1, :b = ... }
+// Records: { a = 1, b = ... }
 
 record:   LBRACE expr WITH initList RBRACE                 { RecordWith ($2, $4) }
         | LBRACE initList RBRACE                           { Record $2 }
 
-initList: symbol ASSIGN expr moreInits                     { ($1, $3)::$4 }
+initList: ID ASSIGN expr moreInits                         { ($1, $3)::$4 }
 
 moreInits:                                                 { [] }
-           | COMMA symbol ASSIGN expr moreInits            { ($2, $4)::$5 }
+           | COMMA ID ASSIGN expr moreInits                { ($2, $4)::$5 }
 
 
 // Zero or more, comma-separated expressions

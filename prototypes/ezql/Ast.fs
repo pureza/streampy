@@ -13,8 +13,8 @@ and expr =
   | If of expr * expr * expr
   | ArrayIndex of expr * expr
   | Seq of expr * expr
-  | Record of (symbol * expr) list
-  | RecordWith of expr * (symbol * expr) list
+  | Record of (string * expr) list
+  | RecordWith of expr * (string * expr) list
   | Integer of int
   | Bool of bool
   | String of string
