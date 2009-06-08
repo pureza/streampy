@@ -34,6 +34,9 @@ let rec eval (env:Map<string, value>) = function
       | VRecord fields -> VRecord (List.fold (fun fields (name, expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
       | other -> failwithf "RecordWith: the source is not a record: %A" other
   | Lambda (args, body) as fn -> VClosure (env, fn, None)
+  | Let (Identifier name, _, (Lambda (args, _) as fn), body) ->
+      // Recursive definition. Create a special "named" closure and evaluate the body.
+      eval (env.Add (name, VClosure (env, fn, Some name))) body
   | Let (Identifier name, _, binder, body) ->
       eval (env.Add(name, eval env binder)) body
   | If (cond, thn, els) ->

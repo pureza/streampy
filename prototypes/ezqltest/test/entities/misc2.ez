@@ -43,8 +43,8 @@ lastTemp = temp_readings.last(:temperature);;
 
 
 // Recursivity
-x = let fact : int -> int = fun (n:int) -> if n == 0 then 1 else n + fact (n - 1) in
-    fact (lastTemp);;
+x = let fact : int -> int = fun (n:int) -> if n == 0 then lastTemp else n + fact (n - 1) in
+    fact (lastTemp) + 20;;
 
 when (x.updated(), fun ev -> print (x));;
 

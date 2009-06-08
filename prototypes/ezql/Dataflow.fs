@@ -208,29 +208,42 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
         then raise (IncompleteRecord ((deps, g', Record exprs), unknown))
         else deps, g', Record exprs
   | Let (Identifier name, optType, binder, body) ->
-      let n, g1 =
-        try
-          let deps1, g1, binder' = dataflowE env types graph binder
-          let n, g2 = makeFinalNode env types g1 binder' deps1 name
-          n, g2
-        with
-          | UnknownId name' when name = name' -> // Detect to handle recursive functions.
-              match optType with
-              | Some typ -> // Recursive functions are evaluated with eval. This eval is called with a special
-                            // environment that knows the definition of the recursive function.
-                            let state = LambdaState { Expr = binder; Env = env; Types = types; IsRec = true }
-                            let closure = VClosure (Map.empty, binder, Some name)
-                            let kenv = Map.add name closure Map.empty
-                            // FIXME: Thanks to the [], a recursive function can't have global dependencies.
-                            let n, g1 = createNode name typ [] state (makeEvaluator binder kenv) graph
-                            n.Name <- name
-                            n, g1
-              | None -> failwithf "You must annotate recursive functions with their type"
-        
-      n.Name <- name
-      let env', types' = env.Add(name, n).Add(n.Uid, n), types.Add(name, n.Type).Add(n.Uid, n.Type)
-      let deps2, g2, body' = dataflowE env' types' g1 body
-      Set.add n deps2, g2, Let (Identifier name, optType, Id (Identifier n.Uid), body')
+      try
+        let deps1, g1, binder' = dataflowE env types graph binder
+        let n, g2 = makeFinalNode env types g1 binder' deps1 name
+        n.Name <- name
+        let env', types' = env.Add(name, n).Add(n.Uid, n), types.Add(name, n.Type).Add(n.Uid, n.Type)
+        let deps2, g3, body' = dataflowE env' types' g2 body
+        Set.add n deps2, g3, Let (Identifier name, optType, Id (Identifier n.Uid), body')
+      with
+        | UnknownId name' when name = name' ->
+            match optType with
+            | Some typ -> // Recursive function!
+                          // Dataflow the binder to extract global dependencies
+                          let binderDeps, g1, binder' = 
+                            match binder with
+                            | Lambda (args, body) ->
+                                 // Add the arguments to the environment
+                                 let env', types' =
+                                   List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, _)) ->
+                                                let n = NodeInfo.AsUnknown(arg)
+                                                env.Add(arg, n), types.Add(arg, n.Type))
+                                             (env, types) args
+                                 // Now add the recursive function
+                                 let env'', types'' = env'.Add(name, NodeInfo.AsUnknown(name)), types'.Add(name, TyUnit)
+                                 
+                                 let deps, g1, body' = dataflowE env'' types'' graph body
+                                 deps, g1, Lambda (args, body')
+                            | _ -> failwithf "The binder of a recursive let is not a lambda?!"
+            
+                          // Dataflow the body of the let
+                          let env', types' = env.Add(name, NodeInfo.AsUnknown(name)), types.Add(name, TyUnit)
+                          let bodyDeps, g2, body' = dataflowE env' types' g1 body
+                          
+                          // Create an evaluator for the entire let. eval handles these let's in a special way,
+                          // to allow recursivity.
+                          Set.union binderDeps bodyDeps, g2, Let (Identifier name, optType, binder', body')
+            | None -> failwithf "You must annotate recursive functions with their type"
   | If (cond, thn, els) ->
       let deps1, g1, cond' = dataflowE env types graph cond
       let deps2, g2, thn' = dataflowE env types g1 thn
@@ -400,14 +413,16 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph fnExpr paramExp
                                    (makeRef getId) g2
           Set.singleton ref, g3, Id (Identifier ref.Uid)
       | _ -> invalid_arg "paramExps"
-  | Id (Identifier func) when func <> "print" -> 
-      let state = getLambdaState graph env.[func]
-      match state with
-      | LambdaState { Expr = expr; Env = cloEnv; Types = cloTypes; IsRec = isRec } ->
-          if isRec
-            then dataflowByEval ()
-            else expandCallGraph expr cloEnv cloTypes
-      | _ -> failwithf "Not a lambda state!"     
+  | Id (Identifier func) when func <> "print" ->
+      if env.[func].Type = TyUnit
+        then dataflowByEval () // Ignore the function itself, but dataflow the arguments
+        else let state = getLambdaState graph env.[func]
+             match state with
+             | LambdaState { Expr = expr; Env = cloEnv; Types = cloTypes; IsRec = isRec } ->
+                 if isRec
+                   then dataflowByEval ()
+                   else expandCallGraph expr cloEnv cloTypes
+             | _ -> failwithf "Not a lambda state!"     
   | FuncCall (fn', paramExps') ->
       // First, dataflow the inner call
       let deps, g', expr' = dataflowFuncCall env types graph fn' paramExps' fnExpr
