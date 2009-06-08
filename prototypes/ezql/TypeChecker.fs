@@ -119,7 +119,10 @@ and typeOf env expr =
       match typeOf env source with
       | TyRecord fields -> TyRecord (List.fold (fun fields (name, expr) -> fields.Add(name, typeOf env expr)) fields newFields)
       | _ -> failwith "Source is not a record!"
-  | Let (Identifier name, binder, body) -> typeOf (env.Add(name, typeOf env binder)) body
+  | Let (Identifier name, optType, binder, body) ->
+      match optType with
+      | None -> typeOf (env.Add(name, typeOf env binder)) body
+      | Some typ -> typeOf (env.Add(name, typ)) body
   | Lambda (args, expr) ->
       let env', argTypes =
         List.fold (fun (env:TypeContext, argTypes) (Param (Identifier id, typ)) ->
@@ -143,7 +146,7 @@ and typeOf env expr =
   | Id (Identifier name) ->
       match Map.tryFind name env with
       | Some v -> v
-      | _ -> failwithf "typeOf: Unknown variable or identifier: %s" name  
+      | _ -> raise (UnknownId name)
   | SymbolExpr _ -> TySymbol
   | Integer v -> TyInt
   | String s -> TyString

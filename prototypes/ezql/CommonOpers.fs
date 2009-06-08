@@ -1,5 +1,6 @@
 ﻿#light
 
+open Extensions
 open Ast
 open Util
 open Types
@@ -87,14 +88,14 @@ let makeDynValWindow duration uid prio parents =
   Operator.Build(uid, prio, eval, parents)
 
 (* Evaluator: this operator evaluates some expression and records its result *)
-let makeEvaluator expr uid prio parents =
+let makeEvaluator expr kenv uid prio parents =
   let operEval = fun (op, allChanges) ->
-                   let env = getOperEnvValues op
+                   let env = Map.union (getOperEnvValues op) kenv
                    let result = eval env expr
                    setValueAndGetChanges op result
 
   let initialContents = try
-                          let env = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
+                          let env = Map.union (Map.of_list [ for p in parents -> (p.Uid, p.Value) ]) kenv
                           eval env expr
                         with
                           | err -> VNull

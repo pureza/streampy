@@ -5,6 +5,8 @@ open System.Collections.Generic
 open Extensions.DateTimeExtensions
 open Ast
 
+exception UnknownId of string
+
 type uid = string
 
 module Priority =
@@ -114,7 +116,7 @@ and value =
     | VString of string
     | VRecord of Map<value, value ref>
     | VDict of Map<value, value> ref
-    | VClosure of context * expr // This is just the lambda expression, doesn't include the captured environment
+    | VClosure of context * expr * string option // The name used by the closure to refer to itself (doesn't belong to the context)
     | VEvent of Event
     | VRef of value
     | VNull

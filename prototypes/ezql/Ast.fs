@@ -4,7 +4,7 @@ type prog =
   | Entity of id * (createFrom * association list * attribute list)
 
 and expr =
-  | Let of id * expr * expr
+  | Let of id * Type option * expr * expr
   | BinaryExpr of op * expr * expr
   | MethodCall of expr * id * expr list
   | FuncCall of expr * expr list

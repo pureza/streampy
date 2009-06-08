@@ -16,7 +16,7 @@ let rec visit expr visitor =
   | ArrayIndex(target, index) -> ArrayIndex (visitor target, visitor index)
   | Lambda (ids, expr) -> Lambda (ids, visitor expr) 
   | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
-  | Let (Identifier name, binder, body) -> Let (Identifier name, visitor binder, visitor body)
+  | Let (Identifier name, optType, binder, body) -> Let (Identifier name, optType, visitor binder, visitor body)
   | If (cond, thn, els) -> If (visitor cond, visitor thn, visitor els)
   | Seq (expr1, expr2) -> Seq (visitor expr1, visitor expr2)
   | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)

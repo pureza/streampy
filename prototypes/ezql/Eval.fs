@@ -33,8 +33,8 @@ let rec eval (env:Map<string, value>) = function
       match eval env source with
       | VRecord fields -> VRecord (List.fold (fun fields (name, expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
       | other -> failwithf "RecordWith: the source is not a record: %A" other
-  | Lambda (args, body) as fn -> VClosure (env, fn)
-  | Let (Identifier name, binder, body) ->
+  | Lambda (args, body) as fn -> VClosure (env, fn, None)
+  | Let (Identifier name, _, binder, body) ->
       eval (env.Add(name, eval env binder)) body
   | If (cond, thn, els) ->
       match eval env cond with
@@ -66,14 +66,18 @@ and evalOp = function
   | _ -> failwith "op not implemented"
 
 
-and apply = function
-  | VClosure (env, expr) ->
+and apply value =
+  match value with
+  | VClosure (env, expr, itself) ->
       match expr with
       | Lambda (ids, body) ->
           (fun args ->
               let ids' = List.map (fun (Param (Identifier name, _)) -> name) ids
               let env' = List.fold (fun e (n, v) -> Map.add n v e)
                                    env (List.zip ids' args)
-              eval env' body)
+              let env'' = match itself with
+                          | Some name -> env'.Add(name, value)
+                          | _ -> env'
+              eval env'' body)
       | _ -> failwith "evalClosure: Wrong type"
   | _ -> failwith "This is not a closure"

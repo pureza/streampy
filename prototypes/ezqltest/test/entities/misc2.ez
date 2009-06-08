@@ -10,7 +10,7 @@ lastTemp = temp_readings.last(:temperature);;
 //  - Functions with several parameters
 //  - Currying
 //x = let g = fun (a:int) (f:int -> int) -> f(a) in
-//    g (1) (fun (x:int) -> lastTemp + x);;
+//   g (1) (fun (x:int) -> lastTemp + x);;
 
 
 
@@ -19,11 +19,11 @@ lastTemp = temp_readings.last(:temperature);;
 //  - Closures
 //  - Currying
 //  - Passing records to functions
-/*
-x = let g = fun (t:int) -> fun (u:{ a:int }) -> t * (u.a[2 sec].sum()) in
-    let u = g (1) in
-    u ({ a = lastTemp });;
-*/
+
+//x = let g = fun (t:int) -> fun (u:{ a:int }) -> t * (u.a[2 sec].sum()) in
+//    let u = g (1) in
+//    u ({ a = lastTemp });;
+
 
 // Test:
 //  - Record fields containing functions
@@ -33,14 +33,18 @@ x = let g = fun (t:int) -> fun (u:{ a:int }) -> t * (u.a[2 sec].sum()) in
 
 // Test:
 //  - Record fields containing functions that return functions
-x = let z = { a = fun (x:int) -> fun (y:int) -> x + y } in
-    z.a(lastTemp)(1);;
+//x = let z = { a = fun (x:int) -> fun (y:int) -> x + y } in
+//    z.a(lastTemp)(1);;
 
 // DOESN'T WORK
 //x = let z = { a = fun (x:int) -> x, b = fun (x:int) -> x * 2 } in
 //    let f = fun (x:int) -> (if lastTemp > 25 then z.a else z.b) in 
 //    f(1)(lastTemp);;
 
+
+// Recursivity
+x = let fact : int -> int = fun (n:int) -> if n == 0 then 1 else n + fact (n - 1) in
+    fact (lastTemp);;
 
 when (x.updated(), fun ev -> print (x));;
 
