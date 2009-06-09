@@ -2,6 +2,7 @@ type prog =
   | Expr of expr
   | Def of id * expr
   | Entity of id * (createFrom * association list * attribute list)
+  | Function of id * param list * Type * expr
 
 and expr =
   | Let of id * Type option * expr * expr
@@ -87,3 +88,48 @@ and Type =
 and WindowType =
   | TimedWindow of int    
 
+
+let freeVars expr =
+  let rec freeVars' boundVars expr =
+    match expr with
+    | MethodCall (target, (Identifier name), paramExps) ->
+        List.fold (fun acc paramExpr -> Set.union acc (freeVars' boundVars paramExpr))
+                  (freeVars' boundVars target) paramExps
+    | ArrayIndex (target, index) ->
+        Set.union (freeVars' boundVars target) (freeVars' boundVars index)
+    | FuncCall (fn, paramExps) ->
+        List.fold (fun acc paramExpr -> Set.union acc (freeVars' boundVars paramExpr))
+                  (freeVars' boundVars fn) paramExps
+    | MemberAccess (target, (Identifier name)) -> freeVars' boundVars target
+    | Record fields ->
+        List.fold (fun acc (_, fieldExpr) -> Set.union acc (freeVars' boundVars fieldExpr))
+                  Set.empty fields
+    | RecordWith (record, fields) ->
+        List.fold (fun acc (_, fieldExpr) -> Set.union acc (freeVars' boundVars fieldExpr))
+                  (freeVars' boundVars record) fields
+    | Lambda (args, body) ->
+        let boundVars' = Set.union (List.fold (fun acc (Param (Identifier name, _)) -> Set.add name acc) Set.empty args) boundVars
+        freeVars' boundVars' body
+    | Let (Identifier name, optType, binder, body) ->
+        let freeBinder = freeVars' boundVars binder
+        let boundVars' = Set.add name boundVars
+        Set.union freeBinder (freeVars' boundVars' body)
+    | If (cond, thn, els) -> Set.union (freeVars' boundVars cond) (Set.union (freeVars' boundVars thn) (freeVars' boundVars els))
+    | BinaryExpr (oper, expr1, expr2) as expr -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
+    | Seq (expr1, expr2) -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
+    | Id (Identifier name) -> if Set.contains name boundVars then Set.empty else Set.singleton name
+    | Time _ -> Set.empty
+    | Integer i -> Set.empty
+    | String s -> Set.empty
+    | SymbolExpr _ -> Set.empty
+    | Bool b -> Set.empty
+    
+  freeVars' Set.empty expr
+  
+
+let isRecursive name expr =
+  match expr with
+  | Lambda (args, body) -> Set.contains name (freeVars expr)
+  | _ -> false
+  
+  

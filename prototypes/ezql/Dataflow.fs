@@ -47,6 +47,7 @@ and NodeState =
   | LambdaState of LambdaStateRec
   | RecordState of Map<string, NodeInfo>
   | ProjectorState of string
+  | ForwardState of NodeInfo
   | NoState
 
 and LambdaStateRec = { Expr:expr; Env:NodeContext; Types:TypeContext; IsRec:bool }
@@ -189,12 +190,6 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                                  (makeProjector name) g2
           Set.singleton n, g3, Id (Identifier n.Uid) 
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
-  | Lambda (args, body) ->
-      let ids = List.map (fun (Param (Identifier id, _)) -> id) args
-      let state = LambdaState { Expr = expr; Env = env; Types = types; IsRec = false }
-      let n, g' = createNode (nextSymbol (sprintf "lambda %A" ids)) (typeOf types expr) [] state
-                             (makeClosure expr) graph
-      Set.singleton n, g', Id (Identifier n.Uid)
   | Record fields ->
       let deps, g', exprs, unknown =
         List.fold (fun (depsAcc, g, exprsAcc, unknown) (field, expr) ->
@@ -207,43 +202,9 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       if not (Set.isEmpty unknown)
         then raise (IncompleteRecord ((deps, g', Record exprs), unknown))
         else deps, g', Record exprs
+  | Lambda (args, body) -> Set.empty, graph, expr
   | Let (Identifier name, optType, binder, body) ->
-      try
-        let deps1, g1, binder' = dataflowE env types graph binder
-        let n, g2 = makeFinalNode env types g1 binder' deps1 name
-        n.Name <- name
-        let env', types' = env.Add(name, n).Add(n.Uid, n), types.Add(name, n.Type).Add(n.Uid, n.Type)
-        let deps2, g3, body' = dataflowE env' types' g2 body
-        Set.add n deps2, g3, Let (Identifier name, optType, Id (Identifier n.Uid), body')
-      with
-        | UnknownId name' when name = name' ->
-            match optType with
-            | Some typ -> // Recursive function!
-                          // Dataflow the binder to extract global dependencies
-                          let binderDeps, g1, binder' = 
-                            match binder with
-                            | Lambda (args, body) ->
-                                 // Add the arguments to the environment
-                                 let env', types' =
-                                   List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, _)) ->
-                                                let n = NodeInfo.AsUnknown(arg)
-                                                env.Add(arg, n), types.Add(arg, n.Type))
-                                             (env, types) args
-                                 // Now add the recursive function
-                                 let env'', types'' = env'.Add(name, NodeInfo.AsUnknown(name)), types'.Add(name, TyUnit)
-                                 
-                                 let deps, g1, body' = dataflowE env'' types'' graph body
-                                 deps, g1, Lambda (args, body')
-                            | _ -> failwithf "The binder of a recursive let is not a lambda?!"
-            
-                          // Dataflow the body of the let
-                          let env', types' = env.Add(name, NodeInfo.AsUnknown(name)), types.Add(name, TyUnit)
-                          let bodyDeps, g2, body' = dataflowE env' types' g1 body
-                          
-                          // Create an evaluator for the entire let. eval handles these let's in a special way,
-                          // to allow recursivity.
-                          Set.union binderDeps bodyDeps, g2, Let (Identifier name, optType, binder', body')
-            | None -> failwithf "You must annotate recursive functions with their type"
+      (if isRecursive name binder then dataflowLetRec else dataflowLetNonRec) env types graph expr
   | If (cond, thn, els) ->
       let deps1, g1, cond' = dataflowE env types graph cond
       let deps2, g2, thn' = dataflowE env types g1 thn
@@ -335,11 +296,16 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
 and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph fnExpr paramExps expr =
   // Used to dataflow primitive (print, ...) and recursive functions
   let dataflowByEval () =
-    let deps, g', paramExps' = List.fold (fun (depsAcc, g, exprs) expr ->
-                                            let deps, g', expr' = dataflowE env types g expr
-                                            Set.union depsAcc deps, g', exprs @ [expr'])
-                                         (Set.empty, graph, List.empty) paramExps
-    deps, g', FuncCall (fnExpr, paramExps')
+    // Dataflow the function itself, but only if it's not a primitive one.
+    let deps1, g1, fnExpr' =
+      match fnExpr with
+      | Id (Identifier "print") -> Set.empty, graph, fnExpr
+      | _ -> dataflowE env types graph fnExpr
+    let deps2, g2, paramExps' = List.fold (fun (depsAcc, g, exprs) expr ->
+                                             let deps, g', expr' = dataflowE env types g expr
+                                             Set.union depsAcc deps, g', exprs @ [expr'])
+                                          (Set.empty, g1, List.empty) paramExps
+    Set.union deps2 deps1, g2, FuncCall (fnExpr', paramExps')
     
   // Dataflows normal function calls by expanding the call graph and creating the
   // necessary nodes along the way  
@@ -439,6 +405,87 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph fnExpr paramExp
          let types' = types.Add(result.Uid, result.Type)
          let expr' = (FuncCall (Id (Identifier result.Uid), paramExps))
          dataflowFuncCall env' types' g2 (Id (Identifier result.Uid)) paramExps expr'
+
+// Dataflow a recursive function definition
+and dataflowLetRec env types graph expr =
+  let name, typ, binder, body =
+    match expr with
+    | Let (Identifier name, optType, binder, body) ->
+        match optType with
+        | Some typ -> name, typ, binder, body
+        | None -> failwithf "Can't happen"
+    | _ -> failwithf "Can't happen"
+
+  // Dataflow the binder to extract global dependencies
+  let binderDeps, g1, binder' = 
+    match binder with
+    | Lambda (args, body) ->
+         // Add the arguments to the environment
+         let env', types' =
+           List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, _)) ->
+                        let n = NodeInfo.AsUnknown(arg)
+                        env.Add(arg, n), types.Add(arg, n.Type))
+                     (env, types) args
+         // Now add the recursive function
+         let env'', types'' = env'.Add(name, NodeInfo.AsUnknown(name)), types'.Add(name, TyUnit)
+         
+         let deps, g1, body' = dataflowE env'' types'' graph body
+         deps, g1, Lambda (args, body')
+    | _ -> failwithf "The binder of a recursive let is not a lambda?!"
+
+  // At this point there are two choices: does the body return a closure?
+  // If it does, we have to manually create the necessary nodes with the
+  // correct LambdaStates.
+  match typeOf types expr with
+  | TyArrow _ ->
+      // Create the node for the binder
+      let binderNode, g2 = createClosure env types g1 binder' typ (Some name)
+      binderNode.Name <- name
+      
+      // Dataflow the body
+      let env', types' = env.Add(name, binderNode), types.Add(name, binderNode.Type)
+      let bodyDeps, g3, body' = dataflowE env' types' g2 body
+      
+      // Create a node for the body
+      let bodyNode, g4 = makeFinalNode env' types' g3 body' bodyDeps "let-body"
+
+      let expr' = Let (Identifier name, Some typ, Id (Identifier binderNode.Uid), Id (Identifier bodyNode.Uid))
+      let n, g5 = createNode (nextSymbol "let") (typeOf types' expr) [binderNode; bodyNode]
+                             (ForwardState bodyNode) (makeEvaluator expr' Map.empty) g4
+      Set.singleton n, g5, Id (Identifier n.Uid)
+  | _ -> // Dataflow the body
+         let env', types' = env.Add(name, NodeInfo.AsUnknown(name)), types.Add(name, TyUnit)
+         let bodyDeps, g2, body' = dataflowE env' types' g1 body
+         Set.union binderDeps bodyDeps, g2, Let (Identifier name, Some typ, binder', body')
+
+
+and dataflowLetNonRec env types graph expr =
+  let name, optType, binder, body =
+    match expr with
+    | Let (Identifier name, optType, binder, body) -> name, optType, binder, body
+    | _ -> failwithf "Can't happen"
+
+  // Dataflow the binder
+  let deps1, g1, binder' = dataflowE env types graph binder
+  let n, g2 = makeFinalNode env types g1 binder' deps1 name
+  n.Name <- name
+  
+  // Dataflow the body
+  let env', types' = env.Add(name, n).Add(n.Uid, n), types.Add(name, n.Type).Add(n.Uid, n.Type)
+  let deps2, g3, body' = dataflowE env' types' g2 body
+  
+  match typeOf types' body with
+  | TyArrow _ -> 
+      // If the result of the body is a closure, create the node manually with the
+      // correct state.
+      let bodyNode, g4 = makeFinalNode env' types' g3 body' deps2 "let-body"
+      
+      let expr' = Let (Identifier name, optType, Id (Identifier n.Uid), Id (Identifier bodyNode.Uid))
+      let final, g5 = createNode (nextSymbol "let") (typeOf types expr) [n; bodyNode]
+                                 (ForwardState bodyNode) (makeEvaluator expr' Map.empty) g4
+      Set.singleton final, g5, Id (Identifier final.Uid)
+  | _ -> Set.add n deps2, g3, Let (Identifier name, optType, Id (Identifier n.Uid), body')
+
 
 and dataflowGroupby env types graph target paramExps =
   let argType = target.Type
@@ -570,9 +617,20 @@ and makeFinalNode env types graph expr deps name =
                     makeRecord parentOps uid prio parents)
                  g''
 
+  | Lambda (args, body) -> createClosure env' types' graph expr (typeOf types' expr) None
+
   (* The result is an arbitrary expression and we need to evaluate it *)
   | _ -> createNode (nextSymbol name) (typeOf types' expr) (Set.to_list deps)
                     NoState (makeEvaluator expr Map.empty) graph
+
+and createClosure env types graph expr typ (itself:string option) =
+  match expr with 
+  | Lambda (args, body) ->
+      let ids = List.map (fun (Param (Identifier id, _)) -> id) args
+      let state = LambdaState { Expr = expr; Env = env; Types = types; IsRec = itself.IsSome }
+      createNode (nextSymbol (sprintf "lambda %A" ids)) typ [] state
+                 (makeClosure expr itself) graph
+  | _ -> failwithf "Not a lambda"
 
 and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
   let field = match paramExprs with
@@ -613,8 +671,10 @@ and getLambdaState (graph:DataflowGraph) node =
   | LambdaState s -> node.State
   | ProjectorState field ->
       // For this to work, a projector must have a single parent
+      assert (node.ParentUids.Length = 1)
       let record : Map<string, NodeInfo> = getRecordState graph (Graph.labelOf node.ParentUids.Head graph)
       record.[field].State
+  | ForwardState node' -> getLambdaState graph node'
   | NoState -> failwithf "No state!"
 
 and getRecordState graph node =
@@ -625,6 +685,7 @@ and getRecordState graph node =
       match record.[field].State with
       | RecordState s -> s
       | _ -> failwithf "Can't happen"
+  | ForwardState node' -> getRecordState graph node'
 
 (*
 and renameNetwork renamer root graph =

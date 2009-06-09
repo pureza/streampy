@@ -52,6 +52,7 @@ let rec delayWindows (varExprs:ExprsContext) (types:TypeContext) = function
   | Expr expr -> varExprs, Expr (delayWindowsExpr varExprs types expr)
   | Entity (name, ((source, uniqueId), assocs, attributes)) as expr ->
       varExprs, Entity (name, ((delayWindowsExpr varExprs types source, uniqueId), assocs, attributes))
+  | _ -> failwithf "Won't happen because function translations happen first."
 
 and delayWindowsExpr varExprs types expr =   
   match expr with
@@ -172,6 +173,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                    [SymbolExpr uniqueId; Lambda ([Param (Identifier "g", None)], record)])
       let assign = Def (Identifier (entityDict name), groupByExpr)                 
       entities.Add(name), assign
+  | _ -> failwithf "Won't happen because function translations happen first."
 
 (* Replaces Entity.all with $Entity_all, everywhere *)
 and transDictAll entities expr =
@@ -206,28 +208,41 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
       let expr' = replacer expr
       varExprs.Add(name, expr'), Def (Identifier name, expr')
   | Expr expr -> varExprs, Expr (replacer expr)
-  | _ -> failwithf "Won't happen because entity translation happens first."
+  | _ -> failwithf "Won't happen because entity and function translations happens first."
 
+
+(* Replaces Function definitions with equivalent let expressions *)     
+let rec transFunctions stmt =
+  match stmt with
+  | Function (Identifier name, parameters, retType, body) ->
+      Def (Identifier name, Let (Identifier name, Some retType, Lambda (parameters, body), Id (Identifier name)))
+  | _ -> stmt
 
 let rewrite types ast =
-  let _, stmts1 =
+  let stmts1 =
+    List.fold (fun stmts stmt ->
+                 let stmt' = transFunctions stmt
+                 stmts @ [stmt'])
+              [] ast
+
+  let _, stmts2 =
     List.fold (fun (varExprs, stmts) stmt ->
                  let varExprs', stmt' = delayWindows varExprs types stmt
                  varExprs', stmts @ [stmt'])
-              (Map.empty, []) ast
+              (Map.empty, []) stmts1
                         
-  let _, stmts2 =
+  let _, stmts3 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transEntities entities types stmt
                  entities, stmts @ [stmt'])
-              (Set.empty, []) stmts1
+              (Set.empty, []) stmts2
 
-  let _, stmts3 =
+  let _, stmts4 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transRecordWith entities stmt
                  entities, stmts @ [stmt'])
-              (Map.empty, []) stmts2
+              (Map.empty, []) stmts3
                    
-  stmts3
+  stmts4
   
       

@@ -22,6 +22,14 @@ let rec types (env:TypeContext) = function
       env.Add(name, typ)
   | Expr expr -> typeOf env expr |> ignore
                  env
+  | Function (Identifier name, parameters, retType, body) ->
+      let env' = List.fold (fun (env:TypeContext) (Param (Identifier param, typ)) ->
+                              match typ with
+                              | Some t -> env.Add(param, t)
+                              | _ -> failwithf "You must annotate all function arguments with their type!")
+                           (env.Add(name, retType)) parameters
+      typeOf env' body |> ignore
+      env.Add(name, retType)
   | Entity (Identifier name, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with
       | TyStream (TyRecord fields) ->

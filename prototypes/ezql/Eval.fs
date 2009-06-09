@@ -12,7 +12,7 @@ let rec eval (env:Map<string, value>) = function
   | FuncCall (expr, paramExps) ->
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps
-      apply fn paramValues
+      apply env fn paramValues
   | MemberAccess (expr, Identifier name) ->
       let target = eval env expr
       match target with
@@ -69,18 +69,20 @@ and evalOp = function
   | _ -> failwith "op not implemented"
 
 
-and apply value =
+and apply env value =
   match value with
-  | VClosure (env, expr, itself) ->
+  | VClosure (env', expr, itself) ->
+      // If the closure is recursive, use the outer environment
+      // because the closure's environment may be empty
+      let env = match itself with
+                | Some name -> env.Add(name, value)
+                | _ -> env'
       match expr with
       | Lambda (ids, body) ->
           (fun args ->
               let ids' = List.map (fun (Param (Identifier name, _)) -> name) ids
               let env' = List.fold (fun e (n, v) -> Map.add n v e)
                                    env (List.zip ids' args)
-              let env'' = match itself with
-                          | Some name -> env'.Add(name, value)
-                          | _ -> env'
-              eval env'' body)
+              eval env' body)
       | _ -> failwith "evalClosure: Wrong type"
   | _ -> failwith "This is not a closure"

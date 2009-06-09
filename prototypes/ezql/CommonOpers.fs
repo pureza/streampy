@@ -236,8 +236,12 @@ let makeProjector field uid prio (parents:Operator list) =
   
 // Doesn't do anything.
 // TODO: Remove this operator
-let makeClosure expr uid prio parents =
+let makeClosure expr itself uid prio parents =
   let eval = fun (op:Operator, inputs) -> None
-  Operator.Build(uid, prio, eval, parents)
+               
+  let initialEnv = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
+  let value = VClosure (initialEnv, expr, itself)
+  
+  Operator.Build(uid, prio, eval, parents, contents = value)
   
        
