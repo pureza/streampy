@@ -212,16 +212,17 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
 
 
 (* Replaces Function definitions with equivalent let expressions *)     
-let rec transFunctions stmt =
+let rec transFunctions (types:TypeContext) stmt =
   match stmt with
   | Function (Identifier name, parameters, retType, body) ->
-      Def (Identifier name, Let (Identifier name, Some retType, Lambda (parameters, body), Id (Identifier name)))
+      let fnType = types.[name]
+      Def (Identifier name, Let (Identifier name, Some fnType, Lambda (parameters, body), Id (Identifier name)))
   | _ -> stmt
 
 let rewrite types ast =
   let stmts1 =
     List.fold (fun stmts stmt ->
-                 let stmt' = transFunctions stmt
+                 let stmt' = transFunctions types stmt
                  stmts @ [stmt'])
               [] ast
 

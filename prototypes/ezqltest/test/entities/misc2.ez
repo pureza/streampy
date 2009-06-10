@@ -52,13 +52,13 @@ f = x2c(lastTemp);;
 
 
 // Recursive function with global dependencies
-define fact(n:int) : int -> int =
+define fact(n:int) : int =
   if n == 0
     then lastTemp
     else n + fact (n - 1);;
 
 // Non-recursive function with global deps
-define x2a(n:int) : int -> int = n.sum() * lastTemp;;
+define x2a(n:int) : int = n.sum() * lastTemp;;
 
 // Same as before, but using an anonymous function
 x2b = fun (n:int) -> n * lastTemp;;

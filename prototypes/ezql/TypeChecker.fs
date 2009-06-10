@@ -23,13 +23,17 @@ let rec types (env:TypeContext) = function
   | Expr expr -> typeOf env expr |> ignore
                  env
   | Function (Identifier name, parameters, retType, body) ->
-      let env' = List.fold (fun (env:TypeContext) (Param (Identifier param, typ)) ->
-                              match typ with
-                              | Some t -> env.Add(param, t)
-                              | _ -> failwithf "You must annotate all function arguments with their type!")
-                           (env.Add(name, retType)) parameters
-      typeOf env' body |> ignore
-      env.Add(name, retType)
+      let env', fnType =
+        List.foldBack (fun (Param (Identifier param, typ)) (env:TypeContext, fnType)  ->
+                         match typ with
+                         | Some t -> env.Add(param, t), TyArrow (t, fnType)
+                         | _ -> failwithf "You must annotate all function arguments with their type!")
+                      parameters (env, retType)
+      // Add itself
+      let env'' = env'.Add(name, fnType)
+      if typeOf env'' body = retType
+        then env.Add(name, fnType)
+        else failwithf "The function body doesn't return %A" retType
   | Entity (Identifier name, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with
       | TyStream (TyRecord fields) ->
