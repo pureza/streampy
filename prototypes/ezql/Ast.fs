@@ -22,6 +22,26 @@ and expr =
   | Time of expr * timeUnit
   | SymbolExpr of symbol
   | Id of id
+  
+  member self.Name =
+    match self with
+    | Let _ -> "let"
+    | BinaryExpr (op, _, _) -> sprintf "BinaryExpr(%A)" op
+    | MethodCall _ -> "MethodCall"
+    | FuncCall _ -> "FuncCall"
+    | MemberAccess _ -> "MemberAccess"
+    | Lambda _ -> "Lambda"
+    | If _ -> "if"
+    | ArrayIndex _ -> "ArrayIndex"
+    | Seq _ -> "Seq"
+    | Record _ -> "Record"
+    | RecordWith _ -> "RecordWith"
+    | Integer _ -> "<int>"
+    | Bool _ -> "<bool>"
+    | String _ -> "<string>"
+    | Time _ -> "Time"
+    | SymbolExpr _ -> "<symbol>"
+    | Id _ -> "Id"
 
 and op =
   | GreaterThan

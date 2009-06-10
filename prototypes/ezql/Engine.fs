@@ -28,7 +28,7 @@ let dataflowAnalysis types ast =
   let roots = []
   let env', types', g', roots' = List.fold dataflow (env, types, g, roots) ast
 
-//  Graph.Viewer.display g' (fun v info -> info.Uid)
+  //Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))
   let operators = Dataflow.makeOperNetwork g' (Graph.nodes g') id Map.empty
   Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
 

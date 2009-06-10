@@ -1,11 +1,13 @@
 ﻿#light
 
+open System.Collections.Generic
 open Extensions
 open Ast
 open Util
 open Types
 open Eval
 open Scheduler
+open Oper
 
 (* A stream: propagates received events *)
 let makeStream uid prio parents =
@@ -236,12 +238,52 @@ let makeProjector field uid prio (parents:Operator list) =
   
 // Doesn't do anything.
 // TODO: Remove this operator
-let makeClosure expr itself uid prio parents =
+let makeClosure uid prio parents =
   let eval = fun (op:Operator, inputs) -> None
-               
-  let initialEnv = Map.of_list [ for p in parents -> (p.Uid, p.Value) ]
-  let value = VClosure (initialEnv, expr, itself)
+  Operator.Build(uid, prio, eval, parents, contents = VString uid)
   
-  Operator.Build(uid, prio, eval, parents, contents = value)
-  
-       
+let makeFuncCall lookupBuilder uid prio parents =
+  let subnetworks = ref Map.empty
+  let currNetwork : ref<uid option> = ref None
+
+  let rec headOp =
+    Operator.Build(uid, prio,
+      (fun (op:Operator, inputs) ->
+         let env = getOperEnv op
+         let closureUid = match op.Parents.[0].Value with
+                          | VString uid -> uid
+                          | _ -> failwithf "Can't happen"
+         let parameterChanges = List.tl inputs
+         
+         if not (Map.contains closureUid !subnetworks)
+           then let closureBuilder = lookupBuilder closureUid
+                let roots, final = closureBuilder prio env
+                connect final resultOp id
+                subnetworks := Map.add closureUid (roots, final) (!subnetworks)
+         currNetwork := Some closureUid
+
+         let subnet, _ = (!subnetworks).[closureUid]
+         for (child:Operator, parent:Operator) in (List.zip subnet (List.tl parents)) do
+           child.Value <- parent.Value
+         
+         // Now I must pass the parameter changes to the subnetwork
+         let argsToEval : ChildData list = 
+           List.mapi (fun i arg ->
+                        let link _ = parameterChanges.[i] // Ignore the argument
+                        arg, 0, link)
+                     subnet
+                     
+         // Output just the closure change: the parameters' changes are not needed
+         Some (List<_> ((resultOp, 0, id)::argsToEval), List.hd inputs)),
+      parents)
+
+  and resultOp =
+    Operator.Build(uid + "_results", Priority.add prio (Priority.of_list [9]),
+      (fun (op:Operator, inputs) ->
+        let resultOp = (snd (!subnetworks).[(!currNetwork).Value])
+        setValueAndGetChanges op resultOp.Value), [headOp])
+      
+  { headOp with
+        Children = resultOp.Children;
+        Contents = resultOp.Contents;
+        AllChanges = resultOp.AllChanges }

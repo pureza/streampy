@@ -1,105 +1,22 @@
 temp_readings = stream (:room_id, :temperature);;
-entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-
-// Test:
-//  - Functions with several parameters
-//  - Currying
-a = let g = fun (a:int) (f:int -> int) -> f(a) in
-    g (1) (fun (x:int) -> lastTemp + x);;
-
+/*
+a = let g = fun (n:int) -> n * 2 in
+    let f = fun (n:int) -> n * 3 in
+    (if lastTemp > 30 then g else f)(lastTemp);;
+*/
 
 
-
-// Test:
-//  - Functions that return functions
-//  - Closures
-//  - Currying
-//  - Passing records to functions
-b = let g = fun (t:int) -> fun (u:{ a:int }) -> t * (u.a[2 sec].sum()) in
-    let u = g (1) in
-    u ({ a = lastTemp });;
-
-
-// Test:
-//  - Record fields containing functions
-c = let z = { a = { b = { c = fun (t:int) -> t } } } in
-    (z.a.b.c)(lastTemp);;
-
-
-// Test:
-//  - Record fields containing functions that return functions
-d = let z = { a = fun (x:int) -> fun (y:int) -> x + y } in
-    z.a(lastTemp)(1);;
-
-// DOESN'T WORK
-//x = let z = { a = fun (x:int) -> x, b = fun (x:int) -> x * 2 } in
-//    let f = fun (x:int) -> (if lastTemp > 25 then z.a else z.b) in 
-//    f(1)(lastTemp);;
-
-
-// Recursivity
-e = let fact : int -> int = fun (n:int) -> if n == 0 then lastTemp else n + fact (n - 1) in
-    fact (lastTemp) + 20;;
-
-
-// This function returns a function that is not recursive
-x2c = let x3 : int -> int = fun (n:int) -> n * 2 in
-      fun (n:int) -> x3(n);;
-f = x2c(lastTemp);;
-
-
-// Recursive function with global dependencies
-define fact(n:int) : int =
-  if n == 0
-    then lastTemp
-    else n + fact (n - 1);;
-
-// Non-recursive function with global deps
-define x2a(n:int) : int = n.sum() * lastTemp;;
-
-// Same as before, but using an anonymous function
-x2b = fun (n:int) -> n * lastTemp;;
-
-
-g = x2a(lastTemp) + x2b(lastTemp) + fact(lastTemp);;
+a = let f = fun (n:int) -> n + lastTemp in
+    let g = fun (x:int) -> f(x) in
+    g (lastTemp);;
 
 
 
-// This function has a recursive binder but returns a non-recursive function
-fact_b = let fact : int -> int = fun (n:int) -> if n == 0 then lastTemp else n + fact (n - 1) in
-         fun (n:int) -> n.sum() * 2;;
+when (a.updated(), fun ev -> print(a));;
 
-h = fact_b(lastTemp);;
-
-
-// This function has a non-recursive binder but returns a recursive function
-fact_c = let a = 1 in
-         fact;;
-
-i = fact_c(lastTemp);;
-
-
-// This function returns a recursive function taken from a record field
-something = let factorial : int -> int = fun (n:int) -> if n == 0 then lastTemp else n + factorial (n - 1) in
-            { a = factorial }.a;;
-
-// Test recursive functions that come from record fields
-j = something (lastTemp);;
-
-
-when (a.updated(), fun ev -> print (a));;
-when (b.updated(), fun ev -> print (b));;
-when (c.updated(), fun ev -> print (c));;
-when (d.updated(), fun ev -> print (d));;
-when (e.updated(), fun ev -> print (e));;
-when (f.updated(), fun ev -> print (f));;
-when (g.updated(), fun ev -> print (g));;
-when (h.updated(), fun ev -> print (h));;
-when (i.updated(), fun ev -> print (i));;
-when (j.updated(), fun ev -> print (j));;
 
 #! temp_readings
 Timestamp, room_id, temperature
@@ -109,13 +26,3 @@ Timestamp, room_id, temperature
 6,               2,      50
 7,               3,      30
 9,               1,      23
-
-#! entries
-Timestamp, room_id, product_id
-3,               1,          1
-4,               1,          2
-6,               2,          2
-7,               1,          3
-8,               2,          1
-9,               3,          2
-
