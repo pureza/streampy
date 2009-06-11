@@ -238,26 +238,27 @@ let makeProjector field uid prio (parents:Operator list) =
   
 // Doesn't do anything.
 // TODO: Remove this operator
-let makeClosure uid prio parents =
+let makeClosure closureBuilder uid prio parents =
   let eval = fun (op:Operator, inputs) -> None
-  Operator.Build(uid, prio, eval, parents, contents = VString uid)
+  Operator.Build(uid, prio, eval, parents, contents = VClosureSpecial (uid, closureBuilder))
   
-let makeFuncCall lookupBuilder uid prio parents =
+let makeFuncCall uid prio parents =
   let subnetworks = ref Map.empty
   let currNetwork : ref<uid option> = ref None
 
   let rec headOp =
     Operator.Build(uid, prio,
       (fun (op:Operator, inputs) ->
+         printfn "I am %s and these are my inputs %A"  uid inputs
          let env = getOperEnv op
-         let closureUid = match op.Parents.[0].Value with
-                          | VString uid -> uid
-                          | _ -> failwithf "Can't happen"
+         let closureUid, closureBuilder =
+           match op.Parents.[0].Value with
+           | VClosureSpecial (uid, builder) -> uid, builder
+           | other -> failwithf "Expecting a VClosureSpecial, but the parent's value is %A" other
          let parameterChanges = List.tl inputs
          
          if not (Map.contains closureUid !subnetworks)
-           then let closureBuilder = lookupBuilder closureUid
-                let roots, final = closureBuilder prio env
+           then let roots, final = closureBuilder prio env
                 connect final resultOp id
                 subnetworks := Map.add closureUid (roots, final) (!subnetworks)
          currNetwork := Some closureUid
@@ -281,6 +282,7 @@ let makeFuncCall lookupBuilder uid prio parents =
     Operator.Build(uid + "_results", Priority.add prio (Priority.of_list [9]),
       (fun (op:Operator, inputs) ->
         let resultOp = (snd (!subnetworks).[(!currNetwork).Value])
+        printfn "%s - vou por o meu valor a %A" uid resultOp.Value
         setValueAndGetChanges op resultOp.Value), [headOp])
       
   { headOp with

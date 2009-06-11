@@ -9,13 +9,13 @@ a = let g = fun (n:int) -> n * 2 in
 */
 
 
-a = let f = fun (n:int) -> n + lastTemp in
-    let g = fun (x:int) -> f(x) in
-    g (lastTemp);;
 
 
+b = let g = fun (t:int) -> fun (u:int) -> u in
+    g(1)(lastTemp);;
 
-when (a.updated(), fun ev -> print(a));;
+
+//when (b.updated(), fun ev -> print(b));;
 
 
 #! temp_readings

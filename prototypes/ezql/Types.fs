@@ -9,6 +9,7 @@ exception UnknownId of string
 
 type uid = string
 
+
 module Priority =
   type priority = Priority of int list
   
@@ -120,6 +121,7 @@ and value =
     | VEvent of Event
     | VRef of value
     | VNull
+    | VClosureSpecial of string * NetworkBuilder
     
     member self.Clone() =
       match self with
@@ -181,6 +183,8 @@ and diff =
 
 and changes = diff list
 and link = changes -> changes
+
+and NetworkBuilder = Priority.priority -> Map<uid, Operator> -> Operator list * Operator
 
 let rec cloneDiff = function
   | Added value -> Added (value.Clone())

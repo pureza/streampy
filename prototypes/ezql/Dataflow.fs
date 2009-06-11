@@ -14,9 +14,6 @@ open AggregateOpers
 open DictOpers
 open Eval   
 
-type uid = string
-type NetworkBuilder = Priority.priority -> Map<uid, Operator> -> Operator list * Operator
-
 [<ReferenceEquality>]
 type NodeInfo =
   { Uid:uid
@@ -428,13 +425,8 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
 //        Set.union deps2 deps1, g2, FuncCall (fnExpr', paramExps')
       
          let returnType = typeOf types expr
-         let lookupBuilder uid =
-           let closureNode = Graph.labelOf uid g3
-           match closureNode.State with
-           | ClosureState builder -> builder
-           | _ -> failwithf "I'm trying to lookup the builder of something that is not a closure. The uid is %A" uid
-         let n, g4 = createNode (nextSymbol "<f>(...)") returnType (funcNode::paramDeps) NoState
-                                (makeFuncCall lookupBuilder) g3
+         let n, g4 = createNode (nextSymbol expr.Name) returnType (funcNode::paramDeps) NoState
+                                (makeFuncCall) g3
          Set.singleton n, g4, Id (Identifier n.Uid)
   
   
@@ -617,6 +609,7 @@ and makeSubExprBuilder roots final graph : NetworkBuilder =
   fun prio operators ->
     let fixPrio p = Priority.add (Priority.down prio) p
     let operators' = makeOperNetwork graph roots fixPrio operators
+    printfn "final = %s %b" final (Map.contains final operators')
     (List.map (fun root -> operators'.[root]) roots), operators'.[final]
 
 (* Create the necessary nodes to evaluate an expression.
@@ -680,7 +673,7 @@ and createClosure env types graph expr typ (itself:string option) name =
                      | Some t -> let node = { Uid = arg; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [];
                                               State = NoState }
                                  env.Add(arg, node), types.Add(arg, node.Type), Graph.add ([], arg, node, []) graph, argUids @ [node.Uid]
-                     | None -> failwithf "Can't happen")
+                     | None -> failwithf "Function arguments must have type annotations.")
                   (env, types, graph, []) args
                     
       let deps, g2, body' = dataflowE env' types' g1 body
@@ -695,20 +688,24 @@ and createClosure env types graph expr typ (itself:string option) name =
       // Uses g2 because it contains the group's subnetwork
       let networkBuilder = makeSubExprBuilder argUids opResult.Uid g2'
       
-      (*
+      
       Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g1 (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g2 (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g2' (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g3 (fun v info -> (sprintf "%s (%s)" info.Name v))   
-       *)
+       
       
       // Now that we're all set, let's create the closure's node
       let ids = (List.fold (fun acc (Param (Identifier id, _)) -> acc + id + ".") "" args)
       //let state = LambdaState { Expr = expr; Env = env; Types = types; IsRec = itself.IsSome }
-      let state = ClosureState networkBuilder
-      createNode (nextSymbol (sprintf "%s = λ%s" name ids)) typ [] state
-                 (makeClosure) g3
+      let uid = sprintf "%s = λ%s" name ids
+      let networkBuilder' = fun prio opers -> printfn "Vou criar a subrede da closure %s" uid
+                                              let results = networkBuilder prio opers
+                                              printfn "subrede criada"
+                                              results
+      createNode (nextSymbol uid) typ [] NoState
+                 (makeClosure networkBuilder') g3
                   
     (*
     let deps, g2, body' = keepTrying arg env' types' g1 body
@@ -866,7 +863,7 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators 
       try
         spread stack
       with
-        | SpreadException (_, rest) -> retrySpread rest
+        | SpreadException (_, rest, _) -> retrySpread rest
         
   let spreadInitialChanges initialChanges =
     for (op:Operator, (changes:changes)) in initialChanges do
@@ -880,7 +877,7 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators 
 
   //printfn "order: %A" order
   //printfn "operators: %A" (Map.to_list operators |> List.map fst)
-  //Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))
+  Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))
   //Graph.Viewer.display graph (fun v info -> info.Name)
   
   // Maps uids to priorities
@@ -896,15 +893,19 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators 
                        else //printfn "Vou criar o %s que tem como pais %A %A" uid info.ParentUids pred
                             let parents = List.map (fun uid -> match Map.tryFind uid operators with
                                                                | Some op -> op
-                                                               | _ -> (!theRootOps).[uid])
+                                                               | _ -> if Map.contains uid !theRootOps
+                                                                        then (!theRootOps).[uid]
+                                                                        else failwithf "theRootOps doesn't contain %s" uid)
                                                     info.ParentUids
                             let op = info.MakeOper uid (fixPrio orderPrio.[uid]) parents
                             let changes' = if op.Value <> VNull then (op, [Added (op.Value.Clone())])::changes else changes
-                            //printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
+                            printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
                             Map.add uid op operators, changes')
                   (operators, []) graph order
-  if Map.isEmpty !theRootOps then theRootOps := operators'                  
+  if Map.isEmpty !theRootOps then theRootOps := operators'  
+  printfn "AQUI"                
   spreadInitialChanges initialChanges
+  printfn "AQUU"
   operators'               
 
 and theRootOps : Map<string, Operator> ref = ref Map.empty

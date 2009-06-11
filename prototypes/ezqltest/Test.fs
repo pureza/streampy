@@ -6,6 +6,7 @@ open Adapters
 open Types
 open Eval
 open Extensions.DateTimeExtensions
+open Oper
 
 (* Test DSL *)
 
@@ -191,7 +192,8 @@ let runTests (testMethods:MethodInfo list) =
     if left.IsEmpty
       then printfn "\t\t\t\t\t\t\t\tPass"
       else printfn "| Tests left in test '%s'\n%A\n\n" testName left
-  //  with
-  //    | err -> printfn "Exception:\n %A\n\n" err
+   // with
+   //   | SpreadException (op, _, inner) -> printfn "SpreadException at %s:\n %A\n%s\n\n" op.Uid inner inner.StackTrace
+   //   | err -> printfn "Exception:\n %A\n\n" err
 
     Engine.reset ()

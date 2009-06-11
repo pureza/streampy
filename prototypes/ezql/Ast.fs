@@ -25,23 +25,23 @@ and expr =
   
   member self.Name =
     match self with
-    | Let _ -> "let"
+    | Let (Identifier id, _, _, _) -> sprintf "let %s = ... in" id
     | BinaryExpr (op, _, _) -> sprintf "BinaryExpr(%A)" op
-    | MethodCall _ -> "MethodCall"
-    | FuncCall _ -> "FuncCall"
+    | MethodCall (target, Identifier name, _) -> sprintf "%s.%s(...)" target.Name name
+    | FuncCall (func, _) -> sprintf "%s(...)" func.Name
     | MemberAccess _ -> "MemberAccess"
     | Lambda _ -> "Lambda"
     | If _ -> "if"
     | ArrayIndex _ -> "ArrayIndex"
-    | Seq _ -> "Seq"
+    | Seq (expr1, expr2) -> sprintf "%s; %s" expr1.Name expr2.Name
     | Record _ -> "Record"
     | RecordWith _ -> "RecordWith"
-    | Integer _ -> "<int>"
-    | Bool _ -> "<bool>"
-    | String _ -> "<string>"
+    | Integer i -> i.ToString()
+    | Bool b -> b.ToString()
+    | String s -> sprintf "\"%O\"" s
     | Time _ -> "Time"
-    | SymbolExpr _ -> "<symbol>"
-    | Id _ -> "Id"
+    | SymbolExpr (Symbol sym) -> sprintf ":%s" sym
+    | Id (Identifier id) -> id
 
 and op =
   | GreaterThan

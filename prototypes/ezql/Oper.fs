@@ -9,7 +9,7 @@ open Util
 open Types
 open Eval
 
-exception SpreadException of Operator * EvalStack
+exception SpreadException of Operator * EvalStack * Exception
 
 (*
  * Connect parent with child.
@@ -82,6 +82,7 @@ let rec spread (stack:EvalStack) =
               spread (mergeStack xs (toEvalStack children (cloneChanges changes)))
           | _ -> spread xs
         with
-          | ex -> raise (SpreadException (op, xs))
+          | SpreadException (_, _, _) as ex -> raise ex
+          | ex -> raise (SpreadException (op, xs, ex))
 
 
