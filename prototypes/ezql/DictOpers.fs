@@ -20,16 +20,16 @@ let spreadUnlessEmpty op changes =
    the parameter of the predicate or projector.
    The value of this operators is manually set by the methods that use it.
  *)
-let makeInitialOp uid prio parents =
+let makeInitialOp (uid, prio, parents, context) =
   let eval = fun (op, inputs) -> Some (op.Children, List.hd inputs)
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 
 (*
  * Creates the initial operator used by where and select
  *)     
-let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (parents:Operator list) =
+let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (parents:Operator list), context) =
   let rec buildSubGroup key env headOp =
     let initials, final = groupBuilder prio env
     let initial = List.hd initials
@@ -45,7 +45,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
          match (parents.Head).Value with
          | VDict dict -> dict
          | _ -> failwithf "Can't happen"   
-     let env = getOperEnv op
+     let env = !op.Context
      [ for chg in changes do
          match chg with
          | DictDiff (key, _) ->
@@ -68,20 +68,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
                                                [] (!dict))
          | _ -> yield! [chg] ]
 
-(*       
-  let makeInit () =
-    match (parents.Head).Value with
-    | VDict dict -> let initialChanges = ref (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
-                                                         (DictDiff (x.Key, [Added x.Value]))::acc)
-                                                       [] (!dict))
-                    fun changes -> let changes' = changes @ !initialChanges
-                                   initialChanges := []
-                                   changes'
-    | _ -> id
-    
-    
-  let initOnce = makeInit ()
-*)
+
   Operator.Build(uid, prio,
     (fun (op, changes) ->
        let parentChanges' = initNewGroups op changes.Head
@@ -99,10 +86,10 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder uid prio (paren
                             yield subGroupStartOp key subgroups, 0, link
                         | _ -> () ]
 
-       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges')), parents)
+       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges')), parents, context)
 
      
-let makeGroupby field groupBuilder uid prio parents =
+let makeGroupby field groupBuilder (uid, prio, parents, context) =
     let substreams = ref Map.empty
     let results = ref Map.empty
 
@@ -137,7 +124,7 @@ let makeGroupby field groupBuilder uid prio parents =
 
     and groupOp = Operator.Build(uid, prio,
                     (fun (op, changes) ->
-                       let env = getOperEnv op
+                       let env = !op.Context
                        let children = 
                          [ for change in changes.Head ->
                              match change with
@@ -154,7 +141,7 @@ let makeGroupby field groupBuilder uid prio parents =
                        | [] -> None
                        | _ -> let childrenData = List.map (fun (g, k) -> g, 0, filterKey k) childrenNoDup
                               Some (List<_>((dictOp, 0, collectByKey)::childrenData), changes.Head)),
-                    parents)
+                    parents, context)
 
     and dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
                    (fun (op, changes) ->
@@ -186,7 +173,7 @@ let makeGroupby field groupBuilder uid prio parents =
                                         parentChanges) @ (List.concat groupChanges')
                           spreadUnlessEmpty op allChanges
                       | _ -> failwith "Empty changes?"),
-                   [groupOp], contents = VDict results)
+                   [groupOp], context, contents = VDict results)
 
     { groupOp with
         Children = dictOp.Children;
@@ -203,7 +190,7 @@ let makeGroupby field groupBuilder uid prio parents =
  * - dictOp receives the changes from whereOp and the changes from each
  *   predicate and updates the results dictionary accordingly.
  *)
-let makeDictWhere predicateBuilder uid prio parents =
+let makeDictWhere predicateBuilder (uid, prio, parents, context) =
     // Contains the initial and final operator for each key's predicate
     let predicates = ref Map.empty
     let results = ref Map.empty
@@ -259,9 +246,9 @@ let makeDictWhere predicateBuilder uid prio parents =
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
 
                       spreadUnlessEmpty op (changes1 @ changes2)),
-                   [], contents = VDict results)
+                   [], context, contents = VDict results)
      
-    let whereOp = makeHeadOp dictOp predicates predicateBuilder uid prio parents                  
+    let whereOp = makeHeadOp dictOp predicates predicateBuilder (uid, prio, parents, context)
     connect whereOp dictOp id
 
     { whereOp with
@@ -270,7 +257,7 @@ let makeDictWhere predicateBuilder uid prio parents =
         AllChanges = dictOp.AllChanges }
 
 
-let makeDictSelect projectorBuilder uid prio parents =
+let makeDictSelect projectorBuilder (uid, prio, parents, context) =
     let projectors = ref Map.empty
     let results = ref Map.empty
 
@@ -303,9 +290,9 @@ let makeDictSelect projectorBuilder uid prio parents =
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
                       //printfn "Depois %s: Value = %O" op.Uid op.Value
                       spreadUnlessEmpty op (changes1 @ changes2)),                      
-                   [], contents = VDict results)
+                   [], context, contents = VDict results)
     
-    let selectOp = makeHeadOp dictOp projectors projectorBuilder uid prio parents    
+    let selectOp = makeHeadOp dictOp projectors projectorBuilder (uid, prio, parents, context)
     connect selectOp dictOp id
 
     { selectOp with

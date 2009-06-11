@@ -45,7 +45,7 @@ let mainLoop () =
         virtualClock.Step ()
 
 let reset () = Scheduler.reset ()
-               theRootOps := Map.empty
+              // theRootOps := Map.empty
                theForwardDeps.Reset ()
 
 let now () = Scheduler.clock().Now

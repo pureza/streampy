@@ -48,6 +48,7 @@ type Operator =
   { Uid: uid
     Children: List<ChildData>
     Parents: List<Operator>
+    Context: Map<uid, Operator> ref
     Priority: Priority.priority
     AllChanges: changes list ref
     Contents: ref<value>
@@ -64,16 +65,20 @@ type Operator =
     member self.CompareTo(other) = Operators.compare (self.GetHashCode()) (other.GetHashCode())
 
   (* Creates an operator and connects it to its parents *)
-  static member Build(uid, prio, eval, parents, ?children, ?contents) =
+  static member Build(uid, prio, eval, parents, context, ?children, ?contents) =
     let theChildren = match children with
                       | Some ch -> ch
                       | None -> List<_>()
     let theContents = match contents with
                       | Some v -> ref v
                       | None -> ref VNull
-    let oper = { Uid = uid; Priority = prio; Eval = eval;
-                 Parents = List<_>(Seq.of_list parents);
-                 Children = theChildren; Contents = theContents
+    let oper = { Uid = uid
+                 Priority = prio
+                 Eval = eval;
+                 Parents = List<_>(Seq.of_list parents)
+                 Children = theChildren
+                 Context = context
+                 Contents = theContents
                  AllChanges = ref [] }
 
     List.iteri (fun i parent -> parent.Children.Add((oper, i, id))) parents
@@ -121,7 +126,7 @@ and value =
     | VEvent of Event
     | VRef of value
     | VNull
-    | VClosureSpecial of string * NetworkBuilder
+    | VClosureSpecial of string * NetworkBuilder * Map<string, Operator> ref
     
     member self.Clone() =
       match self with

@@ -10,25 +10,25 @@ open Scheduler
 open Oper
 
 (* A stream: propagates received events *)
-let makeStream uid prio parents =
+let makeStream (uid, prio, parents, context) =
   let eval = fun (op, inputs) ->
                match inputs with
                | [[Added (VEvent ev)] as changes] -> Some (op.Children, changes)
                | _ -> failwith "stream: Invalid arguments!"
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 (* A simple window - does not schedule expiration of events. *)
-let makeSimpleWindow uid prio parents =
+let makeSimpleWindow (uid, prio, parents, context) =
   let eval = fun (op, inputs) ->
                match inputs with
                | changes::_ -> Some (op.Children, changes)
                | _ -> failwith "Simple window: Invalid arguments!"
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
   
 (* A timed window *)
-let makeWindow duration uid prio parents =
+let makeWindow duration (uid, prio, parents, context) =
   let eval = fun (op, inputs) ->
                match inputs with
                | [[Added (VEvent ev)] as changes] ->
@@ -36,7 +36,7 @@ let makeWindow duration uid prio parents =
                    Some (op.Children, changes)
                | _ -> failwith "timed window: Invalid arguments!"
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 (* Generic operator builder for stream.where(), stream.select() and when() 
    All these operators receive a lambda expression that is to be executed
@@ -44,7 +44,7 @@ let makeWindow duration uid prio parents =
    is specific to each operator, and is abstracted by the resultHandler
    function.
  *)
-let makeEvalOnAdd resultHandler eventHandler uid prio parents : Operator =
+let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents, context) : Operator =
     let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
     let eval = fun (op, inputs) ->
                  let env = getOperEnvValues op
@@ -55,7 +55,7 @@ let makeEvalOnAdd resultHandler eventHandler uid prio parents : Operator =
                  | []::_ -> None // Ignore changes to the handler dependencies
                  | _ -> failwithf "Wrong number of arguments! %A" inputs
 
-    Operator.Build(uid, prio, eval, parents)
+    Operator.Build(uid, prio, eval, parents, context)
 
 
 (* Where: propagates events that pass a given predicate *)
@@ -77,7 +77,7 @@ let makeWhen = makeEvalOnAdd (fun op inputs ev result -> Some (op.Children, [Add
 
 
 (* A timed window for dynamic values *)
-let makeDynValWindow duration uid prio parents =
+let makeDynValWindow duration (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                match inputs with
                | [[Added something] as changes] ->
@@ -87,10 +87,10 @@ let makeDynValWindow duration uid prio parents =
                    Some (op.Children, changes)
                | _ -> failwith "timed window: Wrong number of arguments!"
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 (* Evaluator: this operator evaluates some expression and records its result *)
-let makeEvaluator expr kenv uid prio parents =
+let makeEvaluator expr kenv (uid, prio, parents, context) =
   let operEval = fun (op, allChanges) ->
                    let env = Map.union (getOperEnvValues op) kenv
                    let result = eval env expr
@@ -101,10 +101,10 @@ let makeEvaluator expr kenv uid prio parents =
                           eval env expr
                         with
                           | err -> VNull
-  Operator.Build(uid, prio, operEval, parents, contents = initialContents)
+  Operator.Build(uid, prio, operEval, parents, context, contents = initialContents)
 
 
-let makeRecord (fields:list<string * Operator>) uid prio parents =
+let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
   let result = fields |> List.map (fun (f, _) -> (VString f, ref VNull)) |> Map.of_list
   assert (parents = (List.map snd fields))
 
@@ -120,7 +120,7 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
                                           | _ -> [])
                           |> List.concat
                       Some (op.Children, recordChanges)),
-                   parents, contents = VRecord result)
+                   parents, context, contents = VRecord result)
 
   for field, op in fields do
     result.[VString field] := op.Value
@@ -129,25 +129,25 @@ let makeRecord (fields:list<string * Operator>) uid prio parents =
 
 
 (* Converts a dynamic value into a stream of changes to the value *)
-let makeToStream uid prio parents =
+let makeToStream (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                let value = op.Parents.[0].Value
                let ev = Event (Scheduler.clock().Now, Map.of_list ["value", value])
                Some (op.Children, [Added (VEvent ev)])
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 
-let makeRef getId uid prio (parents:Operator list) =
+let makeRef getId (uid, prio, (parents:Operator list), context) =
   let objOper = List.hd parents
   Operator.Build(uid, prio, 
                  (fun (op, inputs) ->
                     let objValue = objOper.Value
                     let id = VRef (getId objValue)
                     setValueAndGetChanges op id),
-                 parents)
+                 parents, context)
 
-let makeRefProjector field uid prio (parents:Operator list) =
+let makeRefProjector field (uid, prio, (parents:Operator list), context) =
   let ref = parents.[0]
   let entityDict = match parents.[1].Value with
                    | VDict d -> d
@@ -164,7 +164,7 @@ let makeRefProjector field uid prio (parents:Operator list) =
                            | VRecord r -> setValueAndGetChanges op !r.[VString field]
                            | _ -> failwithf "The referenced object is not an object!"
                       else None),
-                 parents)
+                 parents, context)
 
  
 (* Indexes a value in a dictionary 
@@ -175,7 +175,7 @@ let makeRefProjector field uid prio (parents:Operator list) =
  * When the index changes, it sets the new value and returns the change as a
    [Added <new value>].
  *)
-let makeIndexer index uid prio (parents:Operator list) =
+let makeIndexer index (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                let env = getOperEnvValues op
                let key = eval env index
@@ -201,7 +201,7 @@ let makeIndexer index uid prio (parents:Operator list) =
                         else None         
             
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 
 (* Projects a field out of a record 
@@ -215,7 +215,7 @@ let makeIndexer index uid prio (parents:Operator list) =
  * field and returns them.
  * If it receives an [Added record], it returns [Added record.field]
  *)
-let makeProjector field uid prio (parents:Operator list) =
+let makeProjector field (uid, prio, parents, context) =
   let fieldv = VString field
   let eval = fun ((op:Operator), inputs) ->
                let fieldChanges =
@@ -234,31 +234,31 @@ let makeProjector field uid prio (parents:Operator list) =
                                  Some (op.Children, changes)
                | None -> None
 
-  Operator.Build(uid, prio, eval, parents)
+  Operator.Build(uid, prio, eval, parents, context)
   
 // Doesn't do anything.
 // TODO: Remove this operator
-let makeClosure closureBuilder uid prio parents =
-  let eval = fun (op:Operator, inputs) -> None
-  Operator.Build(uid, prio, eval, parents, contents = VClosureSpecial (uid, closureBuilder))
+let makeClosure closureBuilder (uid, prio, parents, context) =
+  let eval = fun (op:Operator, inputs) ->
+               None
+  Operator.Build(uid, prio, eval, parents, context, contents = VClosureSpecial (uid, closureBuilder, context))
+
   
-let makeFuncCall uid prio parents =
+let makeFuncCall (uid, prio, parents, context) =
   let subnetworks = ref Map.empty
   let currNetwork : ref<uid option> = ref None
 
   let rec headOp =
     Operator.Build(uid, prio,
       (fun (op:Operator, inputs) ->
-         printfn "I am %s and these are my inputs %A"  uid inputs
-         let env = getOperEnv op
-         let closureUid, closureBuilder =
+         let closureUid, closureBuilder, closureContext =
            match op.Parents.[0].Value with
-           | VClosureSpecial (uid, builder) -> uid, builder
+           | VClosureSpecial (uid, builder, context) -> uid, builder, !context
            | other -> failwithf "Expecting a VClosureSpecial, but the parent's value is %A" other
          let parameterChanges = List.tl inputs
          
          if not (Map.contains closureUid !subnetworks)
-           then let roots, final = closureBuilder prio env
+           then let roots, final = closureBuilder prio closureContext
                 connect final resultOp id
                 subnetworks := Map.add closureUid (roots, final) (!subnetworks)
          currNetwork := Some closureUid
@@ -276,14 +276,13 @@ let makeFuncCall uid prio parents =
                      
          // Output just the closure change: the parameters' changes are not needed
          Some (List<_> ((resultOp, 0, id)::argsToEval), List.hd inputs)),
-      parents)
+      parents, context)
 
   and resultOp =
     Operator.Build(uid + "_results", Priority.add prio (Priority.of_list [9]),
       (fun (op:Operator, inputs) ->
         let resultOp = (snd (!subnetworks).[(!currNetwork).Value])
-        printfn "%s - vou por o meu valor a %A" uid resultOp.Value
-        setValueAndGetChanges op resultOp.Value), [headOp])
+        setValueAndGetChanges op resultOp.Value), [headOp], context)
       
   { headOp with
         Children = resultOp.Children;

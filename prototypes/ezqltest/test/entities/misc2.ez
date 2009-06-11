@@ -2,20 +2,10 @@ temp_readings = stream (:room_id, :temperature);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-/*
-a = let g = fun (n:int) -> n * 2 in
-    let f = fun (n:int) -> n * 3 in
-    (if lastTemp > 30 then g else f)(lastTemp);;
-*/
+c = let z = { a = { b = fun (t:int) -> t } } in
+    (z.a.b)(lastTemp);;
 
-
-
-
-b = let g = fun (t:int) -> fun (u:int) -> u in
-    g(1)(lastTemp);;
-
-
-//when (b.updated(), fun ev -> print(b));;
+when (c.updated(), fun ev -> print(c));;
 
 
 #! temp_readings

@@ -20,7 +20,7 @@ type NodeInfo =
     Type:Type
     mutable Name:string
     // uid -> priority -> parents -> created operator
-    MakeOper:uid -> Priority.priority -> Operator list -> Operator
+    MakeOper:uid * Priority.priority * Operator list * Map<string, Operator> ref -> Operator
     ParentUids:uid list
     State:NodeState }
 
@@ -34,7 +34,7 @@ type NodeInfo =
        function that will never be called.
        Unknown nodes are ignored by the dataflow algorithm *)
     static member AsUnknown(uid) =
-      let makeOper' = fun _ _ _ -> failwith "Won't happen!"
+      let makeOper' = fun (_, _, _, _) -> failwith "Won't happen!"
 
       { Uid = uid; Type = TyUnit; Name = uid; MakeOper = makeOper';
         ParentUids = []; State = NoState }
@@ -54,6 +54,19 @@ and NodeState =
 
 and DataflowGraph = Graph<string, NodeInfo>
 and NodeContext = Map<string, NodeInfo>
+
+let checkInvariants (env:NodeContext) (types:TypeContext) (graph:DataflowGraph) =
+  for pair in env do
+    let key = pair.Key
+    let value = pair.Value
+    
+    if not (Map.contains key types) then printfn "types doesn't contain a key that env contains: %s" key
+    if types.[key] <> value.Type then printfn "Different types for %s! %A <> %A" key value.Type types.[key]
+    if not (Graph.contains value.Uid graph)
+      then if value.Type <> TyUnit then printfn "env has a node that the graph doesn't contain: %s" value.Uid
+      else if Graph.labelOf value.Uid graph <> value
+             then printfn "env and graph have different nodes for %s" value.Uid
+
 
 module ForwardDeps =
   (*
@@ -141,7 +154,8 @@ let rec dataflow (env:NodeContext, types:TypeContext, (graph:DataflowGraph), roo
   | _ -> failwithf "By now, rewrite should have eliminated all the other possibilities."
 
 
-and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =   
+and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
+  checkInvariants env types graph
   match expr with
   | MethodCall (target, (Identifier name), paramExps) ->
       let deps, g1, target' = dataflowE env types graph target
@@ -202,7 +216,22 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       if not (Set.isEmpty unknown)
         then raise (IncompleteRecord ((deps, g', Record exprs), unknown))
         else deps, g', Record exprs
-  | Lambda (args, body) -> Set.empty, graph, expr
+  | Lambda (args, body) ->
+      let n, g' = makeFinalNode env types graph expr Set.empty ""
+      Set.singleton n, g', Id (Identifier n.Uid)
+      //Set.empty, graph, expr
+      // Add the arguments to the environment
+      //let env', types' =
+      //  List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, optType)) ->
+      //               match optType with
+      //               | Some t -> let node = { Uid = arg; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [];
+      //                                        State = NoState }
+      //                           env.Add(arg, node), types.Add(arg, node.Type)
+      //               | None -> failwithf "At this point, this shouldn't happen")
+       //           (env, types) args
+    // 
+    //  let deps, g1, body' = dataflowE env' types' graph body
+    //  deps, g1, Lambda (args, body')
   | Let (Identifier name, optType, binder, body) ->
       let depsBinder, g1, binder' = dataflowE env types graph binder
       let binderNode, g2 = makeFinalNode env types g1 binder' depsBinder name
@@ -606,11 +635,10 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
 
 and makeSubExprBuilder roots final graph : NetworkBuilder =
   // prio is the priority of the parent of the subnetwork
-  fun prio operators ->
+  fun prio context ->
     let fixPrio p = Priority.add (Priority.down prio) p
-    let operators' = makeOperNetwork graph roots fixPrio operators
-    printfn "final = %s %b" final (Map.contains final operators')
-    (List.map (fun root -> operators'.[root]) roots), operators'.[final]
+    let context' = makeOperNetwork graph roots fixPrio context
+    (List.map (fun root -> context'.[root]) roots), context'.[final]
 
 (* Create the necessary nodes to evaluate an expression.
  *  - If the expression is a simple variable access, no new nodes are necessary;
@@ -650,11 +678,11 @@ and makeFinalNode env types graph expr deps name =
       let fieldTypes = Map.of_list (List.map (fun (f, n) -> (f, n.Type)) fieldDeps)                                  
       createNode (nextSymbol name) (TyRecord fieldTypes) uids NoState
                  // At runtime, we need to find the operators corresponding to the parents
-                 (fun uid prio parents ->
+                 (fun (uid, prio, parents, context) ->
                     let parentOps = List.map (fun (f, n) ->
                                                 (f, List.find (fun (p:Operator) -> p.Uid = n.Uid) parents))
                                              fieldDeps
-                    makeRecord parentOps uid prio parents)
+                    makeRecord parentOps (uid, prio, parents, context))
                  g''
 
   | Lambda (args, body) -> createClosure env' types' graph expr (typeOf types' expr) None name
@@ -677,7 +705,7 @@ and createClosure env types graph expr typ (itself:string option) name =
                   (env, types, graph, []) args
                     
       let deps, g2, body' = dataflowE env' types' g1 body
-      
+         
       // Make a final node for the evaluation of the body, if necessary
       let opResult, g2' = makeFinalNode env' types' g2 body' deps "{ }"
       
@@ -688,24 +716,20 @@ and createClosure env types graph expr typ (itself:string option) name =
       // Uses g2 because it contains the group's subnetwork
       let networkBuilder = makeSubExprBuilder argUids opResult.Uid g2'
       
-      
+      (*
       Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g1 (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g2 (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g2' (fun v info -> (sprintf "%s (%s)" info.Name v))    
       Graph.Viewer.display g3 (fun v info -> (sprintf "%s (%s)" info.Name v))   
-       
+       *)
       
       // Now that we're all set, let's create the closure's node
       let ids = (List.fold (fun acc (Param (Identifier id, _)) -> acc + id + ".") "" args)
       //let state = LambdaState { Expr = expr; Env = env; Types = types; IsRec = itself.IsSome }
       let uid = sprintf "%s = λ%s" name ids
-      let networkBuilder' = fun prio opers -> printfn "Vou criar a subrede da closure %s" uid
-                                              let results = networkBuilder prio opers
-                                              printfn "subrede criada"
-                                              results
-      createNode (nextSymbol uid) typ [] NoState
-                 (makeClosure networkBuilder') g3
+      createNode (nextSymbol uid) typ (Set.to_list deps') NoState
+                 (makeClosure networkBuilder) g3
                   
     (*
     let deps, g2, body' = keepTrying arg env' types' g1 body
@@ -857,7 +881,7 @@ and dataflowWhere env types graph target paramExps expr =
 (*
  * Iterate the graph and create the operators and the connections between them.
  *)
-and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators : Map<string, Operator> =
+and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : Map<string, Operator> =
   // Spread all changes in the stack. If some step fails, try the remaining steps.
   let rec retrySpread stack =
       try
@@ -871,41 +895,45 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio operators 
     let stack = List.fold (fun stack (op, changes) -> mergeStack stack (toEvalStack op.Children changes)) [] initialChanges
     retrySpread stack
 
-  // GroupBy's should be visited first
+  // GroupBy's should be visited first because of belongsTo/hasMany association.
   let next (_, _, _, s) = List.sortBy (fun (x:string) -> if x.StartsWith("groupBy") then 1 else 0) s 
   let order = Graph.Algorithms.topSort next Graph.node' roots graph
 
   //printfn "order: %A" order
   //printfn "operators: %A" (Map.to_list operators |> List.map fst)
-  Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))
+  //Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))
   //Graph.Viewer.display graph (fun v info -> info.Name)
   
   // Maps uids to priorities
   let orderPrio = List.fold (fun (acc, prio) x -> (Map.add x prio acc, Priority.next prio))
                             (Map.empty, Priority.initial) order |> fst
 
-  // Fold the graph with the right order, returning a map of all the operators
-  let operators', initialChanges =
-    Graph.foldSeq (fun (operators, changes) (pred, uid, info, succ) ->
-                     // If the operator already exists, skip it.
-                     if Map.contains uid operators
-                       then operators, changes
-                       else //printfn "Vou criar o %s que tem como pais %A %A" uid info.ParentUids pred
-                            let parents = List.map (fun uid -> match Map.tryFind uid operators with
-                                                               | Some op -> op
-                                                               | _ -> if Map.contains uid !theRootOps
-                                                                        then (!theRootOps).[uid]
-                                                                        else failwithf "theRootOps doesn't contain %s" uid)
-                                                    info.ParentUids
-                            let op = info.MakeOper uid (fixPrio orderPrio.[uid]) parents
-                            let changes' = if op.Value <> VNull then (op, [Added (op.Value.Clone())])::changes else changes
-                            printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
-                            Map.add uid op operators, changes')
-                  (operators, []) graph order
-  if Map.isEmpty !theRootOps then theRootOps := operators'  
-  printfn "AQUI"                
-  spreadInitialChanges initialChanges
-  printfn "AQUU"
-  operators'               
+  // Keep a container with all the operators and provide a way so that each
+  // operator is able to see it.
+  let contextRef = ref Map.empty
 
-and theRootOps : Map<string, Operator> ref = ref Map.empty
+  // Fold the graph with the right order, returning a map of all the operators
+  let context', initialChanges =
+    Graph.foldSeq (fun (context, changes) (pred, uid, info, succ) ->
+                     // If the operator already exists, skip it.
+                     if Map.contains uid context
+                       then context, changes
+                       else //printfn "Vou criar o %s que tem como pais %A %A" uid info.ParentUids pred
+                            let parents = List.map (fun uid -> match Map.tryFind uid context with
+                                                               | Some op -> op
+                                                               | _ -> printfn "The operators map doesn't have operator %s" uid
+                                                                      failwithf "shit")
+                                                    info.ParentUids
+                            let op = info.MakeOper (uid, fixPrio orderPrio.[uid], parents, contextRef)
+                         //   op.Context <- contextRef
+                            let changes' = if op.Value <> VNull then (op, [Added (op.Value.Clone())])::changes else changes
+                            //printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
+                            Map.add uid op context, changes')
+                  (context, []) graph order
+                  
+  // This magical line will set the Context field of all the operators created
+  // in this iteration to point to the same map.                  
+  contextRef := context'          
+  spreadInitialChanges initialChanges
+  context'               
+

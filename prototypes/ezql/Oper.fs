@@ -46,8 +46,9 @@ let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
 
 let checkConsistency op changes =
   op.AllChanges := !op.AllChanges @ [(cloneChanges changes)]
-  if op.Value <> VNull
-    then let rebuilt = rebuildValue !op.AllChanges
+  match op.Value with
+  | VClosureSpecial _ | VNull -> ()
+  | _ -> let rebuilt = rebuildValue !op.AllChanges
          if op.Value <> rebuilt
            then printfn "Operator %O doesn't meet the 'all changes must be seen' invariant.\n Value is %O\n Rebuilt value gives %O\n Changes propagated: %A\n"
                         op op.Value rebuilt !op.AllChanges 
@@ -72,13 +73,13 @@ let rec spread (stack:EvalStack) =
     match stack with
     | [] -> ()
     | (op, parentChanges)::xs ->
-        //printfn "*** Vou actualizar o %A" (op.Uid, op.Priority)
+        //printfn "*** Vou actualizar o %A" (op.Uid, (!op.Context).Count)
         //printfn "    Changes = %A\n" parentChanges
         let filledChanges = fillLeftArgs op parentChanges 0
         try
           match op.Eval (op, filledChanges) with
           | Some (children, changes) ->
-              checkConsistency op changes
+              //checkConsistency op changes
               spread (mergeStack xs (toEvalStack children (cloneChanges changes)))
           | _ -> spread xs
         with
