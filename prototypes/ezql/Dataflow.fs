@@ -19,10 +19,9 @@ type NodeInfo =
   { Uid:uid
     Type:Type
     mutable Name:string
-    // uid -> priority -> parents -> created operator
+    // uid * priority * parents * context -> created operator
     MakeOper:uid * Priority.priority * Operator list * Map<string, Operator> ref -> Operator
-    ParentUids:uid list
-    State:NodeState }
+    ParentUids:uid list }
 
     interface IComparable with
       member self.CompareTo(other) =
@@ -37,20 +36,9 @@ type NodeInfo =
       let makeOper' = fun (_, _, _, _) -> failwith "Won't happen!"
 
       { Uid = uid; Type = TyUnit; Name = uid; MakeOper = makeOper';
-        ParentUids = []; State = NoState }
+        ParentUids = [] }
 
     static member UidOf(nodeInfo) = nodeInfo.Uid
-
-
-and NodeState =
-//  | LambdaState of LambdaStateRec
-//  | RecordState of Map<string, NodeInfo>
-//  | ProjectorState of string
-//  | ForwardState of NodeInfo
-  | ClosureState of NetworkBuilder
-  | NoState
-
-//and LambdaStateRec = { Expr:expr; Env:NodeContext; Types:TypeContext; IsRec:bool }
 
 and DataflowGraph = Graph<string, NodeInfo>
 and NodeContext = Map<string, NodeInfo>
@@ -123,9 +111,9 @@ let uid2name uid = Regex.Match(uid, "(.*?)\d").Groups.[1].Value
  * Creates a new node and adds it to the graph.
  * Returns both the node and the modified graph.
  *)
-let createNode uid typ parents state makeOp graph =
+let createNode uid typ parents makeOp graph =
   let parentUids = List.map NodeInfo.UidOf parents
-  let node = { Uid = uid; Type = typ; Name = uid2name uid; State = state
+  let node = { Uid = uid; Type = typ; Name = uid2name uid
                MakeOper = makeOp; ParentUids = parentUids }
   node, Graph.add (parentUids, uid, node, []) graph
 
@@ -138,11 +126,11 @@ let rec dataflow (env:NodeContext, types:TypeContext, (graph:DataflowGraph), roo
       let n, g2 = makeFinalNode env types g1 expr' deps name
       n.Name <- name
 
-      // Sanity check
-      //if n.Type <> types.[name] then failwithf "Different types for %s! %A <> %A" name n.Type types.[name]
       let env' = env.Add(name, n).Add(n.Uid, n)
       let types' = types.Add(n.Uid, n.Type)
       
+      // Now that I know what a <name> is, check if there are any pending
+      // expressions that depend on <name> to be fully dataflowed.
       let g3 = if theForwardDeps.Contains(name)
                  then theForwardDeps.Resolve (name, env', types', g2)
                  else g2
@@ -174,7 +162,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
              | TyDict (TyEntity entity) -> 
                  let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"
                  let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"
-                 let n, g5 = createNode (nextSymbol "[]") (TyEntity entity) [t; i] NoState
+                 let n, g5 = createNode (nextSymbol "[]") (TyEntity entity) [t; i]
                                         (makeIndexer (Id (Identifier i.Uid))) g4
                  Set.singleton n, g5, Id (Identifier n.Uid)
              | _ -> deps, g2, ArrayIndex (target', index')
@@ -187,7 +175,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           // If it's a reference, create a special projector
           let entityDict = env.[entityDict entityType]
           let ref, g2 = makeFinalNode env types g1 target' deps "target->xxx"
-          let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict] NoState
+          let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)
       | TyEntity entity ->
@@ -195,12 +183,12 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                        | TyType (fields, _) -> fields
                        | _ -> failwithf "entity is not a TyType?!"
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
-          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t] NoState
+          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
           Set.singleton n, g3, Id (Identifier n.Uid) 
       | TyRecord fields ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
-          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t] NoState
+          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
           Set.singleton n, g3, Id (Identifier n.Uid) 
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
@@ -213,27 +201,15 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                      with
                        | UnknownId id -> depsAcc, g, exprsAcc, Set.add id unknown)
                   (Set.empty, graph, [], Set.empty) fields
-      if not (Set.isEmpty unknown)
-        then raise (IncompleteRecord ((deps, g', Record exprs), unknown))
-        else deps, g', Record exprs
-  | Lambda (args, body) ->
-      let n, g' = makeFinalNode env types graph expr Set.empty ""
-      Set.singleton n, g', Id (Identifier n.Uid)
-      //Set.empty, graph, expr
-      // Add the arguments to the environment
-      //let env', types' =
-      //  List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, optType)) ->
-      //               match optType with
-      //               | Some t -> let node = { Uid = arg; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [];
-      //                                        State = NoState }
-      //                           env.Add(arg, node), types.Add(arg, node.Type)
-      //               | None -> failwithf "At this point, this shouldn't happen")
-       //           (env, types) args
-    // 
-    //  let deps, g1, body' = dataflowE env' types' graph body
-    //  deps, g1, Lambda (args, body')
+                  
+      // If some field could not be dataflowed, raise an exception.
+      if (Set.isEmpty unknown)
+        then deps, g', Record exprs
+        else raise (IncompleteRecord ((deps, g', Record exprs), unknown))
+  | Lambda (args, body) -> dataflowClosure env types graph expr (typeOf types expr) None
   | Let (Identifier name, optType, binder, body) ->
       let depsBinder, g1, binder' = dataflowE env types graph binder
+      // FIXME: Is a node for the binder really needed?
       let binderNode, g2 = makeFinalNode env types g1 binder' depsBinder name
       
       // Add the binder to the environment to dataflow the body
@@ -277,7 +253,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "[]" -> let duration = match paramExps with
                                | [Time (Integer v, unit) as t] -> toSeconds v unit
                                | _ -> failwith "Invalid duration"
-                let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target] NoState
+                let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
                                        (makeWindow duration) graph
                 Set.singleton n, g', Id (Identifier n.Uid)
       | "where" -> dataflowWhere env types graph target paramExps expr
@@ -312,17 +288,17 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                                       | [Time (Integer v, unit) as t] -> toSeconds v unit
                                       | _ -> failwith "Invalid duration"
                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
-                                              [target] NoState (makeDynValWindow duration) graph
+                                              [target] (makeDynValWindow duration) graph
                        Set.singleton n, g', Id (Identifier n.Uid)
              | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
-                                                   [target] NoState (makeToStream) graph
+                                                   [target] (makeToStream) graph
                             Set.singleton n, g', Id (Identifier n.Uid)
              | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
              | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
              | _ -> failwithf "Unkown method: %s" methName
   | TyRecord _ -> match methName with
                   | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
-                                                        [target] NoState (makeToStream) graph
+                                                        [target] (makeToStream) graph
                                  Set.singleton n, g', Id (Identifier n.Uid)
                   | _ -> // This may happen if the record field contains a function. 
                          // So, convert the method call into a function call and proceed.
@@ -343,40 +319,10 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                                              Set.union depsAcc deps, g', exprs @ [expr'])
                                           (Set.empty, g1, List.empty) paramExps
     Set.union deps2 deps1, g2, FuncCall (fnExpr', paramExps')
- (*   
-  // Dataflows normal function calls by expanding the call graph and creating the
-  // necessary nodes along the way  
-  let expandCallGraph lambdaExpr closureEnv closureTypes =
-    let args, body = match lambdaExpr with
-                     | Lambda (args, body) ->
-                         let argIds = List.map (fun (Param (Identifier arg, _)) -> arg) args
-                         let curried = Seq.take paramExps.Length argIds |> Seq.to_list
-                         let rest = Seq.skip paramExps.Length args |> Seq.to_list
-                         match rest with
-                         | [] -> curried, body
-                         | _ -> curried, Lambda (rest, body)
-                     | x -> failwithf "The function is not a function! %A" x
-                          
-    // Extend the environment with the arguments
-    let env', types', g1, argUids =
-      List.fold (fun (env, types, graph, argUids) (arg, param) ->
-                   let deps, g', param' = dataflowE env types graph param
-                   let n, g'' = makeFinalNode env types g' param' deps arg
-                   env.Add(arg, n), types.Add(arg, n.Type), g'', argUids @ [n.Uid])
-                (env, types, graph, []) (List.zip args paramExps)
-
-    // To dataflow the body, we need the environment of the closure
-    let env'', types'' = Map.union env' closureEnv, Map.union types' closureTypes
-    let deps, g2, body' = dataflowE env'' types'' g1 body
-          
-    // Create a final node to evaluate the body, if needed
-    let result, g2' = makeFinalNode env'' types'' g2 body' deps "XXX(...)"
-    Set.singleton result, g2', Id (Identifier result.Uid)
-*)
 
   match func with
   | Id (Identifier "stream") ->
-      let n, g' = createNode (nextSymbol "stream") (typeOf Map.empty expr) [] NoState makeStream graph
+      let n, g' = createNode (nextSymbol "stream") (typeOf Map.empty expr) [] makeStream graph
       Set.singleton n, g', Id (Identifier n.Uid)
   | Id (Identifier "when") ->
       match paramExps with
@@ -392,7 +338,7 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
           let depsHandler, g2, handler' = dataflowE env' types' g1 handler
           // Create a node for the when operator
           let allDeps = depTarget::(Set.to_list depsHandler)
-          let n, g3 = createNode (nextSymbol "when") TyUnit allDeps NoState
+          let n, g3 = createNode (nextSymbol "when") TyUnit allDeps
                                  (makeWhen (Lambda ([Param (Identifier arg, None)], handler'))) g2
           Set.singleton n, g3, Id (Identifier n.Uid)
       | _ -> failwithf "Invalid parameters to when: %A" paramExps
@@ -412,32 +358,10 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                                     | VRecord m -> !m.[VString refType]
                                     | _ -> failwithf "The entity is not a record?!"
           let n, g2 = makeFinalNode env types g1 expr' deps' "{ }"
-          let ref, g3 = createNode (nextSymbol "ref") (TyRef (typeOf types expr)) [n] NoState
+          let ref, g3 = createNode (nextSymbol "ref") (TyRef (typeOf types expr)) [n]
                                    (makeRef getId) g2
           Set.singleton ref, g3, Id (Identifier ref.Uid)
       | _ -> invalid_arg "paramExps"
-//  | Id (Identifier func) when func <> "print" ->
-//      dataflowByEval ()
-  (*
-      if env.[func].Type = TyUnit
-        then dataflowByEval () // Ignore the function itself, but dataflow the arguments
-        else let state = getLambdaState graph env.[func]
-             match state with
-             | LambdaState { Expr = expr; Env = cloEnv; Types = cloTypes; IsRec = isRec } ->
-                 if isRec
-                   then dataflowByEval ()
-                   else expandCallGraph expr cloEnv cloTypes
-             | _ -> failwithf "Not a lambda state!"   
-             *)
-   //   Set.empty, graph, expr  
- // | FuncCall (f, paramExps') ->
-      
-      // First, dataflow the inner call
-      //let deps, g', expr' = dataflowFuncCall env types graph fn' paramExps' func
-      
-      // The result is a lambda. Get it!
-      //let fResult = deps.MinimumElement
-      //dataflowFuncCall (env.Add(fResult.Uid, fResult)) (types.Add(fResult.Uid, fResult.Type)) g' expr' paramExps expr
   | Id (Identifier "print") -> dataflowByEval ()    
   | _ -> // Dataflow the function expression itself
          let funDeps, g1, func' = dataflowE env types graph func
@@ -451,27 +375,12 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                         let paramNode, g2 = makeFinalNode env types g1 expr' deps expr'.Name
                         paramNodes @ [paramNode], g2, exprs @ [Id (Identifier paramNode.Uid)])
                      ([], g2, List.empty) paramExps
-//        Set.union deps2 deps1, g2, FuncCall (fnExpr', paramExps')
       
          let returnType = typeOf types expr
-         let n, g4 = createNode (nextSymbol expr.Name) returnType (funcNode::paramDeps) NoState
+         let n, g4 = createNode (nextSymbol expr.Name) returnType (funcNode::paramDeps)
                                 (makeFuncCall) g3
          Set.singleton n, g4, Id (Identifier n.Uid)
   
-  
-    
-  
-  // First, dataflow the function itself
-  (*
-         let deps, g1, expr' = dataflowE env types graph func       
-         let result, g2 = makeFinalNode env types g1 expr' deps "{ } (...)"
-         
-         let env' = env.Add(result.Uid, result)
-         let types' = types.Add(result.Uid, result.Type)
-         let expr' = (FuncCall (Id (Identifier result.Uid), paramExps))
-         dataflowFuncCall env' types' g2 (Id (Identifier result.Uid)) paramExps expr'
-         *)
-
 (*
 // Dataflow a recursive function definition
 and dataflowLetRec env types graph expr =
@@ -524,36 +433,9 @@ and dataflowLetRec env types graph expr =
          let env', types' = env.Add(name, NodeInfo.AsUnknown(name)), types.Add(name, TyUnit)
          let bodyDeps, g2, body' = dataflowE env' types' g1 body
          Set.union binderDeps bodyDeps, g2, Let (Identifier name, Some typ, binder', body')
-
-
-and dataflowLetNonRec env types graph expr =
-  let name, optType, binder, body =
-    match expr with
-    | Let (Identifier name, optType, binder, body) -> name, optType, binder, body
-    | _ -> failwithf "Can't happen"
-
-  // Dataflow the binder
-  let deps1, g1, binder' = dataflowE env types graph binder
-  let n, g2 = makeFinalNode env types g1 binder' deps1 name
-  n.Name <- name
-  
-  // Dataflow the body
-  let env', types' = env.Add(name, n).Add(n.Uid, n), types.Add(name, n.Type).Add(n.Uid, n.Type)
-  let deps2, g3, body' = dataflowE env' types' g2 body
-  
-  match typeOf types' body with
-  | TyArrow _ -> 
-      // If the result of the body is a closure, create the node manually with the
-      // correct state.
-      let bodyNode, g4 = makeFinalNode env' types' g3 body' deps2 "let-body"
-      
-      let expr' = Let (Identifier name, optType, Id (Identifier n.Uid), Id (Identifier bodyNode.Uid))
-      let final, g5 = createNode (nextSymbol "let") (typeOf types expr) [n; bodyNode]
-                                 (ForwardState bodyNode) (makeEvaluator expr' Map.empty) g4
-      Set.singleton final, g5, Id (Identifier final.Uid)
-  | _ -> Set.add n deps2, g3, Let (Identifier name, optType, Id (Identifier n.Uid), body')
-
 *)
+
+
 and dataflowGroupby env types graph target paramExps =
   let argType = target.Type
   let argMaker = match argType with
@@ -563,8 +445,7 @@ and dataflowGroupby env types graph target paramExps =
   let field, body, arg =
     match paramExps with
     | [SymbolExpr (Symbol field); Lambda ([Param (Identifier arg, _)], body) as fn] ->
-        let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = [];
-                        State = NoState }
+        let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = [] }
         field, body, arg
     | _ -> failwith "Invalid parameter to groupby"
   let valueType = typeOf (types.Add(arg, argType)) body
@@ -605,31 +486,20 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
     let body, env', types', g1, arg =
       match paramExps with
       | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
-          let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = [];
-                          State = NoState }
+          let argInfo = { Uid = arg; Type = argType; MakeOper = argMaker; Name = arg; ParentUids = [] }
           body, env.Add(arg, argInfo), types.Add(arg, argType), graph.Add([], arg, argInfo, []), arg
       | _ -> invalid_arg "paramExps"
-    let deps, g2, body' = keepTrying arg env' types' g1 body
-
-    // Make a final node for the evaluation of the body, if necessary
-    let opResult, g2' = makeFinalNode env' types' g2 body' deps "{ }"
-
-    // Remove from g2 everything that depends on the argument
-    // and update the set of dependencies
-    let deps', g3 = removeNetwork arg deps g2'
-
-    // Uses g2 because it contains the group's subnetwork
-    opResult, deps', g3, makeSubExprBuilder [arg] opResult.Uid g2'
+      
+    extractSubNetwork env' types' g1 (keepTrying arg) [arg] body
                     
   let opResult, deps, g', subExprBuilder = dataflowSubExpr env types graph
-  //Graph.Viewer.display g' (fun v info -> (sprintf "%s (%s)" info.Name v))
 
   // If the body itself does not depend on the argument (e.g., t -> some-expression-without-t),
   // then it is a "constant" and we can simply mark it as a dependency of the operation.
   // To ensure it doesn't depend on the argument, check if it is present in g3.
   let opDeps = target::(Set.to_list (if Graph.contains opResult.Uid g' then Set.add opResult deps else deps))
 
-  let n, g4 = createNode nodeUid (TyDict resType) opDeps NoState
+  let n, g4 = createNode nodeUid (TyDict resType) opDeps
                          (opMaker subExprBuilder) g'
   Set.singleton n, g4, Id (Identifier n.Uid)
 
@@ -639,6 +509,34 @@ and makeSubExprBuilder roots final graph : NetworkBuilder =
     let fixPrio p = Priority.add (Priority.down prio) p
     let context' = makeOperNetwork graph roots fixPrio context
     (List.map (fun root -> context'.[root]) roots), context'.[final]
+
+(*
+ * Dataflows a lambda whose network will be needed later.
+ * This applies to:
+ *   - stream.groupby(field, fun g -> ...) (the subexpression's network will be needed for each group)
+ *   - dict.where(fun t -> ...) (idem)
+ *   - dict.select(fun t -> ...) (idem)
+ *   - let f = fun a b c -> ... in f(x, y, z) (the subexpression's network will be needed for each call)
+ *
+ * Returns:
+ *   - The final operator of the subexpression
+ *   - The global dependencies of the lambda's body
+ *   - The resulting graph (without the subexpression's network)
+ *   - A function that, when called, will recreate the subexpression's network on demand.
+ *)
+and extractSubNetwork env types graph dataflowBodyFn args body =
+  let deps, g2, body' = dataflowBodyFn env types graph body
+
+  // Make a final node for the evaluation of the body, if necessary
+  let opResult, g2' = makeFinalNode env types g2 body' deps "{ }"
+
+  // Remove from g2 everything that depends on the argument
+  // and update the set of dependencies
+  let deps', g3 = removeNetworks args deps g2'
+
+  // Uses g2 because it contains the group's subnetwork
+  opResult, deps', g3, makeSubExprBuilder args opResult.Uid g2'
+
 
 (* Create the necessary nodes to evaluate an expression.
  *  - If the expression is a simple variable access, no new nodes are necessary;
@@ -676,7 +574,7 @@ and makeFinalNode env types graph expr deps name =
 
       let uids = List.map snd fieldDeps
       let fieldTypes = Map.of_list (List.map (fun (f, n) -> (f, n.Type)) fieldDeps)                                  
-      createNode (nextSymbol name) (TyRecord fieldTypes) uids NoState
+      createNode (nextSymbol name) (TyRecord fieldTypes) uids
                  // At runtime, we need to find the operators corresponding to the parents
                  (fun (uid, prio, parents, context) ->
                     let parentOps = List.map (fun (f, n) ->
@@ -685,67 +583,31 @@ and makeFinalNode env types graph expr deps name =
                     makeRecord parentOps (uid, prio, parents, context))
                  g''
 
-  | Lambda (args, body) -> createClosure env' types' graph expr (typeOf types' expr) None name
-
   (* The result is an arbitrary expression and we need to evaluate it *)
   | _ -> createNode (nextSymbol name) (typeOf types' expr) (Set.to_list deps)
-                    NoState (makeEvaluator expr Map.empty) graph
+                    (makeEvaluator expr Map.empty) graph
 
-and createClosure env types graph expr typ (itself:string option) name =
+and dataflowClosure env types graph expr typ (itself:string option) =
   match expr with 
   | Lambda (args, body) ->
-      // Dataflow the body
+      // Extract the body's network, so that we can recreate it everytime we
+      // call the closure.
       let env', types', g1, argUids =
         List.fold (fun (env:NodeContext, types:TypeContext, graph, argUids) (Param (Identifier arg, typ)) ->
                      match typ with
-                     | Some t -> let node = { Uid = arg; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [];
-                                              State = NoState }
+                     | Some t -> let node = { Uid = arg; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [] }
                                  env.Add(arg, node), types.Add(arg, node.Type), Graph.add ([], arg, node, []) graph, argUids @ [node.Uid]
                      | None -> failwithf "Function arguments must have type annotations.")
                   (env, types, graph, []) args
-                    
-      let deps, g2, body' = dataflowE env' types' g1 body
-         
-      // Make a final node for the evaluation of the body, if necessary
-      let opResult, g2' = makeFinalNode env' types' g2 body' deps "{ }"
-      
-      // Remove from g2 everything that depends on the argument
-      // and update the set of dependencies
-      let deps', g3 = List.fold (fun (deps, graph) arg -> removeNetwork arg deps graph) (deps, g2') argUids
-      
-      // Uses g2 because it contains the group's subnetwork
-      let networkBuilder = makeSubExprBuilder argUids opResult.Uid g2'
-      
-      (*
-      Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))    
-      Graph.Viewer.display g1 (fun v info -> (sprintf "%s (%s)" info.Name v))    
-      Graph.Viewer.display g2 (fun v info -> (sprintf "%s (%s)" info.Name v))    
-      Graph.Viewer.display g2' (fun v info -> (sprintf "%s (%s)" info.Name v))    
-      Graph.Viewer.display g3 (fun v info -> (sprintf "%s (%s)" info.Name v))   
-       *)
-      
-      // Now that we're all set, let's create the closure's node
-      let ids = (List.fold (fun acc (Param (Identifier id, _)) -> acc + id + ".") "" args)
-      //let state = LambdaState { Expr = expr; Env = env; Types = types; IsRec = itself.IsSome }
-      let uid = sprintf "%s = λ%s" name ids
-      createNode (nextSymbol uid) typ (Set.to_list deps') NoState
-                 (makeClosure networkBuilder) g3
                   
-    (*
-    let deps, g2, body' = keepTrying arg env' types' g1 body
+      let _, deps, g2, networkBuilder = extractSubNetwork env' types' g1 dataflowE argUids body
+      // FIXME: Compare with dataflowdictOps. Do I need to check if opResult is in g2 and add it as a dep?
 
-    // Make a final node for the evaluation of the body, if necessary
-    let opResult, g2' = makeFinalNode env' types' g2 body' deps "{ }"
-
-    // Remove from g2 everything that depends on the argument
-    // and update the set of dependencies
-    let deps', g3 = removeNetwork arg deps g2'
-
-    // Uses g2 because it contains the group's subnetwork
-    opResult, deps', g3, makeSubExprBuilder [arg] opResult.Uid g2'
-    *)              
-                    
-
+      let ids = (List.fold (fun acc (Param (Identifier id, _)) -> acc + id + ".") "" args)
+      let uid = sprintf "λ%s" ids
+      let n, g3 = createNode (nextSymbol uid) typ (Set.to_list deps)
+                             (makeClosure networkBuilder) g2           
+      Set.singleton n, g3, Id (Identifier n.Uid)
   | _ -> failwithf "Not a lambda"
 
 and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
@@ -762,7 +624,7 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
                  | [], TyInt -> id
                  | [], TyWindow (TyInt, TimedWindow _) -> id
                  | _ -> failwith "Invalid parameters to %s" aggrName
-  let n, g' = createNode (nextSymbol aggrName) TyInt [target] NoState
+  let n, g' = createNode (nextSymbol aggrName) TyInt [target]
                          (opMaker getField) graph
   n.Name <- (sprintf "%s(%s)" aggrName field)
   Set.singleton n, g', Id (Identifier n.Uid)
@@ -781,28 +643,9 @@ and removeNetwork root deps graph =
       List.fold (fun (deps, g) s -> removeNetwork s deps g) (deps', g') s
   | _ -> deps, graph
 
-(*
-and getLambdaState (graph:DataflowGraph) node =
-  match node.State with
-  | LambdaState s -> node.State
-  | ProjectorState field ->
-      // For this to work, a projector must have a single parent
-      assert (node.ParentUids.Length = 1)
-      let record : Map<string, NodeInfo> = getRecordState graph (Graph.labelOf node.ParentUids.Head graph)
-      record.[field].State
-  | ForwardState node' -> getLambdaState graph node'
-  | NoState -> failwithf "No state!"
+and removeNetworks roots deps graph =
+  List.fold (fun (deps, graph) root -> removeNetwork root deps graph) (deps, graph) roots
 
-and getRecordState graph node =
-  match node.State with
-  | RecordState s -> s
-  | ProjectorState field ->
-      let record = getRecordState graph (Graph.labelOf node.ParentUids.Head graph)
-      match record.[field].State with
-      | RecordState s -> s
-      | _ -> failwithf "Can't happen"
-  | ForwardState node' -> getRecordState graph node'
-*)
 
 (*
 and renameNetwork renamer root graph =
@@ -849,7 +692,7 @@ and dataflowSelect env types graph target paramExps expr =
  
   // Depends on the stream and on the dependencies of the predicate.
   let opDeps = target::(Set.to_list deps)
-  let n, g'' = createNode (nextSymbol "Select") resultType opDeps NoState
+  let n, g'' = createNode (nextSymbol "Select") resultType opDeps
                           (makeSelect expr'') g'
   Set.singleton n, g'', Id (Identifier n.Uid)
   
@@ -873,7 +716,7 @@ and dataflowWhere env types graph target paramExps expr =
  
   // Depends on the stream and on the dependencies of the predicate.
   let opDeps = target::(Set.to_list deps)
-  let n, g'' = createNode (nextSymbol "Where") target.Type opDeps NoState
+  let n, g'' = createNode (nextSymbol "Where") target.Type opDeps
                           (makeWhere expr'') g'
   Set.singleton n, g'', Id (Identifier n.Uid)
   
@@ -925,7 +768,6 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
                                                                       failwithf "shit")
                                                     info.ParentUids
                             let op = info.MakeOper (uid, fixPrio orderPrio.[uid], parents, contextRef)
-                         //   op.Context <- contextRef
                             let changes' = if op.Value <> VNull then (op, [Added (op.Value.Clone())])::changes else changes
                             //printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
                             Map.add uid op context, changes')
@@ -936,4 +778,3 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
   contextRef := context'          
   spreadInitialChanges initialChanges
   context'               
-

@@ -161,7 +161,7 @@ module Graph =
         | { root = r; forest = f }::xs -> (postFlatten f)@r::(postFlatten xs)
       let tree, _ = dfsWith next fn roots graph
       postFlatten tree |> List.rev
-
+(*
   module Viewer =
 
     open System.Windows.Forms
@@ -197,3 +197,4 @@ module Graph =
       Application.Run(form)
 
 
+*)
