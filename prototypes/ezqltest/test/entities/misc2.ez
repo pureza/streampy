@@ -2,11 +2,57 @@ temp_readings = stream (:room_id, :temperature);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-c = let z = { a = { b = fun (t:int) -> t } } in
-    (z.a.b)(lastTemp);;
+/*
 
-when (c.updated(), fun ev -> print(c));;
+// Test:
+//  - Functions with several parameters
+//  - Currying
+a = let g = fun (a:int) (f:int -> int) -> f(a) in
+    g (lastTemp, fun (x:int) -> lastTemp + x);;
 
+
+
+
+// Test:
+//  - Functions that return functions
+//  - Closures
+//  - Currying
+//  - Passing records to functions
+b = let g = fun (t:int) -> fun (u:{ a:int }) -> t * (u.a[2 sec].sum()) in
+    let u = g (1) in
+    u ({ a = lastTemp });;
+
+
+// Test:
+//  - Record fields containing functions
+c = let z = { a = { b = { c = fun (t:int) -> t } } } in
+    (z.a.b.c)(lastTemp);;
+
+
+// Test:
+//  - Record fields containing functions that return functions
+d = let z = { a = fun (x:int) -> fun (y:int) -> x + y } in
+    z.a(lastTemp)(1);;
+
+
+// An outer node that is a closure.
+e_fn = fun (a:int) -> a * a;;
+e = e_fn(lastTemp);;
+
+*/
+
+// Recursivity
+f = let fact : int -> int = fun (n:int) -> if n == 0 then 0 else n + fact (n - 1) in
+    fact(lastTemp);;
+
+
+/*
+when (a.updated(), fun ev -> print (a));;
+when (b.updated(), fun ev -> print (b));;
+when (c.updated(), fun ev -> print (c));;
+when (d.updated(), fun ev -> print (d));;
+*/
+when (f.updated(), fun ev -> print (f));;
 
 #! temp_readings
 Timestamp, room_id, temperature
