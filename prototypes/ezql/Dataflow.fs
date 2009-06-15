@@ -208,14 +208,16 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
         else raise (IncompleteRecord ((deps, g', Record exprs), unknown))
   | Lambda (args, body) ->
       dataflowClosure env types graph expr None
-  | Let (Identifier name, optType, (Lambda (args, binderBody) as binder), body) ->
+  | Let (Identifier name, Some typ, (Lambda (args, binderBody) as binder), body) ->
       // Check if the binder is recursive
       let isRec = isRecursive name binder
-      let depsBinder, g1, binder' = dataflowClosure env types graph binder (if isRec then Some (name, optType.Value) else None)
+      let depsBinder, g1, binder' = dataflowClosure env types graph binder (if isRec then Some (name, typ) else None)
       assert (depsBinder.Count = 1)
+      
+      // Dataflow the rest
       let closureNode = depsBinder.MinimumElement
       let env', types' = env.Add(closureNode.Uid, closureNode), types.Add(closureNode.Uid, closureNode.Type)
-      dataflowE env' types' g1 (Let (Identifier name, optType, binder', body))
+      dataflowE env' types' g1 (Let (Identifier name, Some typ, binder', body))
   | Let (Identifier name, optType, binder, body) ->
       let depsBinder, g1, binder' = dataflowE env types graph binder
       // We must create a final node for the binder in order to extend the
@@ -369,7 +371,8 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                                    (makeRef getId) g2
           Set.singleton ref, g3, Id (Identifier ref.Uid)
       | _ -> invalid_arg "paramExps"
-  | Id (Identifier "print") -> dataflowByEval ()    
+  | Id (Identifier "print") -> dataflowByEval ()
+  | expr when typeOf types expr = TyUnit -> dataflowByEval ()
   | _ -> // Dataflow the function expression itself
          let funDeps, g1, func' = dataflowE env types graph func
          let funcNode, g2 = makeFinalNode env types g1 func' funDeps (func'.Name)
@@ -387,60 +390,6 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
          let n, g4 = createNode (nextSymbol expr.Name) returnType (funcNode::paramDeps)
                                 (makeFuncCall) g3
          Set.singleton n, g4, Id (Identifier n.Uid)
-  
-(*
-// Dataflow a recursive function definition
-and dataflowLetRec env types graph expr =
-  let name, typ, binder, body =
-    match expr with
-    | Let (Identifier name, optType, binder, body) ->
-        match optType with
-        | Some typ -> name, typ, binder, body
-        | None -> failwithf "Can't happen"
-    | _ -> failwithf "Can't happen"
-
-  // Dataflow the binder to extract global dependencies
-  let binderDeps, g1, binder' = 
-    match binder with
-    | Lambda (args, body) ->
-         // Add the arguments to the environment
-         let env', types' =
-           List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, _)) ->
-                        let n = NodeInfo.AsUnknown(arg)
-                        env.Add(arg, n), types.Add(arg, n.Type))
-                     (env, types) args
-         // Now add the recursive function
-         let env'', types'' = env'.Add(name, NodeInfo.AsUnknown(name)), types'.Add(name, TyUnit)
-         
-         let deps, g1, body' = dataflowE env'' types'' graph body
-         deps, g1, Lambda (args, body')
-    | _ -> failwithf "The binder of a recursive let is not a lambda?!"
-
-  // At this point there are two choices: does the body return a closure?
-  // If it does, we have to manually create the necessary nodes with the
-  // correct LambdaStates.
-  match typeOf types expr with
-  | TyArrow _ ->
-      // Create the node for the binder
-      let binderNode, g2 = createClosure env types g1 binder' typ (Some name)
-      binderNode.Name <- name
-      
-      // Dataflow the body
-      let env', types' = env.Add(name, binderNode), types.Add(name, binderNode.Type)
-      let bodyDeps, g3, body' = dataflowE env' types' g2 body
-      
-      // Create a node for the body
-      let bodyNode, g4 = makeFinalNode env' types' g3 body' bodyDeps "let-body"
-
-      let expr' = Let (Identifier name, Some typ, Id (Identifier binderNode.Uid), Id (Identifier bodyNode.Uid))
-      let n, g5 = createNode (nextSymbol "let") (typeOf types' expr) [binderNode; bodyNode]
-                             (ForwardState bodyNode) (makeEvaluator expr' Map.empty) g4
-      Set.singleton n, g5, Id (Identifier n.Uid)
-  | _ -> // Dataflow the body
-         let env', types' = env.Add(name, NodeInfo.AsUnknown(name)), types.Add(name, TyUnit)
-         let bodyDeps, g2, body' = dataflowE env' types' g1 body
-         Set.union binderDeps bodyDeps, g2, Let (Identifier name, Some typ, binder', body')
-*)
 
 
 and dataflowGroupby env types graph target paramExps =
@@ -550,26 +499,36 @@ and extractSubNetwork env types graph dataflowBodyFn args body =
 
 
 and dataflowClosure env types graph expr (itself:(string * Type) option) =
+  (*
+   * The network of a recursive closure consists in n nodes for the arguments and
+   * a single evaluator for the body.
+   *)
   let recClosure args body name typ =
-    let env', types', g1, argNodes =
-      List.fold (fun (env:NodeContext, types:TypeContext, graph, argNodes) (Param (Identifier arg, typ)) ->
+    let env', types', args', g1, argUids =
+      List.fold (fun (env:NodeContext, types:TypeContext, args, graph, argUids) (Param (Identifier arg, typ)) ->
                    match typ with
                    | Some t -> let argUid = nextSymbol arg
                                let node = { Uid = argUid; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [] }
                                let env' = env.Add(arg, node).Add(argUid, node)
                                let types' = types.Add(arg, t).Add(argUid, t)
-                               env', types', Graph.add ([], argUid, node, []) graph, Set.add node argNodes
+                               let args' = args @ [Param ((Identifier argUid), typ)]
+                               env', types', args', Graph.add ([], argUid, node, []) graph, argUids @ [argUid]
                    | None -> failwithf "Function arguments must have type annotations.")
-                (env, types, graph, Set.empty) args
+                (env, types, [], graph, []) args
                 
-    // Add itself as an unknown node.                
-    let env'', types'' = env'.Add(name, NodeInfo.AsUnknown(name)), types'.Add(name, typ)
-    
+    // Add itself as an unknown node to dataflow the body.              
+    // (Unknown nodes in function calls are ignored, but their parameters are dataflown normally)
+    let env'', types'' = env'.Add(name, NodeInfo.AsUnknown(name)), types'.Add(name, TyUnit)
     let deps, g2, body' = dataflowE env'' types'' g1 body
-
-    let opResult, g3 = makeFinalNode env'' types'' g2 body' argNodes "rec"
-    let argUids = Set.map (fun n -> n.Uid) argNodes |> Set.to_list
-    opResult, Set.empty, graph, makeSubExprBuilder argUids opResult.Uid g3
+    
+    // Add itself to the evaluator's environment.
+    let closureEnv = Map.of_list [name, VClosure (Map.empty, Lambda (args', body'), Some name)]
+    let opResult, g2' = createNode (nextSymbol name) typ (Set.to_list deps) (makeEvaluator body' closureEnv) g2
+    
+    // Remove the arguments from the dependencies
+    let deps', g3 = removeNetworks argUids deps g2' 
+    opResult, deps', g3, makeSubExprBuilder argUids opResult.Uid g2'
+    
 
   let nonRecClosure args body =
     // Extract the body's network, so that we can recreate it everytime we
