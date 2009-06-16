@@ -32,11 +32,9 @@ let AddedOrExpired factMaker eventTimestamp expr factTimestamp =
   let value = tryEval expr
   match value with
   | VRecord fields -> 
-      let fields' = Map.fold_left (fun acc k v -> match k with
-                                                  | VString k' -> Map.add k' !v acc
-                                                  | _ -> failwith "Not a VString!")
-                                  Map.empty fields
-      (factTimestamp, factMaker (VEvent (Event (DateTime.FromSeconds(eventTimestamp), fields'))))
+      let fields' = Map.fold_left (fun acc k v -> Map.add k v acc) Map.empty fields
+      let ev = VRecord (fields'.Add(VString "timestamp", ref (VInt eventTimestamp)))
+      (factTimestamp, factMaker ev)
   | _ -> (factTimestamp, factMaker value)
 
 let Added evTime expr factTime = AddedOrExpired (fact.Diff << diff.Added) evTime expr factTime

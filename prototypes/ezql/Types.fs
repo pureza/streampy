@@ -88,32 +88,6 @@ type Operator =
 
 and ChildData = Operator * int * link
 
-and Event(timestamp:DateTime, fields:Map<string, value>) =
-    member self.Timestamp with get() = timestamp
-    member self.Item
-      with get(field) =
-        if field = "timestamp"
-          then VInt (self.Timestamp.TotalSeconds)
-          else match Map.tryFind field fields with
-               | Some result -> result
-               | None -> failwithf "This event does not contain the field '%s'" field
-
-    member self.Fields = fields
-    
-    override self.Equals(otherObj:obj) =
-        let other = unbox<Event>(otherObj)
-        other.Timestamp = self.Timestamp && self.Fields = other.Fields
-        
-    override self.GetHashCode() =
-      let hash1 = self.Timestamp.GetHashCode ()
-      let hash2 = self.Fields.GetHashCode()
-      ((hash1 <<< 5) + hash1) ^^^ hash2
-    
-    override self.ToString() =
-       "{ @ " + timestamp.TotalSeconds.ToString() + " " + 
-            (List.reduceBack (+) [ for pair in fields -> sprintf " %s: %O " pair.Key pair.Value ])
-             + "}"
-
 and context = Map<string, value>
 
 and value =
@@ -123,10 +97,9 @@ and value =
     | VRecord of Map<value, value ref>
     | VDict of Map<value, value> ref
     | VClosure of context * expr * string option // The name used by the closure to refer to itself (doesn't belong to the context)
-    | VEvent of Event
     | VRef of value
     | VNull
-    | VClosureSpecial of string * NetworkBuilder * Map<string, Operator> ref
+    | VClosureSpecial of string * expr * NetworkBuilder * Map<string, Operator> ref * string option
     
     member self.Clone() =
       match self with
@@ -150,7 +123,6 @@ and value =
                          s.Remove (s.Length - 2, 2) |> ignore
                   sprintf "{ %O }" s
               | VClosure _ -> "..lambda.."
-              | VEvent ev -> ev.ToString()
               | VRef value -> sprintf "@%O" value
               | VNull -> "VNull"
       s

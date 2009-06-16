@@ -73,7 +73,7 @@ let rec spread (stack:EvalStack) =
     match stack with
     | [] -> ()
     | (op, parentChanges)::xs ->
-        //printfn "*** Vou actualizar o %A" (op.Uid, (!op.Context).Count)
+        //printfn "*** Vou actualizar o %s" op.Uid
         //printfn "    Changes = %A\n" parentChanges
         let filledChanges = fillLeftArgs op parentChanges 0
         try

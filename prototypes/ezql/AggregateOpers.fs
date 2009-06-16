@@ -7,7 +7,7 @@ open Types
 let makeLast getField (uid, prio, parents, context) =
   let eval = fun (op, inputs) -> 
                let added = List.tryPick (fun diff -> match diff with
-                                                     | Added (VEvent ev) -> Some (VEvent ev)
+                                                     | Added ev -> Some ev
                                                      | _ -> None)
                                         (List.hd inputs)
                Option.bind (fun ev -> setValueAndGetChanges op (getField ev)) added

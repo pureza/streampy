@@ -3,6 +3,7 @@
 open Extensions.DateTimeExtensions
 open Ast
 open Types
+open Util
 
 let rec eval (env:Map<string, value>) = function
   | FuncCall (Id (Identifier "print"), paramExps) -> // TODO: Put this in some sort of global environment
@@ -16,7 +17,6 @@ let rec eval (env:Map<string, value>) = function
   | MemberAccess (expr, Identifier name) ->
       let target = eval env expr
       match target with
-      | VEvent ev -> ev.[name]
       | VRecord r -> !r.[VString name]
       | _ -> failwith "eval MemberAccess: Not an event!"
   | ArrayIndex (target, index) ->
@@ -82,4 +82,5 @@ and apply env value =
                                    env (List.zip ids' args)
               eval env' body)
       | _ -> failwith "evalClosure: Wrong type"
+  | VClosureSpecial (_, expr, _, _, itself) -> apply env (convertClosureSpecial value) // FIXME: Ugly stuff is ugly
   | _ -> failwith "This is not a closure"

@@ -20,16 +20,22 @@ let setValueAndGetChanges (op:Operator) v =
 
 let getOperEnv op = Map.of_list [ for p in op.Parents -> (p.Uid, p) ]
 
+let convertClosureSpecial v =
+  match v with
+  | VClosureSpecial (_, lambda, _, context, itself) ->
+      let env = Map.map (fun k (v:Operator) -> v.Value) !context
+      VClosure (env, lambda, itself)
+  | _ -> v
+
 let getOperEnvValues = getOperEnv >> Map.map (fun k v -> v.Value)
 
+let eventTimestamp ev =
+  let timestamp = VString "timestamp"
+  match ev with
+  | VRecord fields when Map.contains timestamp fields -> !fields.[timestamp]
+  | _ -> failwithf "Event is not a record or doesn't contain the timestamp field: %A" ev
 
-let recordToEvent record = Map.fold_left (fun acc k v ->
-                                            match k with
-                                            | VString k' -> Map.add k' !v acc
-                                            | _ -> failwithf "Can't happen! %A" k)
-                                         Map.empty record
-                                             
-                                         
+
 let retry fn rescue =
     try
       fn ()

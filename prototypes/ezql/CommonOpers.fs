@@ -2,6 +2,7 @@
 
 open System.Collections.Generic
 open Extensions
+open Extensions.DateTimeExtensions
 open Ast
 open Util
 open Types
@@ -13,7 +14,7 @@ open Oper
 let makeStream (uid, prio, parents, context) =
   let eval = fun (op, inputs) ->
                match inputs with
-               | [[Added (VEvent ev)] as changes] -> Some (op.Children, changes)
+               | [[Added (VRecord _)] as changes] -> Some (op.Children, changes)
                | _ -> failwith "stream: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -31,8 +32,8 @@ let makeSimpleWindow (uid, prio, parents, context) =
 let makeWindow duration (uid, prio, parents, context) =
   let eval = fun (op, inputs) ->
                match inputs with
-               | [[Added (VEvent ev)] as changes] ->
-                   Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired (VEvent ev)])
+               | [[Added ev] as changes] ->
+                   Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired ev])
                    Some (op.Children, changes)
                | _ -> failwith "timed window: Invalid arguments!"
 
@@ -49,8 +50,8 @@ let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents, context) : Ope
     let eval = fun (op, inputs) ->
                  let env = getOperEnvValues op
                  match inputs with
-                 | [Added (VEvent ev)]::_ ->
-                     let env' = Map.add "ev" (VEvent ev) env
+                 | [Added ev]::_ ->
+                     let env' = Map.add "ev" ev env
                      resultHandler op inputs ev (eval env' expr)
                  | []::_ -> None // Ignore changes to the handler dependencies
                  | _ -> failwithf "Wrong number of arguments! %A" inputs
@@ -67,10 +68,11 @@ let makeWhere = makeEvalOnAdd (fun op inputs ev result ->
 
 (* Select: projects an event *)
 let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
+                                  let timestamp = eventTimestamp ev
                                   let ev' = match result with
-                                            | VRecord map -> Event (ev.Timestamp, recordToEvent map)
+                                            | VRecord fields -> VRecord (Map.add (VString "timestamp") (ref timestamp) fields)
                                             | _ -> failwithf "select should return a record"
-                                  Some (op.Children, [Added (VEvent ev')]))
+                                  Some (op.Children, [Added ev']))
 
 (* When *)
 let makeWhen = makeEvalOnAdd (fun op inputs ev result -> Some (op.Children, [Added result]))
@@ -132,8 +134,8 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
 let makeToStream (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                let value = op.Parents.[0].Value
-               let ev = Event (Scheduler.clock().Now, Map.of_list ["value", value])
-               Some (op.Children, [Added (VEvent ev)])
+               let ev = VRecord (Map.of_list [VString "timestamp", ref (VInt (Scheduler.clock().Now.TotalSeconds)); VString "value", ref value])
+               Some (op.Children, [Added ev])
 
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -238,10 +240,10 @@ let makeProjector field (uid, prio, parents, context) =
   
 // Doesn't do anything.
 // TODO: Remove this operator
-let makeClosure closureBuilder (uid, prio, parents, context) =
+let makeClosure lambda closureBuilder itself (uid, prio, parents, context) =
   let eval = fun (op:Operator, inputs) ->
                None
-  Operator.Build(uid, prio, eval, parents, context, contents = VClosureSpecial (uid, closureBuilder, context))
+  Operator.Build(uid, prio, eval, parents, context, contents = VClosureSpecial (uid, lambda, closureBuilder, context, itself))
 
   
 let makeFuncCall (uid, prio, parents, context) =
@@ -253,7 +255,7 @@ let makeFuncCall (uid, prio, parents, context) =
       (fun (op:Operator, inputs) ->
          let closureUid, closureBuilder, closureContext =
            match op.Parents.[0].Value with
-           | VClosureSpecial (uid, builder, context) -> uid, builder, !context
+           | VClosureSpecial (uid, _, builder, context, _) -> uid, builder, !context
            | other -> failwithf "Expecting a VClosureSpecial, but the parent's value is %A" other
          let parameterChanges = List.tl inputs
          

@@ -4,10 +4,7 @@ open System
 open System.IO
 open Types
 open Scheduler
-
-type IAdapter =
-    abstract OnEvent : (Event -> unit)
-
+open Extensions.DateTimeExtensions
 
 type CSVAdapter(stream, reader:TextReader) =
     let tryParse value =
@@ -18,21 +15,17 @@ type CSVAdapter(stream, reader:TextReader) =
     let readColumns =
         let line = (reader.ReadLine().Split([|'#'|])).[0] 
         line.Split [|','|]
-          |> Array.map (fun s -> s.Trim())
+          |> Array.map (fun s -> s.Trim().ToLower())
           |> Array.to_list
-          |> List.tl
         
     let readLine (columns: string list) =
         let line = (reader.ReadLine().Split([|'#'|])).[0]
         if line.Length = 0 
             then None
-            else let timestamp, values =
-                     match Array.to_list (line.Split [|','|]) with
-                     | timestamp::values when values.Length = columns.Length -> (Int64.Parse(timestamp)), values
-                     | _ -> failwith "error"
+            else let values = Array.to_list (line.Split [|','|])
                  let values' = List.map tryParse values
-                 let fields = Map.of_list (List.zip columns values')
-                 Some (Event(DateTime.MinValue.AddSeconds(float(timestamp)), fields))
+                 let fields = Map.of_list (List.zip (List.map VString columns) (List.map ref values'))
+                 Some (VRecord fields)
         
     let read(reader) =
         seq { let columns = readColumns
@@ -42,7 +35,11 @@ type CSVAdapter(stream, reader:TextReader) =
     let events = read(reader)
     do for ev in events do
            match ev with
-           | Some event -> Scheduler.schedule event.Timestamp ([stream, 0, id], [Added (VEvent event)])
+           | Some (VRecord fields as ev')  -> 
+               let timestamp = match !fields.[VString "timestamp"] with
+                               | VInt t -> DateTime.FromSeconds(t)
+                               | _ -> failwithf "timestamp is not an integer"
+               Scheduler.schedule timestamp ([stream, 0, id], [Added ev'])
            | _ -> ()
         
     static member FromString(stream, string) =

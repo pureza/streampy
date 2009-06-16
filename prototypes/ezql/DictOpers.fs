@@ -97,15 +97,15 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
     let filterKey k =
       List.filter (fun change ->
                      match change with
-                     | Added (VEvent ev) | Expired (VEvent ev) -> ev.[field] = k
+                     | Added (VRecord fields) | Expired (VRecord fields) -> !fields.[VString field] = k
                      | _ -> false)
 
     // Collect changes by key returning a list of DictDiff's
     let collectByKey =
       List.fold (fun acc change -> 
                    match change with
-                   | Added (VEvent ev) | Expired (VEvent ev) ->                                 
-                       let key = ev.[field]
+                   | Added (VRecord fields) | Expired (VRecord fields) ->                                 
+                       let key = !fields.[VString field]
                        let v' = if Map.contains key acc then change :: acc.[key] else [change]
                        Map.add key v' acc
                    | _ -> failwith "Invalid changes")
@@ -128,8 +128,8 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                        let children = 
                          [ for change in changes.Head ->
                              match change with
-                             | Added (VEvent ev) | Expired (VEvent ev) ->
-                                 let key = ev.[field]
+                             | Added (VRecord fields) | Expired (VRecord fields) ->
+                                 let key = !fields.[VString field]
 
                                  if not (Map.contains key !substreams)
                                    then buildSubGroup key env

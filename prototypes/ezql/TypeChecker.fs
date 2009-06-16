@@ -70,10 +70,9 @@ and typeOf env expr =
                         | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
       TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
   | FuncCall (Id (Identifier "when"), [source; Lambda ([Param (Identifier ev, _)], handler)]) ->
-      match typeOf env source with
-      | TyStream _ -> ()
-      | _ -> failwithf "The source of the when doesn't reduce to a stream"
-      let evType = TyRecord (Map.of_list ["timestamp", TyInt; "value", TyInt])
+      let evType = match typeOf env source with
+                   | TyStream evType -> evType
+                   | _ -> failwithf "The source of the when doesn't reduce to a stream"
       typeOf (env.Add(ev, evType)) handler |> ignore
       TyUnit
   | FuncCall (Id (Identifier "print"), [expr]) ->
@@ -101,7 +100,7 @@ and typeOf env expr =
       let targetType = match typeOf env target with
                        | TyRef t -> t
                        | other -> other
-                       
+
       match targetType with
       | TyRecord fields ->
           match Map.tryFind name fields with
@@ -157,7 +156,7 @@ and typeOf env expr =
       typeOf env expr2
   | Id (Identifier name) ->
       match Map.tryFind name env with
-      | Some v -> v
+      | Some t -> t
       | _ -> raise (UnknownId name)
   | SymbolExpr _ -> TySymbol
   | Integer v -> TyInt
@@ -272,3 +271,30 @@ and typeOfOp = function
   | Plus, _, TyString -> TyString
   | Plus, TyString, _ -> TyString
   | x -> failwithf "typeOfOp: op not implemented %A" x
+
+
+
+(* May a node be created to evaluate expr? 
+ * No, if node depends on some variable explicitly marked as Unknown. *)  
+let rec isContinuous (env:TypeContext) expr = 
+  match expr with
+  | MethodCall (target, (Identifier name), paramExps) ->
+      (isContinuous env target) && List.forall (isContinuous env) paramExps
+  | ArrayIndex (target, index) ->
+      (isContinuous env target) && (isContinuous env index)
+  | FuncCall (fn, paramExps) ->
+      (isContinuous env fn) && List.forall (isContinuous env) paramExps
+  | MemberAccess (target, (Identifier name)) -> isContinuous env target
+  | Record fields -> List.forall (isContinuous env) (List.map snd fields)
+  | RecordWith (record, fields) -> isContinuous env record && List.forall (isContinuous env) (List.map snd fields)
+  | Lambda (args, body) -> isContinuous env body
+  | Let (Identifier name, optType, binder, body) -> isContinuous env binder && isContinuous env body
+  | If (cond, thn, els) -> isContinuous env cond && isContinuous env thn && isContinuous env els
+  | BinaryExpr (oper, expr1, expr2) as expr -> isContinuous env expr1 && isContinuous env expr2
+  | Seq (expr1, expr2) -> isContinuous env expr1 && isContinuous env expr2
+    | Id (Identifier name) -> if Map.contains name env && (env.[name].IsUnknown()) then false else true
+  | Time _ -> true
+  | Integer i -> true
+  | String s -> true
+  | SymbolExpr _ -> true
+  | Bool b -> true

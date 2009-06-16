@@ -80,30 +80,35 @@ and Type =
   | TySymbol
   | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
   | TyArrow of Type * Type
-  //| TyLambda of List<string * Type> * Type
   | TyEntity of string
   | TyRecord of Map<string, Type>
   | TyStream of Type
   | TyWindow of Type * WindowType
   | TyDict of Type
   | TyRef of Type
+  | TyUnknown of Type
   
   override self.ToString() =
     match self with
-    | TyUnit -> "()"
+    | TyUnit -> "unit"
     | TyBool -> "bool"
     | TyInt -> "int"
     | TyString -> "string"
     | TySymbol -> "symbol"
     | TyType _ -> "type"
     | TyArrow (type1, type2) -> sprintf "%O -> %O" type1 type2
-   // | TyLambda _ -> "lambda"
     | TyEntity typ -> sprintf "instanceOf %O" typ
     | TyRecord _ -> "record"
     | TyStream _ -> "stream"
     | TyWindow _ -> "window"
     | TyDict _ -> "dict"
     | TyRef t -> sprintf "ref<%O>" t
+    | TyUnknown t -> sprintf "unk<%O>" t
+    
+  member self.IsUnknown () =
+    match self with
+    | TyUnknown _ -> true
+    | _ -> false
 
 and WindowType =
   | TimedWindow of int    
@@ -151,5 +156,4 @@ let isRecursive name expr =
   match expr with
   | Lambda (args, body) -> Set.contains name (freeVars expr)
   | _ -> false
-  
   

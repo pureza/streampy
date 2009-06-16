@@ -65,7 +65,6 @@ h = let x2 = fun (n:int) -> n.sum() in
     (if lastTemp > 25 then fact else x2)(lastTemp);;
 
 
-
 #! temp_readings
 Timestamp, room_id, temperature
 2,               1,      25
