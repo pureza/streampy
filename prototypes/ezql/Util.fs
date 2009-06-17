@@ -12,7 +12,10 @@ let toSeconds value unit =
 // Changes the current value of a continuous value if the new value differs
 // from the current one. Also gets the list of changes to propagate.
 let setValueAndGetChanges (op:Operator) v =
-  if v <> op.Value
+  let differ = match v with
+               | VClosureSpecial _ | VClosure _ -> true
+               | _ -> v <> op.Value
+  if differ
     then op.Value <- v
          Some (op.Children, [Added v])
     else None

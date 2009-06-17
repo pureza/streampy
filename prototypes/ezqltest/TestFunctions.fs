@@ -58,8 +58,8 @@ let test_functions (test:Test) =
                      Set " 350" (At  5)
                      Set "1325" (At  6)
                      Set " 495" (At  7)
-                     Set " 299" (At  9)])        
-                     
+                     Set " 299" (At  9)])
+
   test.AssertThat (In "h"
                     [Set "  25" (At  2)
                      Set "1080" (At  4)
@@ -67,3 +67,38 @@ let test_functions (test:Test) =
                      Set "1325" (At  6)
                      Set " 495" (At  7)
                      Set "  73" (At  9)])                                                                                                                          
+
+
+[<TestCase ("functions/non_continuous_functions.ez")>]
+let test_nonContFunctions (test:Test) =
+  test.AssertThat (In "a"
+                    [Set "25 +  25 +  4" (At  2)
+                     Set "45 +  70 + 55" (At  4)
+                     Set "25 +  95 + 10" (At  5)
+                     Set "50 + 145 + 71" (At  6)
+                     Set "30 + 175 + 14" (At  7)
+                     Set "23 + 198 + 18" (At  9)])
+
+  test.AssertThat (In "b"
+                    [Set "25 +  25 +  4" (At  2)
+                     Set "45 +  70 + 55" (At  4)
+                     Set "25 +  95 + 10" (At  5)
+                     Set "50 + 145 + 71" (At  6)
+                     Set "30 + 175 + 14" (At  7)
+                     Set "23 + 198 + 18" (At  9)])                     
+
+  test.AssertThat (In "c"
+                    [Set "  50 +  25 +  4" (At  2)
+                     Set "1080 +  70 + 55" (At  4)
+                     Set "  50 +  95 + 10" (At  5)
+                     Set "1325 + 145 + 71" (At  6)
+                     Set "  60 + 175 + 14" (At  7)
+                     Set "  46 + 198 + 18" (At  9)])    
+
+  test.AssertThat (In "d"
+                    [Set "(25 +  25 +  4) * 2" (At  2)
+                     Set "14580"               (At  4)
+                     Set "(25 +  95 + 10) * 2" (At  5)
+                     Set "35561"               (At  6)
+                     Set "(30 + 175 + 14) * 2" (At  7)
+                     Set "(23 + 198 + 18) * 2" (At  9)])                         

@@ -63,46 +63,14 @@ and typeOf env expr =
       typeOfMethodCall env target name paramExps
   | ArrayIndex (target, index) ->
       typeOfMethodCall env target "[]" [index]
-  | FuncCall (Id (Identifier "stream"), fields) ->
-      let fields' = [ for f in fields ->
-                        match f with
-                        | SymbolExpr (Symbol name) -> (name, TyInt)
-                        | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
-      TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
-  | FuncCall (Id (Identifier "when"), [source; Lambda ([Param (Identifier ev, _)], handler)]) ->
-      let evType = match typeOf env source with
-                   | TyStream evType -> evType
-                   | _ -> failwithf "The source of the when doesn't reduce to a stream"
-      typeOf (env.Add(ev, evType)) handler |> ignore
-      TyUnit
-  | FuncCall (Id (Identifier "print"), [expr]) ->
-      typeOf env expr |> ignore
-      TyUnit
-  | FuncCall (Id (Identifier "$ref"), [expr]) -> TyRef (typeOf env expr)
-  | FuncCall (f, param's) ->
-      let rec getReturnType argCount funType =
-        match argCount, funType with
-        | 0, _ -> funType
-        | n, TyArrow (type1, type2) when n > 0 -> getReturnType (n - 1) type2
-        | _ -> failwithf "%A must be of type TyArrow!" funType
-      
-      let rec arrow2list = function
-        | TyArrow (type1, type2) -> type1::(arrow2list type2)
-        | other -> [other]
-        
-      let funType = typeOf env f
-      let argTypes = arrow2list funType |> Seq.take param's.Length |> Seq.to_list      
-      let matching = List.forall2 (fun arg paramType -> (typeOf env arg) = paramType) param's argTypes
-      if matching
-        then getReturnType param's.Length funType
-        else failwithf "Parameters don't match argument types in function call"
+  | FuncCall _ -> typeOfFuncCall env expr
   | MemberAccess (target, Identifier name) ->
       let targetType = match typeOf env target with
                        | TyRef t -> t
                        | other -> other
 
       match targetType with
-      | TyRecord fields ->
+      | TyUnknown (TyRecord fields) | TyRecord fields ->
           match Map.tryFind name fields with
           | Some t -> t
           | None -> failwithf "The record doesn't have field '%s'" name
@@ -256,7 +224,55 @@ and typeOfMethodCall env target name paramExps =
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
   | _ -> failwithf "The type %A does not have method %A!" targetType name
- 
+
+and typeOfFuncCall env expr =
+  match expr with
+  | FuncCall (Id (Identifier "stream"), fields) ->
+      let fields' = [ for f in fields ->
+                        match f with
+                        | SymbolExpr (Symbol name) -> (name, TyInt)
+                        | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
+      TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
+  | FuncCall (Id (Identifier "when"), [source; Lambda ([Param (Identifier ev, _)], handler)]) ->
+      let evType = match typeOf env source with
+                   | TyStream evType -> evType
+                   | _ -> failwithf "The source of the when doesn't reduce to a stream"
+      typeOf (env.Add(ev, evType)) handler
+  | FuncCall (Id (Identifier "print"), [expr]) ->
+      typeOf env expr |> ignore
+      TyUnit
+  | FuncCall (Id (Identifier "$ref"), [expr]) -> TyRef (typeOf env expr)
+  | FuncCall (Id (Identifier "listenN"), param's) ->
+      match param's with
+      | initial::(l1::ls) ->
+          let initialType = typeOf env initial
+          let listenerType = typeOf env l1
+          let allSame = List.forall (fun listener -> listenerType = typeOf env listener) ls
+          if allSame
+            then if listenerType = TyArrow (initialType, initialType)
+                   then initialType
+                   else failwithf "listenN: The type of the listener is not compatible with the type of the initial value - %A vs %A" initialType listenerType
+            else failwithf "Not all the listeners have the same type."
+      | _ -> failwithf "Invalid parameters to listenN."
+  | FuncCall (f, param's) ->
+      let rec getReturnType argCount funType =
+        match argCount, funType with
+        | 0, _ -> funType
+        | n, TyArrow (type1, type2) when n > 0 -> getReturnType (n - 1) type2
+        | _ -> failwithf "%A must be of type TyArrow!" funType
+      
+      let rec arrow2list = function
+        | TyArrow (type1, type2) -> type1::(arrow2list type2)
+        | other -> [other]
+        
+      let funType = typeOf env f
+      let argTypes = arrow2list funType |> Seq.take param's.Length |> Seq.to_list      
+      let matching = List.forall2 (fun arg paramType -> (typeOf env arg) = paramType) param's argTypes
+      if matching
+        then getReturnType param's.Length funType
+        else failwithf "Parameters don't match argument types in function call"
+  | _ -> failwithf "Not a FuncCall? %A" expr
+         
 
 and typeOfOp = function
   | Plus, TyInt, TyInt -> TyInt

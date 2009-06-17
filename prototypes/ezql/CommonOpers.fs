@@ -75,7 +75,8 @@ let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
                                   Some (op.Children, [Added ev']))
 
 (* When *)
-let makeWhen = makeEvalOnAdd (fun op inputs ev result -> Some (op.Children, [Added result]))
+let makeWhen = makeEvalOnAdd (fun op inputs ev result ->
+                                setValueAndGetChanges op result)
 
 
 (* A timed window for dynamic values *)
@@ -245,7 +246,17 @@ let makeClosure lambda closureBuilder itself (uid, prio, parents, context) =
                None
   Operator.Build(uid, prio, eval, parents, context, contents = VClosureSpecial (uid, lambda, closureBuilder, context, itself))
 
-  
+
+(*
+ * The first parent of the function call is the closure. The others are the
+ * parameters to the call.
+ *
+ * The operator that represents the closure can be of two forms:
+ * - a makeClosure, where the closure is a VClosureSpecial whose network may be
+ *   built at any time;
+ * - an evaluator whose value is a VClosure. In this case the closure is meant to
+ *   be evaluated directly (no network creation shall happen).
+ *)
 let makeFuncCall (uid, prio, parents, context) =
   let subnetworks = ref Map.empty
   let currNetwork : ref<uid option> = ref None
@@ -253,40 +264,66 @@ let makeFuncCall (uid, prio, parents, context) =
   let rec headOp =
     Operator.Build(uid, prio,
       (fun (op:Operator, inputs) ->
-         let closureUid, closureBuilder, closureContext =
            match op.Parents.[0].Value with
-           | VClosureSpecial (uid, _, builder, context, _) -> uid, builder, !context
-           | other -> failwithf "Expecting a VClosureSpecial, but the parent's value is %A" other
-         let parameterChanges = List.tl inputs
+           | VClosureSpecial (closureUid, _, closureBuilder, closureContext, _) ->
+               // Create the network and spread the changes to it.
+               let parameterChanges = List.tl inputs
          
-         if not (Map.contains closureUid !subnetworks)
-           then let roots, final = closureBuilder prio closureContext
-                connect final resultOp id
-                subnetworks := Map.add closureUid (roots, final) (!subnetworks)
-         currNetwork := Some closureUid
+               if not (Map.contains closureUid !subnetworks)
+                 then let roots, final = closureBuilder prio !closureContext
+                      connect final resultOp id
+                      subnetworks := Map.add closureUid (roots, final) (!subnetworks)
+               currNetwork := Some closureUid
 
-         let subnet, _ = (!subnetworks).[closureUid]
-         for (child:Operator, parent:Operator) in (List.zip subnet (List.tl parents)) do
-           child.Value <- parent.Value
-         
-         // Now I must pass the parameter changes to the subnetwork
-         let argsToEval : ChildData list = 
-           List.mapi (fun i arg ->
-                        let link _ = parameterChanges.[i] // Ignore the argument
-                        arg, 0, link)
-                     subnet
-                     
-         // Output just the closure change: the parameters' changes are not needed
-         Some (List<_> ((resultOp, 0, id)::argsToEval), List.hd inputs)),
+               let subnet, _ = (!subnetworks).[closureUid]
+               for (child:Operator, parent:Operator) in (List.zip subnet (List.tl parents)) do
+                 child.Value <- parent.Value
+               
+               // Now I must pass the parameter changes to the subnetwork
+               let argsToEval : ChildData list = 
+                 List.mapi (fun i arg ->
+                              let link _ = parameterChanges.[i] // Ignore the argument
+                              arg, 0, link)
+                           subnet
+                           
+               // Output just the closure change: the parameters' changes are not needed
+               Some (List<_> ((resultOp, 0, id)::argsToEval), List.hd inputs)
+           | VClosure _ as closure ->
+               currNetwork := None
+               // Evaluate the expression directly.
+               let env = getOperEnvValues op
+               let param's = [ for parent in parents.Tail -> Id (Identifier parent.Uid) ]
+               let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), param's))
+               Some (List<_> ([resultOp, 0, id]), [Added result])
+           | other -> failwithf "Expecting a VClosure[Special], but the parent's value is %A" other),
       parents, context)
 
   and resultOp =
     Operator.Build(uid + "_results", Priority.add prio (Priority.of_list [9]),
       (fun (op:Operator, inputs) ->
-        let resultOp = (snd (!subnetworks).[(!currNetwork).Value])
-        setValueAndGetChanges op resultOp.Value), [headOp], context)
+        let value = match !currNetwork, inputs with
+                    | None, [Added result]::_ -> result
+                    | Some op, _ -> (snd (!subnetworks).[op]).Value
+                    | None, other -> failwithf "Can't happen: %A" other
+        setValueAndGetChanges op value), [headOp], context)
       
   { headOp with
         Children = resultOp.Children;
         Contents = resultOp.Contents;
         AllChanges = resultOp.AllChanges }
+
+let makeListenN initial (uid, prio, parents, context) =
+  let operEval = fun ((op:Operator), inputs) ->
+                   let parentIdx = List.findIndex (fun input -> input <> []) inputs
+                   let closure = 
+                     match op.Parents.[parentIdx].Value with
+                     | VClosureSpecial _ as special ->
+                         convertClosureSpecial special
+                     | VClosure _ as closure -> closure
+                     | _ -> failwithf "Listener didn't return a closure!!!"
+                   let env = Map.of_list ["$curr", op.Value]
+                   let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
+                   setValueAndGetChanges op result
+
+  Operator.Build(uid, prio, operEval, parents, context, contents = eval Map.empty initial)
+ 

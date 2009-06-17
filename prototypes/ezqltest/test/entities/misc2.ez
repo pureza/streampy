@@ -1,19 +1,18 @@
 temp_readings = stream (:room_id, :temperature);;
+entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-define fact(n:int) : int =
-  if n == 0
-    then 1
-    else n + fact (n - 1);;
+a = listenN (0, when (temp_readings, fun ev -> fun (v:int) -> ev.temperature + v + lastTemp),
+                when (entries, fun ev -> fun (v:int) -> 0));;
 
+/*
+ a = 0
+  | when (tempReadings, fun ev -> ev.temperature + a
+  | when (entries, fun ev -> 0)
+ */
 
-// Non-recursive function with global deps
-define x2a(n:int) : int = n;;
-
-
-when (temp_readings, fun ev -> print ((if lastTemp > 30 then fact else x2a) (ev.temperature)));;
-
+when (a.updated(), fun ev -> print (a));;
 
 #! temp_readings
 Timestamp, room_id, temperature
@@ -23,3 +22,12 @@ Timestamp, room_id, temperature
 6,               2,      50
 7,               3,      30
 9,               1,      23
+
+#! entries
+Timestamp, room_id, product_id
+3,               1,          1
+4,               1,          2
+6,               2,          2
+7,               1,          3
+8,               2,          1
+9,               3,          2

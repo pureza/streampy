@@ -16,11 +16,7 @@ let test_entitiesMisc (test:Test) =
   *)                   
   test.AssertThat (In "y"
                     [Set " 25" (At  3)
-                     Set " 25" (At  4)
-                     Set " 25" (At  6)
-                     Set " 25" (At  7)
-                     Set "100" (At  8)
-                     Set "100" (At  9)])
+                     Set "100" (At  8)])
 
   test.AssertThat (In "products"
                     [SetKey "1" "{ product_id = 1, temperature = 25,

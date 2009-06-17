@@ -13,7 +13,7 @@ let rec eval (env:Map<string, value>) = function
   | FuncCall (expr, paramExps) ->
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps
-      apply env fn paramValues
+      apply fn paramValues
   | MemberAccess (expr, Identifier name) ->
       let target = eval env expr
       match target with
@@ -34,6 +34,8 @@ let rec eval (env:Map<string, value>) = function
       | VRecord fields -> VRecord (List.fold (fun fields (name, expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
       | other -> failwithf "RecordWith: the source is not a record: %A" other
   | Lambda (args, body) as fn -> VClosure (env, fn, None)
+  | Let (Identifier name, _, (Lambda _ as fn), body) ->
+      eval (env.Add(name, VClosure (env, fn, Some name))) body
   | Let (Identifier name, _, binder, body) ->
       eval (env.Add(name, eval env binder)) body
   | If (cond, thn, els) ->
@@ -66,13 +68,12 @@ and evalOp = function
   | _ -> failwith "op not implemented"
 
 
-and apply env value =
+and apply value =
   match value with
   | VClosure (env', expr, itself) ->
-      // If the closure is recursive, use the outer environment
-      // because the closure's environment may be empty
+      // If the closure is recursive, add itself to the environment
       let env = match itself with
-                | Some name -> env.Add(name, value)
+                | Some name -> env'.Add(name, value)
                 | _ -> env'
       match expr with
       | Lambda (ids, body) ->
@@ -82,5 +83,5 @@ and apply env value =
                                    env (List.zip ids' args)
               eval env' body)
       | _ -> failwith "evalClosure: Wrong type"
-  | VClosureSpecial (_, expr, _, _, itself) -> apply env (convertClosureSpecial value) // FIXME: Ugly stuff is ugly
+  | VClosureSpecial (_, expr, _, _, itself) -> apply (convertClosureSpecial value) // FIXME: Ugly stuff is ugly
   | _ -> failwith "This is not a closure"
