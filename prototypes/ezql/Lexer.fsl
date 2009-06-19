@@ -21,7 +21,11 @@ let ids = Map.of_list ["min",        MIN
                        "belongsTo",  BELONGS_TO
                        "hasMany",    HAS_MANY
                        "member",     MEMBER
-                       "int",        INT]
+                       "int",        INT
+                       "enum",       ENUM
+                       "of",         OF
+                       "match",      MATCH
+                       "end",        END]
 let tokenize text =
   if ids.ContainsKey(text)
       then ids.[text]
@@ -45,6 +49,7 @@ rule token = parse
     | "]"				    { RBRACKET }
     | "{"     				{ LBRACE }
     | "}"     				{ RBRACE }
+    | "|"                   { PIPE }
     | "="      				{ ASSIGN }
     | "+"      				{ PLUS }
     | "-"      				{ MINUS }

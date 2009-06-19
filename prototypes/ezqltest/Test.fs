@@ -24,7 +24,7 @@ let After time = DateTime.FromSeconds(time)
 
 let tryEval expr =
   try
-    eval Map.empty (Parser.expr Lexer.token (Lexing.from_string expr))
+    eval Map.empty (Parser.Expr Lexer.token (Lexing.from_string expr))
   with
     | e -> failwithf "Error parsing '%s'" expr
 

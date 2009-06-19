@@ -2,8 +2,8 @@
 open Ast
 %}
 
-%start toplevel
-%start expr
+%start TopLevel
+%start Expr
 
 %token <string> ID
 %token <int> INTEGER
@@ -14,6 +14,7 @@ open Ast
 %token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV MOD COMMA
 %token SEMICOLON2
 %token GT GTE EQ DIFF LTE LT AND OR TRUE FALSE
+%token PIPE ENUM OF MATCH END
 %token SEC MIN
 %token EOF
 %token INT
@@ -33,128 +34,194 @@ open Ast
 %left DOT
 %nonassoc LPAREN LBRACKET
 
-%type <prog list> toplevel
-%type <expr> expr
+%type <prog list> TopLevel
+%type <expr> Expr
 
 %%
 
-toplevel:   EOF                                            { [] }
-          | defTop                                         { $1 }
-          | entityTop                                      { $1 }
-          | exprTop                                        { $1 }
-          | defunTop                                       { $1 }
+TopLevel: 
+  | EOF											          { [] }
+  | DefTypeTop                                            { $1 }
+  | DefTop                                                { $1 }
+  | EntityTop                                             { $1 }
+  | ExprTop                                               { $1 }
+  | DefunTop                                              { $1 }
 
-defTop:   def EOF                                          { [$1] }
-        | def SEMICOLON2 toplevel                          { $1::$3 }
+DefTypeTop:
+  | DefType EOF                                           { [$1] }
+  | DefType SEMICOLON2 TopLevel                           { $1::$3 }
 
-entityTop:   entity EOF                                    { [$1] }
-           | entity SEMICOLON2 toplevel                    { $1::$3 }
+DefTop:
+  | Def EOF                                               { [$1] }
+  | Def SEMICOLON2 TopLevel                               { $1::$3 }
 
-exprTop:   expr EOF                                        { [Expr $1] }
-         | expr SEMICOLON2 toplevel                        { (Expr $1)::$3 }
+EntityTop:
+  | Entity EOF                                            { [$1] }
+  | Entity SEMICOLON2 TopLevel                            { $1::$3 }
 
-defunTop:   defun EOF                                      { [$1] }
-          | defun SEMICOLON2 toplevel                      { $1::$3 }
+ExprTop:
+  | Expr EOF                                              { [Expr $1] }
+  | Expr SEMICOLON2 TopLevel                              { (Expr $1)::$3 }
 
-def: ID ASSIGN expr                                        { Def (Identifier $1, $3) }
+DefunTop:
+  | Defun EOF                                             { [$1] }
+  | Defun SEMICOLON2 TopLevel                             { $1::$3 }
 
-entity: ENTITY ID ASSIGN entityBody                        { Entity (Identifier $2, $4) }
+DefType: ENUM ID ASSIGN Variants                          { (DefVariant (Identifier $2, $4)) }
 
-entityBody: createFrom associations members				   { $1, $2, $3 }
+Variants:
+  | Variant Variants                                      { $1::$2 }
+  | Variant                                               { [$1] }
+           
+Variant:
+  | PIPE ID                                               { (Identifier $2, TyUnit) }
+  | PIPE ID OF Type                                       { (Identifier $2, $4) }
 
-createFrom: CREATE_FROM LPAREN expr COMMA symbol RPAREN    { ($3, $5) }
+Def:
+  | ID ASSIGN Expr                                        { Def (Identifier $1, $3, None) }
+  | ID ASSIGN Expr ID Listeners                           { if $4 = "when"
+                                                              then Def (Identifier $1, $3, Some $5)
+                                                              else failwithf "Expected 'when' instead of '%s'" $4 }
 
-associations:   BELONGS_TO symbol associations             { (BelongsTo $2)::$3 }
-              | HAS_MANY symbol associations               { (HasMany $2)::$3 }
-              |                                            { [] }
-              
-members:   MEMBER ID DOT ID ASSIGN expr members            { (Member (Identifier $2, Identifier $4, $6))::$7 }
-         |                                                 { [] }
+Listeners:
+  | Listener                                              { [$1] }
+  | Listener Listeners                                    { $1::$2 }
 
-defun: DEFINE ID parameters COLON Type ASSIGN expr         { Function (Identifier $2, $3, $5, $7) }
+Listener: PIPE ID IN Expr OptGuard ARROW Expr             { Listener (Identifier $2, $4, $5, $7) }
 
-expr:   expr DOT ID                                        { MemberAccess ($1, Identifier $3) }
-      | expr LPAREN args RPAREN                            { match $1 with
-                                                             | MemberAccess (obj, memb) -> MethodCall (obj, memb, $3)
-                                                             | _ -> FuncCall ($1, $3) }
-      | LPAREN expr RPAREN                                 { $2 }
-      | expr LBRACKET expr RBRACKET                        { ArrayIndex ($1, $3) }
-      | FUN parameters ARROW expr                          { Lambda ($2, $4) }
-      | expr SEMICOLON expr                                { Seq ($1, $3) }
-      | binaryExpr                                         { $1 }
-      | IF expr THEN expr ELSE expr                        { If ($2, $4, $6) }
-      | LET ID optType ASSIGN expr IN expr                 { Let (Identifier $2, $3, $5, $7) }
-      | record                                             { $1 }
-      | ID                                                 { Id (Identifier $1) }
-      | symbol                                             { SymbolExpr $1 }
-      | INTEGER timeUnit                                   { Time (Integer $1, $2) }
-      | INTEGER                                            { Integer $1 }
-      | BOOLEAN                                            { Bool $1 }
-      | STRING                                             { String $1 }
+OptGuard:
+  |                                                       { None }
+  | IF Expr                                               { Some $2 }
 
-binaryExpr:   arith                                        { $1 }
-            | conditional                                  { $1 }
+Entity: ENTITY ID ASSIGN EntityBody                       { Entity (Identifier $2, $4) }
 
-arith:   expr PLUS  expr                                   { BinaryExpr (Plus, $1, $3) }
-       | expr MINUS expr                                   { BinaryExpr (Minus, $1, $3) }
-       | expr TIMES expr                                   { BinaryExpr (Times, $1, $3) }
-       | expr DIV   expr                                   { BinaryExpr (Div, $1, $3) }
-       | expr MOD   expr                                   { BinaryExpr (Mod, $1, $3) }
+EntityBody: CreateFrom Associations Members				  { $1, $2, $3 }
 
-conditional:   expr GT   expr                              { BinaryExpr (GreaterThan, $1, $3) }
-             | expr GTE  expr                              { BinaryExpr (GreaterThanOrEqual, $1, $3) }
-             | expr EQ   expr                              { BinaryExpr (Equal, $1, $3) }
-             | expr DIFF expr                              { BinaryExpr (NotEqual, $1, $3) }
-             | expr LTE  expr                              { BinaryExpr (LessThanOrEqual, $1, $3) }
-             | expr LT   expr                              { BinaryExpr (LessThan, $1, $3) }
-             | expr AND  expr                              { BinaryExpr (And, $1, $3) }
-             | expr OR   expr                              { BinaryExpr (Or, $1, $3) }
+CreateFrom: CREATE_FROM LPAREN Expr COMMA Symbol RPAREN   { ($3, $5) }
 
-symbol: COLON ID                                           { Symbol $2 }
+Associations:
+  | BELONGS_TO Symbol Associations                        { (BelongsTo $2)::$3 }
+  | HAS_MANY Symbol Associations                          { (HasMany $2)::$3 }
+  |                                                       { [] }
+          
+Members:
+  | MemberDef Members                                     { $1::$2 }
+  |                                                       { [] }
 
-Type:   INT                                                { TyInt }
-      | Type ARROW Type                                    { TyArrow ($1, $3) }
-      | recordType                                         { $1 }
-      | LPAREN Type RPAREN                                 { $2 }
+MemberDef:
+  | MEMBER ID DOT ID ASSIGN Expr                          { Member (Identifier $2, Identifier $4, $6, None) }
+  | MEMBER ID DOT ID ASSIGN Expr ID Listeners             { if $7 = "when"
+                                                              then Member (Identifier $2, Identifier $4, $6, Some $8)
+                                                              else failwithf "Expected 'when' instead of '%s'" $7 }
 
-recordType: LBRACE fieldTypes RBRACE                       { TyRecord (Map.of_list $2) }
+Defun: DEFINE ID Parameters COLON Type ASSIGN Expr        { Function (Identifier $2, $3, $5, $7) }
 
-fieldTypes: ID COLON Type moreFieldTypes                   { ($1, $3)::$4 }
+Expr:
+  | Expr DOT ID                                           { MemberAccess ($1, Identifier $3) }
+  | Expr LPAREN Args RPAREN                               { match $1 with
+                                                            | MemberAccess (obj, memb) -> MethodCall (obj, memb, $3)
+                                                            | _ -> FuncCall ($1, $3) }
+  | LPAREN Expr RPAREN                                    { $2 }
+  | Expr LBRACKET Expr RBRACKET                           { ArrayIndex ($1, $3) }
+  | FUN Parameters ARROW Expr                             { Lambda ($2, $4) }
+  | Expr SEMICOLON Expr                                   { Seq ($1, $3) }
+  | BinaryExpr                                            { $1 }
+  | IF Expr THEN Expr ELSE Expr                           { If ($2, $4, $6) }
+  | MATCH Expr WITH MatchCases END                        { Match ($2, $4) }
+  | LET ID OptType ASSIGN Expr IN Expr                    { Let (Identifier $2, $3, $5, $7) }
+  | Record                                                { $1 }
+  | ID                                                    { Id (Identifier $1) }
+  | Symbol                                                { SymbolExpr $1 }
+  | INTEGER TimeUnit                                      { Time (Integer $1, $2) }
+  | INTEGER                                               { Integer $1 }
+  | BOOLEAN                                               { Bool $1 }
+  | STRING                                                { String $1 }
 
-moreFieldTypes:                                            { [] }
-                | COMMA ID COLON Type moreFieldTypes       { ($2, $4)::$5 }
+BinaryExpr:
+  | Arith                                                 { $1 }
+  | Conditional                                           { $1 }
+
+Arith:
+  | Expr PLUS  Expr                                       { BinaryExpr (Plus, $1, $3) }
+  | Expr MINUS Expr                                       { BinaryExpr (Minus, $1, $3) }
+  | Expr TIMES Expr                                       { BinaryExpr (Times, $1, $3) }
+  | Expr DIV   Expr                                       { BinaryExpr (Div, $1, $3) }
+  | Expr MOD   Expr                                       { BinaryExpr (Mod, $1, $3) }
+
+Conditional:
+  | Expr GT   Expr                                        { BinaryExpr (GreaterThan, $1, $3) }
+  | Expr GTE  Expr                                        { BinaryExpr (GreaterThanOrEqual, $1, $3) }
+  | Expr EQ   Expr                                        { BinaryExpr (Equal, $1, $3) }
+  | Expr DIFF Expr                                        { BinaryExpr (NotEqual, $1, $3) }
+  | Expr LTE  Expr                                        { BinaryExpr (LessThanOrEqual, $1, $3) }
+  | Expr LT   Expr                                        { BinaryExpr (LessThan, $1, $3) }
+  | Expr AND  Expr                                        { BinaryExpr (And, $1, $3) }
+  | Expr OR   Expr                                        { BinaryExpr (Or, $1, $3) }
+
+MatchCases:
+  | MatchCase MatchCases                                  { $1::$2 }
+  | MatchCase                                             { [$1] }
+
+MatchCase:
+  | PIPE ID LPAREN ID RPAREN ARROW Expr                   { MatchCase (Identifier $2, Some (Identifier $4), $7) }
+  | PIPE ID ARROW Expr                                    { MatchCase (Identifier $2, None, $4) }
+
+Symbol: COLON ID                                          { Symbol $2 }
+
+Type: 
+  | INT                                                   { TyInt }
+  | Type ARROW Type                                       { TyArrow ($1, $3) }
+  | RecordType                                            { $1 }
+  | LPAREN Type RPAREN                                    { $2 }
+
+RecordType: LBRACE FieldTypes RBRACE                      { TyRecord (Map.of_list $2) }
+
+FieldTypes: ID COLON Type MoreFieldTypes                  { ($1, $3)::$4 }
+
+MoreFieldTypes:
+  |                                                       { [] }
+  | COMMA ID COLON Type MoreFieldTypes                    { ($2, $4)::$5 }
 
 
-optType:                                                   { None }
-         | COLON Type                                      { Some $2 }
+OptType:
+  |                                                       { None }
+  | COLON Type                                            { Some $2 }
       
 // (), id or id1 id2 ... idN
-parameters:   LPAREN RPAREN                                { [] }
-            | parameter moreParams                         { $1::$2 }
+Parameters:
+  | LPAREN RPAREN                                         { [] }
+  | Parameter MoreParams                                  { $1::$2 }
 
-moreParams:                                                { [] }
-            | parameter moreParams                         { $1::$2 }
+MoreParams:
+  |                                                       { [] }
+  | Parameter MoreParams                                  { $1::$2 }
             
-parameter:   ID                                            { (Param (Identifier $1, None)) }
-           | LPAREN ID COLON Type RPAREN                   { (Param (Identifier $2, Some $4)) }
+Parameter:
+  | ID                                                    { (Param (Identifier $1, None)) }
+  | LPAREN ID COLON Type RPAREN                           { (Param (Identifier $2, Some $4)) }
 
 // Records: { a = 1, b = ... }
 
-record:   LBRACE expr WITH initList RBRACE                 { RecordWith ($2, $4) }
-        | LBRACE initList RBRACE                           { Record $2 }
+Record:
+  | LBRACE Expr WITH InitList RBRACE                      { RecordWith ($2, $4) }
+  | LBRACE InitList RBRACE                                { Record $2 }
 
-initList: ID ASSIGN expr moreInits                         { ($1, $3)::$4 }
+InitList: ID ASSIGN Expr MoreInits                        { ($1, $3)::$4 }
 
-moreInits:                                                 { [] }
-           | COMMA ID ASSIGN expr moreInits                { ($2, $4)::$5 }
+MoreInits:
+  |                                                       { [] }
+  | COMMA ID ASSIGN Expr MoreInits                        { ($2, $4)::$5 }
 
 
 // Zero or more, comma-separated expressions
-args:                                                      { [] }
-      | expr more_args                                     { $1::$2 }
+Args:
+  |                                                       { [] }
+  | Expr MoreArgs                                         { $1::$2 }
 
-more_args:                                                 { [] }
-           | COMMA expr more_args                          { $2::$3 }
+MoreArgs:
+  |                                                       { [] }
+  | COMMA Expr MoreArgs                                   { $2::$3 }
 
-timeUnit:   SEC                                            { Sec }
-          | MIN                                            { Min }
+TimeUnit:
+  | SEC                                                   { Sec }
+  | MIN                                                   { Min }

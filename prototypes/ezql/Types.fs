@@ -99,6 +99,7 @@ and value =
     | VClosure of context * expr * string option // The name used by the closure to refer to itself (doesn't belong to the context)
     | VRef of value
     | VNull
+    | VVariant of string * value list
     | VClosureSpecial of string * expr * NetworkBuilder * Map<string, Operator> ref * string option
     
     member self.Clone() =
@@ -124,6 +125,7 @@ and value =
                   sprintf "{ %O }" s
               | VClosure _ -> "..lambda.."
               | VRef value -> sprintf "@%O" value
+              | VVariant (label, metadata) -> sprintf "%s (%s)" label (List.fold (fun acc x -> acc + x.ToString() + " ") "" metadata)
               | VNull -> "VNull"
       s
 

@@ -18,6 +18,7 @@ let rec visit expr visitor =
   | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
   | Let (Identifier name, optType, binder, body) -> Let (Identifier name, optType, visitor binder, visitor body)
   | If (cond, thn, els) -> If (visitor cond, visitor thn, visitor els)
+  | Match (expr, cases) -> Match (visitor expr, List.map (fun (MatchCase (label, meta, body)) -> MatchCase (label, meta, visitor body)) cases)
   | Seq (expr1, expr2) -> Seq (visitor expr1, visitor expr2)
   | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)
   | RecordWith (source, newFields) -> RecordWith (visitor source, List.map (fun (n, e) -> (n, visitor e)) newFields)
@@ -46,9 +47,10 @@ let rec lookupExpr var (varExprs:ExprsContext) =
   | other -> other
 
 let rec delayWindows (varExprs:ExprsContext) (types:TypeContext) = function
-  | Def (Identifier name, expr) ->
+  | DefVariant _ as expr -> varExprs, expr
+  | Def (Identifier name, expr, None) ->
       let expr' = delayWindowsExpr varExprs types expr
-      varExprs.Add(name, expr'), Def (Identifier name, expr')
+      varExprs.Add(name, expr'), Def (Identifier name, expr', None)
   | Expr expr -> varExprs, Expr (delayWindowsExpr varExprs types expr)
   | Entity (name, ((source, uniqueId), assocs, attributes)) as expr ->
       varExprs, Entity (name, ((delayWindowsExpr varExprs types source, uniqueId), assocs, attributes))
@@ -133,7 +135,8 @@ and delayWindowsExpr varExprs types expr =
  * "entities" collects the names of declared entities.
  *)
 let rec transEntities (entities:Set<string>) (types:TypeContext) = function
-  | Def (Identifier name, expr) -> entities, Def (Identifier name, transDictAll entities expr)
+  | DefVariant _ as expr -> entities, expr
+  | Def (Identifier name, expr, None) -> entities, Def (Identifier name, transDictAll entities expr, None)
   | Expr expr -> entities, Expr (transDictAll entities expr)
   | Entity (Identifier name, ((source, uniqueId), assocs, members)) as expr ->
       let streamFields = match typeOf types source with
@@ -162,7 +165,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                          acc.Add(entity, selectRef))
                                    streamFields assocs
       // Translate additional member declarations.                                      
-      let allFields = List.fold (fun acc (Member (self, Identifier name, expr)) ->
+      let allFields = List.fold (fun acc (Member (self, Identifier name, expr, listeners)) ->
                                    let expr' = transDictAll entities expr
                                    let expr'' = transSelf acc expr' self
                                    acc.Add(name, expr''))
@@ -171,7 +174,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
       let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
                                    [SymbolExpr uniqueId; Lambda ([Param (Identifier "g", None)], record)])
-      let assign = Def (Identifier (entityDict name), groupByExpr)                 
+      let assign = Def (Identifier (entityDict name), groupByExpr, None)                 
       entities.Add(name), assign
   | _ -> failwithf "Won't happen because function translations happen first."
 
@@ -186,6 +189,8 @@ and transDictAll entities expr =
 and transSelf (fieldExprs:Map<string, expr>) expr self =
   let rec replacer expr = match expr with
                           | MemberAccess (Id self', Identifier field) when self = self' -> fieldExprs.[field]
+                          | Let (self', _, _, _) when self = self' -> expr
+                          | Lambda (args, _) when List.exists (fun (Param (self', _)) -> self = self') args -> expr
                           | _ -> visit expr replacer
 
   replacer expr                            
@@ -204,9 +209,10 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
                           | _ -> visit expr replacer
 
   match stmt with
-  | Def (Identifier name, expr) ->
+  | DefVariant _ as expr ->varExprs, expr
+  | Def (Identifier name, expr, None) ->
       let expr' = replacer expr
-      varExprs.Add(name, expr'), Def (Identifier name, expr')
+      varExprs.Add(name, expr'), Def (Identifier name, expr', None)
   | Expr expr -> varExprs, Expr (replacer expr)
   | _ -> failwithf "Won't happen because entity and function translations happens first."
 
@@ -214,36 +220,86 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
 (* Replaces Function definitions with equivalent let expressions *)     
 let rec transFunctions (types:TypeContext) stmt =
   match stmt with
+  | DefVariant (Identifier name, variants) ->
+      let functions = List.fold (fun acc (vname, meta) ->
+                                   let parameters = [Param (Identifier "$1", Some meta)]
+                                   let body = FuncCall (Id (Identifier "$makeEnum"), [Id vname; Id (Identifier "$1")])
+                                   acc @ [Function (vname, parameters, types.[name], body)]) [] variants
+      List.collect (transFunctions types) functions
   | Function (Identifier name, parameters, retType, body) ->
       let fnType = types.[name]
-      Def (Identifier name, Let (Identifier name, Some fnType, Lambda (parameters, body), Id (Identifier name)))
+      [Def (Identifier name, Let (Identifier name, Some fnType, Lambda (parameters, body), Id (Identifier name)), None)]
+  | _ -> [stmt]
+
+(* Translate listeners into calls to listenN *)
+let rec transListeners types stmt =
+  let rec replacer self field expr =
+    match expr with
+    | MemberAccess (Id self', Identifier field') when field = field' && self' = self -> Id (Identifier field)
+    | Let (self', _, _, _) when self = self' -> expr
+    | Lambda (args, _) when List.exists (fun (Param (self', _)) -> self = self') args -> expr
+    | _ -> visit expr (replacer self field)
+
+  let transListener def defType replaceInBody (Listener (Identifier ev, stream, optGuard, body)) =
+    let body' = replaceInBody def body
+    let body'' = match optGuard with
+                 | None -> body'
+                 | Some expr -> If (expr, body', Id (Identifier def))
+    FuncCall(Id (Identifier "when"),
+      [stream; Lambda ([Param (Identifier ev, None)],
+                 Lambda ([Param (Identifier def, Some defType)], body''))])
+  
+  match stmt with
+  | Def (Identifier name, expr, Some listeners) ->
+      let defType = typeOf types expr
+      let whens = List.map (transListener name defType (fun _ -> id)) listeners
+      let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
+      Def (Identifier name, expr', None)
+  | Entity (name, (createFrom, assocs, members)) ->
+      let members' =
+        List.fold (fun members (Member (self, Identifier name, expr, listenersOpt) as memb) ->
+                     match listenersOpt with
+                     | None -> members @ [memb]
+                     | Some listeners ->
+                         let memberType = typeOf types expr
+                         let whens = List.map (transListener name memberType (replacer self)) listeners
+                         let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
+                         members @ [Member (self, Identifier name, expr', None)])
+                  [] members
+      Entity (name, (createFrom, assocs, members'))
   | _ -> stmt
 
 let rewrite types ast =
   let stmts1 =
     List.fold (fun stmts stmt ->
                  let stmt' = transFunctions types stmt
-                 stmts @ [stmt'])
+                 stmts @ stmt')
               [] ast
+              
+  let stmts2 =
+    List.fold (fun stmts stmt ->
+                 let stmt' = transListeners types stmt
+                 stmts @ [stmt'])
+              [] stmts1              
 
-  let _, stmts2 =
+  let _, stmts3 =
     List.fold (fun (varExprs, stmts) stmt ->
                  let varExprs', stmt' = delayWindows varExprs types stmt
                  varExprs', stmts @ [stmt'])
-              (Map.empty, []) stmts1
+              (Map.empty, []) stmts2
                         
-  let _, stmts3 =
+  let _, stmts4 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transEntities entities types stmt
                  entities, stmts @ [stmt'])
-              (Set.empty, []) stmts2
+              (Set.empty, []) stmts3
 
-  let _, stmts4 =
+  let _, stmts5 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transRecordWith entities stmt
                  entities, stmts @ [stmt'])
-              (Map.empty, []) stmts3
+              (Map.empty, []) stmts4
                    
-  stmts4
+  stmts5
   
       

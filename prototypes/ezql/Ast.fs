@@ -1,6 +1,7 @@
 type prog =
   | Expr of expr
-  | Def of id * expr
+  | DefVariant of id * (id * Type) list
+  | Def of id * expr * option<listener list>
   | Entity of id * (createFrom * association list * attribute list)
   | Function of id * param list * Type * expr
 
@@ -12,6 +13,7 @@ and expr =
   | MemberAccess of expr * id
   | Lambda of param list * expr
   | If of expr * expr * expr
+  | Match of expr * matchCase list
   | ArrayIndex of expr * expr
   | Seq of expr * expr
   | Record of (string * expr) list
@@ -64,13 +66,17 @@ and id = Identifier of string
 
 and param = Param of id * Type option
 
+and matchCase = MatchCase of id * id option * expr
+
 and symbol = Symbol of string
 
 and createFrom = expr * symbol
 and association =
   | BelongsTo of symbol
   | HasMany of symbol
-and attribute = Member of id * id * expr  
+and attribute = Member of id * id * expr * option<listener list>
+
+and listener = Listener of id * expr * expr option * expr
 
 and Type =
   | TyUnit
@@ -86,6 +92,7 @@ and Type =
   | TyWindow of Type * WindowType
   | TyDict of Type
   | TyRef of Type
+  | TyVariant of id * (id * Type) list
   | TyUnknown of Type
   
   override self.ToString() =
@@ -103,6 +110,7 @@ and Type =
     | TyWindow _ -> "window"
     | TyDict _ -> "dict"
     | TyRef t -> sprintf "ref<%O>" t
+    | TyVariant (Identifier id, _) -> id
     | TyUnknown t -> sprintf "unk<%O>" t
     
   member self.IsUnknown () =

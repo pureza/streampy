@@ -122,7 +122,8 @@ let createNode uid typ parents makeOp graph =
 exception IncompleteRecord of (NodeInfo Set * DataflowGraph * expr) * string Set
 
 let rec dataflow (env:NodeContext, types:TypeContext, (graph:DataflowGraph), roots) = function
-  | Def (Identifier name, exp) ->
+  | DefVariant _ -> env, types, graph, roots
+  | Def (Identifier name, exp, None) ->
       let deps, g1, expr' = dataflowE env types graph exp
       let roots' = name::roots
       let n, g2 = makeFinalNode env types g1 expr' deps name
@@ -230,7 +231,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       let depsBinder, g1, binder' = dataflowE env types graph binder
       // We must create a final node for the binder in order to extend the
       // environment with it, to dataflow the body.
-      let binderNode, g2 = makeFinalNode env types g1 binder' depsBinder name                                                      // XXX
+      let binderNode, g2 = makeFinalNode env types g1 binder' depsBinder name
       let env' = env.Add(name, binderNode).Add(binderNode.Uid, binderNode)
       let types' = types.Add(name, binderNode.Type).Add(binderNode.Uid, binderNode.Type)
       let depsBody, g3, body' = dataflowE env' types' g2 body
@@ -240,6 +241,19 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       let deps2, g2, thn' = dataflowE env types g1 thn
       let deps3, g3, els' = dataflowE env types g2 els
       Set.union (Set.union deps1 deps2) deps3, g3, If (cond', thn', els')
+  | Match (expr, cases) ->
+      let depsExpr, g1, expr' = dataflowE env types graph expr
+      let depsCases, g2, cases' =
+        List.fold (fun (deps, graph, cases) (MatchCase (Identifier label, meta, body)) ->
+                     let env', types' = match meta with
+                                        | Some (Identifier name) ->
+                                            let node = NodeInfo.AsUnknown(name, TyUnknown (metaTypeForLabel types label))
+                                            env.Add(name, node), types.Add(name, node.Type)
+                                        | _ -> env, types
+                     let depsCase, g1, body' = dataflowE env' types' graph body
+                     Set.union depsCase deps, g1, cases @ [MatchCase (Identifier label, meta, body')])
+                  (Set.empty, g1, []) cases
+      Set.union depsExpr depsCases, g2, Match (expr', cases')
   | BinaryExpr (oper, expr1, expr2) as expr ->
       let deps1, g1, expr1' = dataflowE env types graph expr1
       let deps2, g2, expr2' = dataflowE env types g1 expr2
@@ -314,6 +328,11 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
              | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
              | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
              | _ -> failwithf "Unkown method: %s" methName
+  | TyVariant _ -> match methName with
+                   | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+                                                         [target] (makeToStream) graph
+                                  Set.singleton n, g', Id (Identifier n.Uid)
+                   | _ -> failwithf "Unkown method: %s" methName
   | TyRecord _ -> match methName with
                   | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
                                                         [target] (makeToStream) graph
@@ -331,6 +350,7 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
     let deps1, g1, fnExpr' =
       match func with
       | Id (Identifier "print") -> Set.empty, graph, func
+      | Id (Identifier "$makeEnum") -> Set.empty, graph, func
       | _ -> dataflowE env types graph func
     let deps2, g2, paramExps' = List.fold (fun (depsAcc, g, exprs) expr ->
                                              let deps, g', expr' = dataflowE env types g expr
@@ -386,17 +406,20 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
   | Id (Identifier "listenN") ->
       match paramExps with
       | initial::listeners ->
-          let parents, g' =
+          let depsInitial, g1, initial' = dataflowE env types graph initial
+          let initialNode, g2 = makeFinalNode env types g1 initial' depsInitial "listenN-initial"
+          let parents, g3 =
             List.fold (fun (parents, graph) listener ->
                          let deps, g', _ = dataflowE env types graph listener
                          assert (Set.count deps = 1)
                          parents @ [deps.MinimumElement], g')
-                      ([], graph) listeners
-          let node, g'' = createNode (nextSymbol "listenN") (typeOf types initial) parents
-                                     (makeListenN initial) g'
-          Set.singleton node, g'', Id (Identifier node.Uid)
+                      ([], g2) listeners
+          let node, g4 = createNode (nextSymbol "listenN") initialNode.Type (initialNode::parents)
+                                    makeListenN g3
+          Set.singleton node, g4, Id (Identifier node.Uid)
       | [] -> failwithf "No listeners to listenN"
   | Id (Identifier "print") -> dataflowByEval ()
+  | Id (Identifier "$makeEnum") -> dataflowByEval ()
   | _ when not (isContinuous types expr) -> dataflowByEval ()
   | _ -> // Dataflow the function expression itself
          let funDeps, g1, func' = dataflowE env types graph func

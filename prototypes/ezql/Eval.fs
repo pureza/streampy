@@ -10,6 +10,11 @@ let rec eval (env:Map<string, value>) = function
       let v = eval env paramExps.Head
       printfn "%O" v
       v
+  | FuncCall (Id (Identifier "$makeEnum"), paramExps) ->
+      let label, paramValues = paramExps.[0], List.map (eval env) paramExps.Tail
+      match label with
+      | Id (Identifier label') -> VVariant (label', paramValues)
+      | _ -> failwithf "Label is not a string."
   | FuncCall (expr, paramExps) ->
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps
@@ -42,7 +47,18 @@ let rec eval (env:Map<string, value>) = function
       match eval env cond with
       | VBool true -> eval env thn
       | VBool false -> eval env els
-      | x -> failwithf "The if condition is not a boolean: %A" x 
+      | x -> failwithf "The if condition is not a boolean: %A" x
+   | Match (expr, cases) ->
+       match eval env expr with
+       | VVariant (label, meta) ->
+           let case = List.tryFind (fun (MatchCase (Identifier label', _, _)) -> label = label') cases
+           let metaVar, body = match case with
+                               | Some (MatchCase (_, metaVar, body)) -> metaVar, body
+                               | None -> failwithf "Can't happen"
+           match metaVar with
+           | Some (Identifier metaVar') -> eval (env.Add(metaVar', meta.[0])) body
+           | None -> eval env body
+       | _ -> failwithf "Not a variant!"
   | BinaryExpr (oper, expr1, expr2) ->
     let value1 = eval env expr1
     let value2 = eval env expr2

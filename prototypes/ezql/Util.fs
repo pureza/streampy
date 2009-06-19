@@ -38,7 +38,15 @@ let eventTimestamp ev =
   | VRecord fields when Map.contains timestamp fields -> !fields.[timestamp]
   | _ -> failwithf "Event is not a record or doesn't contain the timestamp field: %A" ev
 
-
+(*
+let isVariantInit types name =
+  let variantType = typeOf types name
+  if Map.contains types variantType
+    then match types.[variantType] with
+         | TyVariant (_, variants) when List.assoc name variant -> true
+         | _ -> false
+    else false
+*)
 let retry fn rescue =
     try
       fn ()

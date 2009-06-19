@@ -3,16 +3,48 @@ entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
+enum State =
+  | A of int
+  | B of int;;
+
+/*
+entity Room =
+  createFrom(temp_readings, :room_id)
+
+
+  member self.foo = A(0)
+                  when | ev in temp_readings if ev.temperature > 30 -> B(ev.temperature + lastTemp + self.room_id);;
+   //                    | ev in entries -> A(0);;
+
+
+*/
+
+/*
+
+lastTemp = temp_readings.last(:temperature);;
+
 a = listenN (0, when (temp_readings, fun ev -> fun (v:int) -> ev.temperature + v + lastTemp),
                 when (entries, fun ev -> fun (v:int) -> 0));;
 
-/*
- a = 0
-  | when (tempReadings, fun ev -> ev.temperature + a
-  | when (entries, fun ev -> 0)
- */
+
+
+
+
+*/
+
+
+a = A(3)
+  when | ev in temp_readings -> match a with
+                                  | A(v) -> A(v + 1)
+                                  | B(v) -> A(ev.temperature)
+                                end
+       | ev in entries -> B(0);;
 
 when (a.updated(), fun ev -> print (a));;
+
+
+//when (temp_readings, fun ev -> print (Room.all));;
+
 
 #! temp_readings
 Timestamp, room_id, temperature

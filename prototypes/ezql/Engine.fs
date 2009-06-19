@@ -14,7 +14,7 @@ let parse code =
     // let lexbuf = Lexing.from_text_reader Encoding.ASCII file
     let lexbuf = Lexing.from_string code
     try
-        Parser.toplevel Lexer.token lexbuf
+        Parser.TopLevel Lexer.token lexbuf
     with e ->
         let pos = lexbuf.EndPos
         failwithf "Error near line %d, character %d\n" (pos.Line + 1) pos.Column

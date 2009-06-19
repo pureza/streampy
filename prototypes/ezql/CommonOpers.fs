@@ -312,18 +312,27 @@ let makeFuncCall (uid, prio, parents, context) =
         Contents = resultOp.Contents;
         AllChanges = resultOp.AllChanges }
 
-let makeListenN initial (uid, prio, parents, context) =
+(*
+ * The first parent is the evaluator for the initial expression,
+ * the others are the whens.
+ *)
+let makeListenN (uid, prio, (parents:Operator list), context) =
+ 
   let operEval = fun ((op:Operator), inputs) ->
-                   let parentIdx = List.findIndex (fun input -> input <> []) inputs
-                   let closure = 
-                     match op.Parents.[parentIdx].Value with
-                     | VClosureSpecial _ as special ->
-                         convertClosureSpecial special
-                     | VClosure _ as closure -> closure
-                     | _ -> failwithf "Listener didn't return a closure!!!"
-                   let env = Map.of_list ["$curr", op.Value]
-                   let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
-                   setValueAndGetChanges op result
+                   match inputs with
+                   | [Added v]::rest when op.Value = VNull -> setValueAndGetChanges op v // Initializing
+                   | []::listenerInputs ->
+                       let parentIdx = List.findIndex (fun input -> input <> []) listenerInputs
+                       let closure = 
+                         match op.Parents.[parentIdx + 1].Value with
+                         | VClosureSpecial _ as special ->
+                             convertClosureSpecial special
+                         | VClosure _ as closure -> closure
+                         | _ -> failwithf "Listener didn't return a closure!!!"
+                       let env = Map.of_list ["$curr", op.Value]
+                       let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
+                       setValueAndGetChanges op result
+                   | _ -> failwithf "Can't happen"
 
-  Operator.Build(uid, prio, operEval, parents, context, contents = eval Map.empty initial)
+  Operator.Build(uid, prio, operEval, parents, context)
  

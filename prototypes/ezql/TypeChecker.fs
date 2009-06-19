@@ -17,8 +17,16 @@ let matchingEntity fields types =
               types
 
 let rec types (env:TypeContext) = function
-  | Def (Identifier name, expr) ->
+  | DefVariant (Identifier name, variants) ->
+      let variantType = TyVariant (Identifier name, variants)
+      let env' = env.Add(name, variantType)
+      let env'' = List.fold (fun (env:TypeContext) (Identifier variant, meta) -> env.Add(variant, TyArrow (meta, variantType))) env' variants
+      env''
+  | Def (Identifier name, expr, listenersOpt) ->
       let typ = typeOf env expr
+      match listenersOpt with
+      | Some listeners -> checkListeners env name typ listeners
+      | _ -> ()
       env.Add(name, typ)
   | Expr expr -> typeOf env expr |> ignore
                  env
@@ -48,14 +56,39 @@ let rec types (env:TypeContext) = function
                              acc.Add(entity, TyDict (TyRef (TyEntity entityName))))
                       (fields) assocs
                                   
-          let members2 = List.fold (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr)) ->
+          let members2 = List.fold (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr, listenersOpt)) ->
                                       let selfType = TyRecord acc
-                                      Map.add name (typeOf (env.Add(self, selfType)) expr) acc)
+                                      let env' = env.Add(self, selfType)
+                                      let fieldType = typeOf env' expr
+                                      
+                                      match listenersOpt with
+                                      | Some listeners ->
+                                          let selfType' = TyRecord (acc.Add(name, fieldType))
+                                          let env' = env.Add(self, selfType')
+                                          checkListeners env' name fieldType listeners
+                                      | None -> ()
+                                      Map.add name fieldType acc)
                                    members1 members
                                    
           let entityType = TyType (members2, uniqueId)
           env.Add(name, entityType).Add(sprintf "$%s_all" name, TyDict (TyEntity name))
       | _ -> failwithf "The source of the entity '%s' is not a stream" name
+
+
+and checkListeners env def defType listeners =
+  for listener in listeners do
+    match listener with
+    | Listener (Identifier ev, stream, optGuard, body) ->
+        let evType = match typeOf env stream with
+                     | TyStream evType -> evType
+                     | _ -> failwithf "Not a stream!"
+        let env' = env.Add(ev, evType).Add(def, defType)
+        match optGuard with
+        | None -> ()
+        | Some expr when typeOf env' expr = TyBool -> ()
+        | _ -> failwithf "The guard doesn't return bool!"
+        if typeOf env' body <> defType then failwithf "The body of the listener doesn't return %A" defType
+
 
 and typeOf env expr =
   match expr with
@@ -119,6 +152,19 @@ and typeOf env expr =
       if tyCond <> TyBool then failwith "If: The condition doesn't return bool!"
       if tyThn <> tyEls then failwith "If: Then and else have different return types."
       tyThn
+  | Match (expr, cases) ->
+      let typeOfCase (MatchCase (Identifier label, meta, body)) =
+        match meta with
+        | Some (Identifier meta') ->
+            let metaType = metaTypeForLabel env label
+            typeOf (env.Add(meta', metaType)) body
+        | None -> typeOf env body
+
+      let exprType = typeOf env expr
+      let resultType = typeOfCase cases.[0]
+      if List.forall (fun case -> typeOfCase case = resultType) cases.Tail
+        then resultType
+        else failwithf "Not all cases return the same type."
   | Seq (expr1, expr2) ->
       typeOf env expr1 |> ignore
       typeOf env expr2
@@ -222,6 +268,12 @@ and typeOfMethodCall env target name paramExps =
                      | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | TyVariant _ ->
+      match name with
+      | "updated" -> match paramExps with
+                     | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
+                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
   | _ -> failwithf "The type %A does not have method %A!" targetType name
 
@@ -280,13 +332,20 @@ and typeOfOp = function
   | Times, TyInt, TyInt -> TyInt
   | GreaterThan, TyInt, TyInt -> TyBool
   | GreaterThanOrEqual, TyInt, TyInt -> TyBool
-  | Equal, TyInt, TyInt -> TyBool
-  | NotEqual, TyInt, TyInt -> TyBool
+  | Equal, a, b when a = b -> TyBool
+  | NotEqual, a, b when a = b -> TyBool
   | LessThanOrEqual, TyInt, TyInt -> TyBool
   | LessThan, TyInt, TyInt -> TyBool
   | Plus, _, TyString -> TyString
   | Plus, TyString, _ -> TyString
   | x -> failwithf "typeOfOp: op not implemented %A" x
+
+
+
+and metaTypeForLabel (env:TypeContext) label =
+  match env.[label] with
+  | TyArrow (metaType, _) -> metaType
+  | _ -> failwithf "The given label '%s' is not a variant label." label
 
 
 
@@ -306,6 +365,7 @@ let rec isContinuous (env:TypeContext) expr =
   | Lambda (args, body) -> isContinuous env body
   | Let (Identifier name, optType, binder, body) -> isContinuous env binder && isContinuous env body
   | If (cond, thn, els) -> isContinuous env cond && isContinuous env thn && isContinuous env els
+  | Match (expr, cases) -> isContinuous env expr && List.forall (fun (MatchCase (label, meta, body)) -> isContinuous env body) cases
   | BinaryExpr (oper, expr1, expr2) as expr -> isContinuous env expr1 && isContinuous env expr2
   | Seq (expr1, expr2) -> isContinuous env expr1 && isContinuous env expr2
     | Id (Identifier name) -> if Map.contains name env && (env.[name].IsUnknown()) then false else true
