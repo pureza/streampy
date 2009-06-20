@@ -3,47 +3,53 @@ entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
+
 enum State =
   | A of int
-  | B of int;;
+  | B of { a:int }
+  | C of bool;;
 
-/*
+
+define not(v:bool) : bool =
+  if v then false else true;;
+
+
 entity Room =
   createFrom(temp_readings, :room_id)
 
 
-  member self.foo = A(0)
-                  when | ev in temp_readings if ev.temperature > 30 -> B(ev.temperature + lastTemp + self.room_id);;
-   //                    | ev in entries -> A(0);;
+  member self.foo = A(self.temperature)
+                  when | temp_readings ->
+                           match self.foo with
+                             | A (v) -> B ({ a = self.temperature })
+                             | B (v) -> C (not(v.a > 30))
+                             | C (v) -> A (0)
+                           end;;
 
 
-*/
-
-/*
-
-lastTemp = temp_readings.last(:temperature);;
-
-a = listenN (0, when (temp_readings, fun ev -> fun (v:int) -> ev.temperature + v + lastTemp),
-                when (entries, fun ev -> fun (v:int) -> 0));;
+when (temp_readings, fun ev -> print (Room.all));;
 
 
-
-
-
-*/
-
+define what?() : bool = lastTemp > 30;;
 
 a = A(3)
-  when | ev in temp_readings -> match a with
+  when | if lastTemp > 30 -> C (what?())
+       | ev in temp_readings -> match a with
                                   | A(v) -> A(v + 1)
-                                  | B(v) -> A(ev.temperature)
+                                  | B(v) -> A(ev.temperature + v.a)
                                 end
-       | ev in entries -> B(0);;
-
-when (a.updated(), fun ev -> print (a));;
+       | entries -> B({ a = 0 });;
 
 
-//when (temp_readings, fun ev -> print (Room.all));;
+b = 0
+  when | if lastTemp > 30 -> b + 1
+       | entries if lastTemp < 30 -> b - 1;;
+
+when (a.updated(), fun _ -> print (a));;
+when (b.updated(), fun _ -> print (b));;
+
+
+
 
 
 #! temp_readings

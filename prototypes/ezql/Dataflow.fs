@@ -328,6 +328,11 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
              | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
              | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
              | _ -> failwithf "Unkown method: %s" methName
+  | TyBool -> match methName with      
+              | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+                                                    [target] (makeToStream) graph
+                             Set.singleton n, g', Id (Identifier n.Uid)
+              | _ -> failwithf "Unkown method: %s" methName       
   | TyVariant _ -> match methName with
                    | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                                          [target] (makeToStream) graph

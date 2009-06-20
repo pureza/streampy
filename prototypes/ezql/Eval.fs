@@ -72,6 +72,7 @@ let rec eval (env:Map<string, value>) = function
       | _ -> failwithf "eval: Unknown variable or identifier: %s" name
   | Integer v -> VInt v
   | String v -> VString v
+  | Bool v -> VBool v
   | other -> failwithf "Not implemented: %A" other
 
 and evalOp = function
@@ -81,6 +82,15 @@ and evalOp = function
   | GreaterThan, v1, v2 -> value.GreaterThan(v1, v2)
   | LessThan, v1, v2 -> value.LessThan(v1, v2)
   | Equal, v1, v2 -> value.Equals(v1, v2)
+  | And, v1, v2 -> match v1, v2 with
+                   | VBool true, VBool true -> VBool true
+                   | VBool _, VBool _ -> VBool false
+                   | _ -> failwithf "And was called on a %A and a %A" v1 v2
+  | Or, v1, v2 -> match v1, v2 with
+                   | VBool true, VBool _ -> VBool true
+                   | VBool _, VBool true -> VBool true
+                   | VBool _, VBool _ -> VBool false
+                   | _ -> failwithf "Or was called on a %A and a %A" v1 v2                   
   | _ -> failwith "op not implemented"
 
 

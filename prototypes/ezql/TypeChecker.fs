@@ -78,16 +78,21 @@ let rec types (env:TypeContext) = function
 and checkListeners env def defType listeners =
   for listener in listeners do
     match listener with
-    | Listener (Identifier ev, stream, optGuard, body) ->
-        let evType = match typeOf env stream with
-                     | TyStream evType -> evType
-                     | _ -> failwithf "Not a stream!"
-        let env' = env.Add(ev, evType).Add(def, defType)
-        match optGuard with
+    | Listener (evOpt, streamOpt, guardOpt, body) ->
+        let env' = match evOpt, streamOpt with
+                   | Some (Identifier ev), Some stream ->
+                       let evType = match typeOf env stream with
+                                    | TyStream evType -> evType
+                                    | _ -> failwithf "Not a stream!"
+                       env.Add(ev, evType)
+                   | _, _ -> env
+        
+        let env'' = env'.Add(def, defType)
+        match guardOpt with
         | None -> ()
-        | Some expr when typeOf env' expr = TyBool -> ()
+        | Some expr when typeOf env'' expr = TyBool -> ()
         | _ -> failwithf "The guard doesn't return bool!"
-        if typeOf env' body <> defType then failwithf "The body of the listener doesn't return %A" defType
+        if typeOf env'' body <> defType then failwithf "The body of the listener doesn't return %A" defType
 
 
 and typeOf env expr =
@@ -268,6 +273,12 @@ and typeOfMethodCall env target name paramExps =
                      | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
+  | TyBool ->
+      match name with
+      | "updated" -> match paramExps with
+                     | [] -> TyStream (TyRecord (Map.of_list ["value", TyBool]))
+                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | _ -> failwithf "The type %A does not have method %A!" targetType name  
   | TyVariant _ ->
       match name with
       | "updated" -> match paramExps with
@@ -338,6 +349,8 @@ and typeOfOp = function
   | LessThan, TyInt, TyInt -> TyBool
   | Plus, _, TyString -> TyString
   | Plus, TyString, _ -> TyString
+  | And, TyBool, TyBool -> TyBool
+  | Or, TyBool, TyBool -> TyBool
   | x -> failwithf "typeOfOp: op not implemented %A" x
 
 

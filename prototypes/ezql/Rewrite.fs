@@ -240,11 +240,18 @@ let rec transListeners types stmt =
     | Lambda (args, _) when List.exists (fun (Param (self', _)) -> self = self') args -> expr
     | _ -> visit expr (replacer self field)
 
-  let transListener def defType replaceInBody (Listener (Identifier ev, stream, optGuard, body)) =
+  let transListener def defType replaceInBody (Listener (evOpt, streamOpt, guardOpt, body)) =
     let body' = replaceInBody def body
-    let body'' = match optGuard with
+    let body'' = match guardOpt with
                  | None -> body'
                  | Some expr -> If (expr, body', Id (Identifier def))
+    let ev = match evOpt with
+             | Some (Identifier ev) -> ev
+             | None -> "$ev"
+    let stream = match streamOpt, guardOpt with
+                 | Some stream, _ -> stream
+                 | _, Some guard -> MethodCall (guard, Identifier "updated", [])
+                 | _ , _ -> failwith "Can't happen"
     FuncCall(Id (Identifier "when"),
       [stream; Lambda ([Param (Identifier ev, None)],
                  Lambda ([Param (Identifier def, Some defType)], body''))])
@@ -255,18 +262,19 @@ let rec transListeners types stmt =
       let whens = List.map (transListener name defType (fun _ -> id)) listeners
       let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
       Def (Identifier name, expr', None)
-  | Entity (name, (createFrom, assocs, members)) ->
+  | Entity (Identifier ename, (createFrom, assocs, members)) ->
       let members' =
-        List.fold (fun members (Member (self, Identifier name, expr, listenersOpt) as memb) ->
+        List.fold (fun members (Member (Identifier self, Identifier name, expr, listenersOpt) as memb) ->
                      match listenersOpt with
                      | None -> members @ [memb]
                      | Some listeners ->
-                         let memberType = typeOf types expr
-                         let whens = List.map (transListener name memberType (replacer self)) listeners
+                         let types' = types.Add(self, TyEntity ename)
+                         let memberType = typeOf types' expr
+                         let whens = List.map (transListener name memberType (replacer (Identifier self))) listeners
                          let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
-                         members @ [Member (self, Identifier name, expr', None)])
+                         members @ [Member (Identifier self, Identifier name, expr', None)])
                   [] members
-      Entity (name, (createFrom, assocs, members'))
+      Entity (Identifier ename, (createFrom, assocs, members'))
   | _ -> stmt
 
 let rewrite types ast =

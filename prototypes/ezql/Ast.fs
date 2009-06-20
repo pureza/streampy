@@ -34,6 +34,7 @@ and expr =
     | MemberAccess _ -> "MemberAccess"
     | Lambda _ -> "Lambda"
     | If _ -> "if"
+    | Match _ -> "match"
     | ArrayIndex _ -> "ArrayIndex"
     | Seq (expr1, expr2) -> sprintf "%s; %s" expr1.Name expr2.Name
     | Record _ -> "Record"
@@ -76,7 +77,7 @@ and association =
   | HasMany of symbol
 and attribute = Member of id * id * expr * option<listener list>
 
-and listener = Listener of id * expr * expr option * expr
+and listener = Listener of id option * expr option * expr option * expr
 
 and Type =
   | TyUnit

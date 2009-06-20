@@ -317,11 +317,10 @@ let makeFuncCall (uid, prio, parents, context) =
  * the others are the whens.
  *)
 let makeListenN (uid, prio, (parents:Operator list), context) =
- 
   let operEval = fun ((op:Operator), inputs) ->
                    match inputs with
-                   | [Added v]::rest when op.Value = VNull -> setValueAndGetChanges op v // Initializing
-                   | []::listenerInputs ->
+                   | [Added v]::rest when op.Value = VNull -> printfn "%A" v; setValueAndGetChanges op v // Initializing
+                   | _::listenerInputs ->
                        let parentIdx = List.findIndex (fun input -> input <> []) listenerInputs
                        let closure = 
                          match op.Parents.[parentIdx + 1].Value with
@@ -334,5 +333,5 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                        setValueAndGetChanges op result
                    | _ -> failwithf "Can't happen"
 
-  Operator.Build(uid, prio, operEval, parents, context)
+  Operator.Build(uid, prio, operEval, parents, context, contents = parents.[0].Value)
  
