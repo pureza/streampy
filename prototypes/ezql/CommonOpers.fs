@@ -319,7 +319,7 @@ let makeFuncCall (uid, prio, parents, context) =
 let makeListenN (uid, prio, (parents:Operator list), context) =
   let operEval = fun ((op:Operator), inputs) ->
                    match inputs with
-                   | [Added v]::rest when op.Value = VNull -> printfn "%A" v; setValueAndGetChanges op v // Initializing
+                   | [Added v]::rest when op.Value = VNull -> setValueAndGetChanges op v // Initializing
                    | _::listenerInputs ->
                        let parentIdx = List.findIndex (fun input -> input <> []) listenerInputs
                        let closure = 

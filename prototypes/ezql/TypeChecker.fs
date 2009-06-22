@@ -12,15 +12,24 @@ and RemainingMap = Map<string, TypeContext -> TypeContext>
 
 let matchingEntity fields types =
   Map.tryPick (fun k v -> match v with
-                          | TyType (fields', _) when fields = fields' -> Some k
+                          | TyType (_, fields', _) when fields = fields' -> Some k
                           | _ -> None)
               types
+
+let rec resolveAlias (env:TypeContext) typ =
+  match typ with
+  | TyAlias typ' -> env.[typ']
+  | TyRecord fields -> TyRecord (Map.map (fun k v -> resolveAlias env v) fields)
+  | TyArrow (inp, out) -> TyArrow (resolveAlias env inp, resolveAlias env out)
+  | _ -> typ
 
 let rec types (env:TypeContext) = function
   | DefVariant (Identifier name, variants) ->
       let variantType = TyVariant (Identifier name, variants)
       let env' = env.Add(name, variantType)
-      let env'' = List.fold (fun (env:TypeContext) (Identifier variant, meta) -> env.Add(variant, TyArrow (meta, variantType))) env' variants
+      let env'' = List.fold (fun (env:TypeContext) (Identifier variant, meta) ->
+                               env.Add(variant, TyArrow (resolveAlias env meta, variantType)))
+                            env' variants
       env''
   | Def (Identifier name, expr, listenersOpt) ->
       let typ = typeOf env expr
@@ -31,18 +40,20 @@ let rec types (env:TypeContext) = function
   | Expr expr -> typeOf env expr |> ignore
                  env
   | Function (Identifier name, parameters, retType, body) ->
+      let retType' = resolveAlias env retType
       let env', fnType =
         List.foldBack (fun (Param (Identifier param, typ)) (env:TypeContext, fnType)  ->
                          match typ with
-                         | Some t -> env.Add(param, t), TyArrow (t, fnType)
+                         | Some t -> let t' = resolveAlias env t
+                                     env.Add(param, t'), TyArrow (t', fnType)
                          | _ -> failwithf "You must annotate all function arguments with their type!")
-                      parameters (env, retType)
+                      parameters (env, retType')
       // Add itself
       let env'' = env'.Add(name, fnType)
-      if typeOf env'' body = retType
+      if typeOf env'' body = retType'
         then env.Add(name, fnType)
         else failwithf "The function body doesn't return %A" retType
-  | Entity (Identifier name, ((source, Symbol uniqueId), assocs, members)) ->
+  | Entity (Identifier ename, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with
       | TyStream (TyRecord fields) ->
           let members1 =
@@ -50,12 +61,12 @@ let rec types (env:TypeContext) = function
                          match assoc with
                          | BelongsTo (Symbol entity) ->
                              let entityName = String.capitalize entity
-                             acc.Add(entity, TyRef (TyEntity entityName))
+                             acc.Add(entity, TyRef (TyAlias entityName))
                          | HasMany (Symbol entity) ->
                              let entityName = String.capitalize entity |> String.singular
-                             acc.Add(entity, TyDict (TyRef (TyEntity entityName))))
+                             acc.Add(entity, TyDict (TyRef (TyAlias entityName))))
                       (fields) assocs
-                                  
+
           let members2 = List.fold (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr, listenersOpt)) ->
                                       let selfType = TyRecord acc
                                       let env' = env.Add(self, selfType)
@@ -63,16 +74,16 @@ let rec types (env:TypeContext) = function
                                       
                                       match listenersOpt with
                                       | Some listeners ->
-                                          let selfType' = TyRecord (acc.Add(name, fieldType))
+                                          let selfType' = TyType (ename, (acc.Add(name, fieldType)), uniqueId)
                                           let env' = env.Add(self, selfType')
                                           checkListeners env' name fieldType listeners
                                       | None -> ()
                                       Map.add name fieldType acc)
                                    members1 members
                                    
-          let entityType = TyType (members2, uniqueId)
-          env.Add(name, entityType).Add(sprintf "$%s_all" name, TyDict (TyEntity name))
-      | _ -> failwithf "The source of the entity '%s' is not a stream" name
+          let entityType = TyType (ename, members2, uniqueId)
+          env.Add(ename, entityType).Add(sprintf "$%s_all" ename, TyDict entityType)
+      | _ -> failwithf "The source of the entity '%s' is not a stream" ename
 
 
 and checkListeners env def defType listeners =
@@ -112,16 +123,20 @@ and typeOf env expr =
           match Map.tryFind name fields with
           | Some t -> t
           | None -> failwithf "The record doesn't have field '%s'" name
-      | TyEntity t ->
-          let fields = match env.[t] with
-                       | TyType (fields, _) -> fields
+      | TyAlias t | TyType (t, _, _) ->
+          let fields = match resolveAlias env targetType with
+                       | TyType (_, fields, _) -> fields
                        | _ -> failwithf "The entity is not a TyType?!"
-          match Map.tryFind name fields with
-          | Some t -> t
-          | None -> failwithf "The entity doesn't have field '%s'" name
-      | TyType (fields, _) -> match name with
-                              | "all" -> TyDict (TyRecord fields)
-                              | _ -> failwithf "The type %A does not have field '%s'" targetType name
+          if name = "all"
+            then TyDict targetType
+            else match Map.tryFind name fields with
+                 | Some t -> t
+                 | None -> failwithf "The entity doesn't have field '%s'" name
+                 (*
+      | TyDict (TyType (_, fields, _)) ->
+          match name with
+          | "all" -> TyDict (TyRecord fields)
+          | _ -> failwithf "The type %A does not have field '%s'" targetType name *)
       | _ -> failwithf "The target type %A doesn't have any fields." targetType
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
@@ -130,7 +145,7 @@ and typeOf env expr =
   | Record fields ->
       let fields = Map.of_list [ for (name, expr) in fields -> (name, typeOf env expr) ]
       match matchingEntity fields env with
-      | Some entity -> TyEntity entity
+      | Some entity -> env.[entity]
       | _ -> TyRecord fields
   | RecordWith (source, newFields) ->
       match typeOf env source with
@@ -144,12 +159,12 @@ and typeOf env expr =
       let env', argTypes =
         List.fold (fun (env:TypeContext, argTypes) (Param (Identifier id, typ)) ->
                      match typ with
-                     | Some typ' -> env.Add(id, typ'), argTypes @ [typ']
+                     | Some typ' -> let typ'' = resolveAlias env typ'
+                                    env.Add(id, typ''), argTypes @ [typ'']
                      | None -> failwithf "I have no idea what's the type of argument %A" id)
                   (env, []) args
       let funType = List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes (typeOf env' expr)
       funType
-      //TyLambda (argTypes, typeOf env' expr)
   | If (cond, thn, els) ->
       let tyCond = typeOf env cond
       let tyThn = typeOf env thn
@@ -175,7 +190,9 @@ and typeOf env expr =
       typeOf env expr2
   | Id (Identifier name) ->
       match Map.tryFind name env with
-      | Some t -> t
+      | Some t -> match t with
+                  | TyAlias t' -> typeOf env (Id (Identifier t'))
+                  | _ -> t
       | _ -> raise (UnknownId name)
   | SymbolExpr _ -> TySymbol
   | Integer v -> TyInt
@@ -304,7 +321,10 @@ and typeOfFuncCall env expr =
   | FuncCall (Id (Identifier "print"), [expr]) ->
       typeOf env expr |> ignore
       TyUnit
-  | FuncCall (Id (Identifier "$ref"), [expr]) -> TyRef (typeOf env expr)
+  | FuncCall (Id (Identifier "$ref"), [expr]) ->
+      match typeOf env expr with
+      | TyType (name, _, _) -> TyRef (TyAlias name)
+      | other -> TyRef other
   | FuncCall (Id (Identifier "listenN"), param's) ->
       match param's with
       | initial::(l1::ls) ->

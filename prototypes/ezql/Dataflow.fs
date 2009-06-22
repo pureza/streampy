@@ -163,10 +163,10 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
              let depsIdx, g2, index' = dataflowE env types g1 index
              let deps = Set.union depsTrg depsIdx
              match typeOf types target with
-             | TyDict (TyEntity entity) -> 
+             | TyDict (TyType _ as typ) -> 
                  let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"                                           // XXX
                  let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"                                                 // XXX
-                 let n, g5 = createNode (nextSymbol "[]") (TyEntity entity) [t; i]
+                 let n, g5 = createNode (nextSymbol "[]") typ [t; i]
                                         (makeIndexer (Id (Identifier i.Uid))) g4
                  Set.singleton n, g5, Id (Identifier n.Uid)
              | _ -> deps, g2, ArrayIndex (target', index')
@@ -175,17 +175,14 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       let deps, g1, target' = dataflowE env types graph target
       let expr' = MemberAccess (target', (Identifier name))
       match typeOf types target with
-      | TyRef (TyEntity entityType) ->
+      | TyRef (TyAlias entityType) ->
           // If it's a reference, create a special projector
           let entityDict = env.[entityDict entityType]
           let ref, g2 = makeFinalNode env types g1 target' deps "target->xxx"
           let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)      
-      | TyEntity entity ->
-          let fields = match types.[entity] with
-                       | TyType (fields, _) -> fields
-                       | _ -> failwithf "entity is not a TyType?!"
+      | TyType (_, fields, _) ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
@@ -396,9 +393,7 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
           // Get the type of the referenced object and create a function that
           // will return its unique id
           let refType = match typeOf types expr with
-                        | TyEntity name -> match types.[name] with
-                                           | TyType (fields, id) -> id
-                                           | _ -> failwithf "The type of an entity is not a TyType?!"
+                        | TyType (_, _, id) -> id
                         | _ -> failwithf "Only entities may be referenced"
           let getId = fun entity -> match entity with
                                     | VRecord m -> !m.[VString refType]
@@ -561,7 +556,7 @@ and dataflowClosure env types graph expr (itself:(string * Type) option) =
     let env', types'  =
       List.fold (fun (env:NodeContext, types:TypeContext) (Param (Identifier arg, typ)) ->
                    match typ with
-                   | Some t -> let node = NodeInfo.AsUnknown(arg, t)
+                   | Some t -> let node = NodeInfo.AsUnknown(arg, resolveAlias types t)
                                env.Add(arg, node), types.Add(arg, node.Type)
                    | None -> failwithf "Function arguments must have type annotations.")
                 (env, types) args
@@ -582,10 +577,11 @@ and dataflowClosure env types graph expr (itself:(string * Type) option) =
       List.fold (fun (env:NodeContext, types:TypeContext, graph, args, argUids) (Param (Identifier arg, typ)) ->
                    match typ with
                    | Some t -> let argUid = nextSymbol arg
-                               let node = { Uid = argUid; Type = t; MakeOper = makeInitialOp; Name = arg; ParentUids = [] }
+                               let t' = resolveAlias types t
+                               let node = { Uid = argUid; Type = t'; MakeOper = makeInitialOp; Name = arg; ParentUids = [] }
                                let env' = env.Add(arg, node).Add(argUid, node)
-                               let types' = types.Add(arg, t).Add(argUid, t)
-                               let args' = args @ [Param ((Identifier argUid), typ)]
+                               let types' = types.Add(arg, node.Type).Add(argUid, node.Type)
+                               let args' = args @ [Param ((Identifier argUid), Some t')]
                                env', types', Graph.add ([], argUid, node, []) graph, args', argUids @ [argUid]
                    | None -> failwithf "Function arguments must have type annotations.")
                 (env, types, graph, [], []) args

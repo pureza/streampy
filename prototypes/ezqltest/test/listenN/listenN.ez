@@ -25,7 +25,7 @@ entity Room =
                              | C (v) -> A (0)
                            end;;
 
-
+// This function receives a room
 define isA(r:Room) : bool =
   match r.foo with
     | A(_) -> true
@@ -33,6 +33,7 @@ define isA(r:Room) : bool =
     | C(_) -> false
   end;;
 
+// This function receives a State
 define isA2(foo:State) : bool =
   match foo with
     | A(_) -> true
@@ -40,8 +41,9 @@ define isA2(foo:State) : bool =
     | C(_) -> false
   end;;
 
+roomsInStateA = Room.all.where  (fun r -> isA(r) and isA2(r.foo))
+                        .select (fun r -> r.room_id);;
 
-when (temp_readings, fun ev -> print (Room.all.where(fun r -> isA(r) and isA2(r.foo))));;
 
 
 define what?() : bool = lastTemp > 30;;
@@ -58,9 +60,6 @@ a = A(3)
 b = 0
   when | if lastTemp > 30 -> b + 1
        | entries if lastTemp < 30 -> b - 1;;
-
-//when (a.updated(), fun _ -> print (a));;
-//when (b.updated(), fun _ -> print (b));;
 
 
 

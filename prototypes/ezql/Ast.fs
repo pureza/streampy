@@ -67,7 +67,7 @@ and id = Identifier of string
 
 and param = Param of id * Type option
 
-and matchCase = MatchCase of id * id option * expr
+and matchCase = MatchCase of id * id option * expr // A(v) -> expr or A -> expr
 
 and symbol = Symbol of string
 
@@ -85,9 +85,10 @@ and Type =
   | TyInt
   | TyString
   | TySymbol
-  | TyType of Map<string, Type> * string (* string is the field that gives the unique id *)
+  | TyType of string * Map<string, Type> * string (* name * fields * unique id field *)
   | TyArrow of Type * Type
-  | TyEntity of string
+  //| TyEntity of string
+  | TyAlias of string
   | TyRecord of Map<string, Type>
   | TyStream of Type
   | TyWindow of Type * WindowType
@@ -105,13 +106,14 @@ and Type =
     | TySymbol -> "symbol"
     | TyType _ -> "type"
     | TyArrow (type1, type2) -> sprintf "%O -> %O" type1 type2
-    | TyEntity typ -> sprintf "instanceOf %O" typ
+    //| TyEntity typ -> sprintf "instanceOf %O" typ
+    | TyAlias typ -> sprintf "alias<%s>" typ
     | TyRecord _ -> "record"
     | TyStream _ -> "stream"
     | TyWindow _ -> "window"
     | TyDict _ -> "dict"
     | TyRef t -> sprintf "ref<%O>" t
-    | TyVariant (Identifier id, _) -> id
+    | TyVariant (Identifier id, cases) -> sprintf "%s<%s>" id (List.fold (fun acc (Identifier name, _) -> acc + "|" + name) "" cases)
     | TyUnknown t -> sprintf "unk<%O>" t
     
   member self.IsUnknown () =
@@ -149,6 +151,15 @@ let freeVars expr =
         let boundVars' = Set.add name boundVars
         Set.union freeBinder (freeVars' boundVars' body)
     | If (cond, thn, els) -> Set.union (freeVars' boundVars cond) (Set.union (freeVars' boundVars thn) (freeVars' boundVars els))
+    | Match (expr, cases) ->
+        let freeExpr = freeVars' boundVars expr
+        List.fold (fun acc (MatchCase (_, metaOpt, body)) ->
+                     let freeCase =
+                       match metaOpt with
+                       | Some (Identifier meta) -> freeVars' (boundVars.Add(meta)) body
+                       | None -> freeVars' boundVars body
+                     Set.union acc freeCase)
+                  freeExpr cases
     | BinaryExpr (oper, expr1, expr2) as expr -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
     | Seq (expr1, expr2) -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
     | Id (Identifier name) -> if Set.contains name boundVars then Set.empty else Set.singleton name

@@ -268,7 +268,7 @@ let rec transListeners types stmt =
                      match listenersOpt with
                      | None -> members @ [memb]
                      | Some listeners ->
-                         let types' = types.Add(self, TyEntity ename)
+                         let types' = types.Add(self, types.[ename])
                          let memberType = typeOf types' expr
                          let whens = List.map (transListener name memberType (replacer (Identifier self))) listeners
                          let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
