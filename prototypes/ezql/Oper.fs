@@ -7,7 +7,6 @@ open Extensions
 open Ast
 open Util
 open Types
-open Eval
 
 exception SpreadException of Operator * EvalStack * Exception
 

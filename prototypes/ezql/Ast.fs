@@ -87,7 +87,6 @@ and Type =
   | TySymbol
   | TyType of string * Map<string, Type> * string (* name * fields * unique id field *)
   | TyArrow of Type * Type
-  //| TyEntity of string
   | TyAlias of string
   | TyRecord of Map<string, Type>
   | TyStream of Type
@@ -106,7 +105,6 @@ and Type =
     | TySymbol -> "symbol"
     | TyType _ -> "type"
     | TyArrow (type1, type2) -> sprintf "%O -> %O" type1 type2
-    //| TyEntity typ -> sprintf "instanceOf %O" typ
     | TyAlias typ -> sprintf "alias<%s>" typ
     | TyRecord _ -> "record"
     | TyStream _ -> "stream"

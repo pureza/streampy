@@ -4,6 +4,7 @@ open Extensions.DateTimeExtensions
 open Ast
 open Types
 open Util
+open Scheduler
 
 let rec eval (env:Map<string, value>) = function
   | FuncCall (Id (Identifier "print"), paramExps) -> // TODO: Put this in some sort of global environment
@@ -15,6 +16,7 @@ let rec eval (env:Map<string, value>) = function
       match label with
       | Id (Identifier label') -> VVariant (label', paramValues)
       | _ -> failwithf "Label is not a string."
+  | FuncCall (Id (Identifier "now"), []) -> VInt (Scheduler.clock()).Now.TotalSeconds
   | FuncCall (expr, paramExps) ->
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps

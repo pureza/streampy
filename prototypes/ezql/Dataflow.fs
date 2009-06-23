@@ -187,11 +187,13 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
           Set.singleton n, g3, Id (Identifier n.Uid) 
-//      | TyRecord fields ->
-//          let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"                                                      // XXX
-//          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
-//                                 (makeProjector name) g2
-//          Set.singleton n, g3, Id (Identifier n.Uid)
+          // FIXME: There is a bug that causes the following case to fail.
+          // This bug probably affects the above case too.
+(*      | TyRecord fields ->
+          let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"                                                      // XXX
+          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
+                                 (makeProjector name) g2
+          Set.singleton n, g3, Id (Identifier n.Uid) *)
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
   | Record fields ->
       let deps, g', exprs, unknown =
@@ -279,6 +281,9 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "last" -> dataflowAggregate env types graph target paramExps makeLast methName expr
       | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
       | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
+      | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
+      | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
+      | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
       | "[]" -> let duration = match paramExps with
                                | [Time (Integer v, unit) as t] -> toSeconds v unit
                                | _ -> failwith "Invalid duration"
@@ -294,11 +299,18 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "last" -> dataflowAggregate env types graph target paramExps makeLast methName expr
       | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
       | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
+      | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
+      | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
+      | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
       | "groupby" -> dataflowGroupby env types graph target paramExps expr
       | _ -> failwithf "Unkown method of type Window: %s" methName
   | TyWindow (_, TimedWindow _) ->
       match methName with
       | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
+      | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
+      | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
+      | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
+      | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
       | _ -> failwithf "Unkown method of type Window: %s" methName
   | TyDict valueType ->
       match methName with
@@ -324,6 +336,9 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                             Set.singleton n, g', Id (Identifier n.Uid)
              | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
              | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
+             | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
+             | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
+             | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
              | _ -> failwithf "Unkown method: %s" methName
   | TyBool -> match methName with      
               | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
@@ -418,6 +433,7 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                                     makeListenN g3
           Set.singleton node, g4, Id (Identifier node.Uid)
       | [] -> failwithf "No listeners to listenN"
+  | Id (Identifier "now") -> Set.empty, graph, expr
   | Id (Identifier "print") -> dataflowByEval ()
   | Id (Identifier "$makeEnum") -> dataflowByEval ()
   | _ when not (isContinuous types expr) -> dataflowByEval ()
@@ -467,7 +483,10 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
     
     // What to do when we find the "true nature" of the forward dependency
     let action env types (graph:DataflowGraph) =
-      let deps, g', _, Some (opResult, subExprBuilder) = dataflowSubExpr env types graph
+      let deps, g', opResult, subExprBuilder =
+        match dataflowSubExpr env types graph with
+        | deps, g', _, Some (opResult, subExprBuilder) -> deps, g', opResult, subExprBuilder
+        | _ -> failwithf "dataflowSubExpr returned unexpected results."
 
       // Modify the node and add it to the graph
       let (p, uid, info, s) = graph.[nodeUid]
@@ -499,7 +518,10 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
       
     extractSubNetwork env' types' g1 (keepTrying arg) [arg] body
      
-  let deps, g1, _, Some (opResult, subExprBuilder) = dataflowSubExpr env types graph
+  let deps, g1, opResult, subExprBuilder =
+    match dataflowSubExpr env types graph with
+    | deps, g1, _, Some (opResult, subExprBuilder) -> deps, g1, opResult, subExprBuilder
+    | _ -> failwithf "dataflowSubExpr returned unexpected results."
 
   // FIXME: Ensure the following is still applicable.
   // If the body itself does not depend on the argument (e.g., t -> some-expression-without-t),

@@ -30,21 +30,27 @@ let makeSimpleWindow (uid, prio, parents, context) =
   
 (* A timed window *)
 let makeWindow duration (uid, prio, parents, context) =
-  let eval = fun (op, inputs) ->
-               match inputs with
-               | [[Added ev] as changes] ->
-                   Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired ev])
-                   Some (op.Children, changes)
-               | _ -> failwith "timed window: Invalid arguments!"
+  let contents = ref []
 
-  Operator.Build(uid, prio, eval, parents, context)
+  let eval = fun (op, inputs) ->
+               let parentChanges = List.hd inputs
+               for change in parentChanges do
+                 match change with
+                 | Added ev -> contents := (!contents) @ [ev]
+                               Scheduler.scheduleOffset duration (List.of_seq [op, 0, id], [Expired ev])
+                 | Expired ev -> assert ((!contents).Head = ev)
+                                 contents := (!contents).Tail
+                 | _ -> failwithf "Invalid changes to window: %A" parentChanges
+               
+               Some (op.Children, parentChanges)
+
+  Operator.Build(uid, prio, eval, parents, context, contents = VWindow contents)
 
 (* Generic operator builder for stream.where(), stream.select() and when() 
    All these operators receive a lambda expression that is to be executed
    when an event arrives. How to handle the result of this evaluation
    is specific to each operator, and is abstracted by the resultHandler
-   function.
- *)
+   function. *)
 let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents, context) : Operator =
     let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
     let eval = fun (op, inputs) ->
@@ -176,7 +182,7 @@ let makeRefProjector field (uid, prio, (parents:Operator list), context) =
  * When the dictionary changes but the index doesn't, it filters the changes to
  * the particular index in the dictionary and returns them.
  * When the index changes, it sets the new value and returns the change as a
-   [Added <new value>].
+ * [Added <new value>].
  *)
 let makeIndexer index (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
@@ -239,8 +245,7 @@ let makeProjector field (uid, prio, parents, context) =
 
   Operator.Build(uid, prio, eval, parents, context)
   
-// Doesn't do anything.
-// TODO: Remove this operator
+
 let makeClosure lambda closureBuilder itself (uid, prio, parents, context) =
   let eval = fun (op:Operator, inputs) ->
                None

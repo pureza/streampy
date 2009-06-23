@@ -15,11 +15,12 @@ open Ast
 %token SEMICOLON2
 %token GT GTE EQ DIFF LTE LT AND OR TRUE FALSE
 %token PIPE ENUM OF MATCH END
-%token SEC MIN
 %token EOF
 %token INT BOOL STRING
 
 %token ENTITY CREATE_FROM BELONGS_TO HAS_MANY MEMBER
+
+%token DUMMY
 
 %nonassoc LET IN
 %right ARROW
@@ -138,7 +139,7 @@ Expr:
   | Record                                                { $1 }
   | ID                                                    { Id (Identifier $1) }
   | Symbol                                                { SymbolExpr $1 }
-  | INTEGER_LITERAL TimeUnit                              { Time (Integer $1, $2) }
+  | Expr TimeUnit %prec DUMMY                             { Time (Integer $1, $2) }
   | INTEGER_LITERAL                                       { Integer $1 }
   | BOOLEAN_LITERAL                                       { Bool $1 }
   | STRING_LITERAL                                        { String $1 }
@@ -231,6 +232,7 @@ MoreArgs:
   |                                                       { [] }
   | COMMA Expr MoreArgs                                   { $2::$3 }
 
-TimeUnit:
-  | SEC                                                   { Sec }
-  | MIN                                                   { Min }
+TimeUnit: ID                                              { match $1 with
+                                                            | "sec" | "secs" -> Sec
+                                                            | "min" | "mins" -> Min
+                                                            | _ -> failwithf "Invalid time with: " $1 }

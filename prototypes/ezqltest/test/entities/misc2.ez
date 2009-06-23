@@ -1,70 +1,13 @@
 temp_readings = stream (:room_id, :temperature);;
 entries = stream(:room_id, :product_id);;
 
-lastTemp = temp_readings.last(:temperature);;
+//sum2secs = temp_readings[2 sec].last(:temperature);;
+//max2secs = temp_readings.max(:temperature);;
 
+min2secs = temp_readings.max(:temperature);;
 
-enum State =
-  | A of int
-  | B of { a:int }
-  | C of bool;;
-
-define not(v:bool) : bool =
-  if v then false else true;;
-
-
-entity Room =
-  createFrom(temp_readings, :room_id)
-
-
-  member self.foo = A(self.temperature)
-                  when | temp_readings ->
-                           match self.foo with
-                             | A (v) -> B ({ a = self.temperature })
-                             | B (v) -> C (not(v.a > 30))
-                             | C (v) -> A (0)
-                           end;;
-
-
-define isA(r:Room) : bool =
-  match r.foo with
-    | A(_) -> true
-    | B(_) -> false
-    | C(_) -> false
-  end;;
-
-define isA2(foo:State) : bool =
-  match foo with
-    | A(_) -> true
-    | B(_) -> false
-    | C(_) -> false
-  end;;
-
-
-when (temp_readings, fun ev -> print (Room.all.where(fun r -> isA(r) and isA2(r.foo))));;
-
-
-define what?() : bool = lastTemp > 30;;
-
-a = A(3)
-  when | if lastTemp > 30 -> C (what?())
-       | ev in temp_readings -> match a with
-                                  | A(v) -> A(v + 1)
-                                  | B(v) -> A(ev.temperature + v.a)
-                                end
-       | entries -> B({ a = 0 });;
-
-
-b = 0
-  when | if lastTemp > 30 -> b + 1
-       | entries if lastTemp < 30 -> b - 1;;
-
-//when (a.updated(), fun _ -> print (a));;
-//when (b.updated(), fun _ -> print (b));;
-
-
-
-
+//when (sum2secs.updated(), fun _ -> print (sum2secs));;
+when (min2secs.updated(), fun _ -> print (now()); print (min2secs));;
 
 #! temp_readings
 Timestamp, room_id, temperature

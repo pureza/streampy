@@ -101,6 +101,7 @@ and value =
     | VNull
     | VVariant of string * value list
     | VClosureSpecial of string * expr * NetworkBuilder * Map<string, Operator> ref * string option
+    | VWindow of ref<value list>
     
     member self.Clone() =
       match self with
@@ -123,9 +124,10 @@ and value =
                     then s.Remove(0, 1) |> ignore
                          s.Remove (s.Length - 2, 2) |> ignore
                   sprintf "{ %O }" s
-              | VClosure _ -> "..lambda.."
+              | VClosure _ | VClosureSpecial _ -> "..lambda.."
               | VRef value -> sprintf "@%O" value
               | VVariant (label, metadata) -> sprintf "%s (%s)" label (List.fold (fun acc x -> acc + x.ToString() + " ") "" metadata)
+              | VWindow values -> sprintf "[%s]" (List.fold (fun acc v -> sprintf "%O " v) "" !values)
               | VNull -> "VNull"
       s
 

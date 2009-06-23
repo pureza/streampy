@@ -206,7 +206,7 @@ and typeOfMethodCall env target name paramExps =
   match targetType with
   | TyStream (TyRecord fields as evType) ->
       match name with
-      | "last" | "sum" | "count" ->
+      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
           match paramExps with
           | [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
@@ -236,7 +236,7 @@ and typeOfMethodCall env target name paramExps =
   // Event Windows
   | TyWindow (TyStream (TyRecord fields as evType), TimedWindow _) ->
       match name with
-      | "last" | "sum" | "count" ->
+      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
           match paramExps with
           | [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
@@ -254,7 +254,7 @@ and typeOfMethodCall env target name paramExps =
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyWindow (TyInt, TimedWindow _) ->
       match name with
-      | "last" | "sum" | "count" ->
+      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
           match paramExps with
           | [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
@@ -337,6 +337,7 @@ and typeOfFuncCall env expr =
                    else failwithf "listenN: The type of the listener is not compatible with the type of the initial value - %A vs %A" initialType listenerType
             else failwithf "Not all the listeners have the same type."
       | _ -> failwithf "Invalid parameters to listenN."
+  | FuncCall (Id (Identifier "now"), []) -> TyInt
   | FuncCall (f, param's) ->
       let rec getReturnType argCount funType =
         match argCount, funType with

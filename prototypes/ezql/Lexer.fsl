@@ -4,9 +4,7 @@ open System.Collections
 open Parser
 open Lexing
 
-let ids = Map.of_list ["min",        MIN
-                       "sec",        SEC
-                       "let",        LET
+let ids = Map.of_list ["let",        LET
                        "in",         IN
                        "with",       WITH
                        "and",        AND
