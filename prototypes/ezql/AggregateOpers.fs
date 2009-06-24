@@ -7,6 +7,10 @@ open Types
 let makeLast getField (uid, prio, parents, context) =
   let eval = fun (op, inputs) -> 
                let added = List.tryPick (fun diff -> match diff with
+                                                     | Added (VWindow contents) ->
+                                                         match contents with
+                                                         | [] -> None
+                                                         | _ -> Some contents.[contents.Length - 1]
                                                      | Added ev -> Some ev
                                                      | _ -> None)
                                         (List.hd inputs)
@@ -63,13 +67,11 @@ let makeMax getField (uid, prio, (parents:Operator list), context) =
                                             match diff with
                                             | Added (VWindow contents as window) -> getWindowMax window // Initialization
                                             | Added v -> let newValue = getField v
-                                                         let nextValue = if current = VNull || value.GreaterThan(newValue, current) = VBool true
-                                                                           then newValue
-                                                                           else current
-                                                         nextValue
+                                                         if current = VNull || value.GreaterThan(newValue, current) = VBool true
+                                                           then newValue
+                                                           else current
                                             | Expired v -> let expiredValue = getField v
-                                                           let nextValue = if expiredValue = current then getWindowMax parents.[0].Value else current
-                                                           nextValue
+                                                           if expiredValue = current then getWindowMax parents.[0].Value else current
                                             | _ -> failwithf "Invalid diff in max: %A" diff)
                                       current (List.hd inputs)
                setValueAndGetChanges op nextValue
@@ -92,13 +94,11 @@ let makeMin getField (uid, prio, (parents:Operator list), context) =
                                             match diff with
                                             | Added (VWindow contents as window) -> getWindowMin window // Initialization
                                             | Added v -> let newValue = getField v
-                                                         let nextValue = if current = VNull || value.LessThan(newValue, current) = VBool true
-                                                                           then newValue
-                                                                           else current
-                                                         nextValue
+                                                         if current = VNull || value.LessThan(newValue, current) = VBool true
+                                                           then newValue
+                                                           else current
                                             | Expired v -> let expiredValue = getField v
-                                                           let nextValue = if expiredValue = current then getWindowMin parents.[0].Value else current
-                                                           nextValue
+                                                           if expiredValue = current then getWindowMin parents.[0].Value else current
                                             | _ -> failwithf "Invalid diff in min: %A" diff)
                                       current (List.hd inputs)
                setValueAndGetChanges op nextValue

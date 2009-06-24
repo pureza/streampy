@@ -191,6 +191,12 @@ let makeRefProjector field (uid, prio, (parents:Operator list), context) =
  * the particular index in the dictionary and returns them.
  * When the index changes, it sets the new value and returns the change as a
  * [Added <new value>].
+ *
+ * This operator is needed (and a simple evaluator can't be used in its place)
+ * because it actually pipes changes through the dictionary to the next operator,
+ * while a simple evaluator would only transmit values, which might not be the
+ * desired behavior (imagine that the value of the dictionary is a stream or a
+ * window...)
  *)
 let makeIndexer index (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->

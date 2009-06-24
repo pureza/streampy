@@ -58,7 +58,9 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
              keyOp.Value <- (!parentDict).[key]
             
              // Convert changes to new keys to the form DictDiff (key, [Added <value>])
-             yield! if created then [DictDiff (key, [Added keyOp.Value])] else [chg]
+             yield! if created && keyOp.Value <> VNull // FIXME: HACK that works then the dictionary value is a stream (whose value is always VNull)
+                      then [DictDiff (key, [Added keyOp.Value])]
+                      else [chg]
          | Added (VDict dict) ->
              assert ((List.length changes) = 1)
              // This may happen during initialization. We to create the
@@ -150,12 +152,15 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                           let groupChanges' =
                             List.mapi (fun i chg ->
                                          match chg with
-                                         | [DictDiff (key, _)] ->
+                                         | [DictDiff (key, keyChanges)] ->
                                              let added = not ((!results).ContainsKey(key))
                                              let value = op.Parents.[i + 1].Value
                                              results := (!results).Add(key, value)
                                              // If the key was just added, return [Added <value>]. Otherwise just return the original change.
-                                             if added then [DictDiff (key, [Added value])] else chg
+                                             // if added then [DictDiff (key, [Added value])] else chg
+                                             // This fails the consistency check, but returns correct results
+                                             // Streams are supposed to fail the check anyway: their value is always VNull!
+                                             chg
                                          | [] -> []
                                          | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
                                       groupChanges
@@ -163,12 +168,14 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                           let allChanges =
                             (List.collect (fun chg ->
                                              match chg with
-                                             | DictDiff (key, _) when not (Map.contains key !results) ->
+                                             | DictDiff (key, keyChanges) when not (Map.contains key !results) ->
                                                  // If this happens, the groupby result must not depend on
                                                  // the group's substream. Hence, it depends only on values
                                                  // in the outer scope. Hence, every subgroup has the same value!
                                                  results := (!results).Add(key, op.Parents.[1].Value)
-                                                 [DictDiff (key, [Added (!results).[key]])]
+                                                 // [DictDiff (key, [Added (!results).[key]])]
+                                                 // This fails the consistency check, but returns correct results
+                                                 [chg]
                                              | _ -> [])
                                         parentChanges) @ (List.concat groupChanges')
                           spreadUnlessEmpty op allChanges

@@ -163,7 +163,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
              let depsIdx, g2, index' = dataflowE env types g1 index
              let deps = Set.union depsTrg depsIdx
              match typeOf types target with
-             | TyDict (TyType _ as typ) -> 
+             | TyDict typ ->
                  let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"                                           // XXX
                  let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"                                                 // XXX
                  let n, g5 = createNode (nextSymbol "[]") typ [t; i]

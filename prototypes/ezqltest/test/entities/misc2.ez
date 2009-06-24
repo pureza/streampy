@@ -1,10 +1,10 @@
 temp_readings = stream (:room_id, :temperature);;
 
-test_init = temp_readings.groupby(:room_id, fun g -> g.last(:temperature)[3 sec]);;
+blah = temp_readings.groupby(:room_id, fun g -> temp_readings[2 sec])
+                    .select (fun r -> r.last(:temperature));;
 
-z = test_init.select (fun r -> r.max());;
 
-when (z.updated(), fun _ -> print (now()); print (z));;
+when (blah.updated(), fun _ -> print (blah));;
 
 
 #! temp_readings
