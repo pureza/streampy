@@ -61,3 +61,13 @@ let test_aggregatesSum (test:Test) =
                        SetKey "3" " 0" (At 10)
                        SetKey "1" " 0" (At 12)])
                        
+    test.AssertThat (In "test_init"
+                      [SetKey "1" "25" (At  2)
+                       SetKey "3" "45" (At  4)
+                       SetKey "2" "50" (At  6)
+                       SetKey "3" "30" (At  7)
+                       SetKey "1" " 0" (At  8)
+                       SetKey "1" "23" (At  9)
+                       SetKey "2" " 0" (At  9)
+                       SetKey "3" " 0" (At 10)
+                       SetKey "1" " 0" (At 12)])

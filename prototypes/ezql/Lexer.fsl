@@ -34,7 +34,7 @@ let tokenize text =
 
 let num        = ['0'-'9']+
 let alpha      = ['a'-'z' 'A'-'Z']
-let identifier = (alpha | ['_']) + (alpha | ['_'] | num)* + ('?')?
+let identifier = alpha + (alpha | ['_'] | num)* + ('?')?
 let integer    = '-'? num
 let boolean    = "true" | "false"
 let whitespace = ' ' | '\t'
@@ -68,6 +68,7 @@ rule token = parse
     | "->"      			{ ARROW }
     | ";"       			{ SEMICOLON }
     | ";;"      			{ SEMICOLON2 }
+    | "_"                   { UNDERSCORE }
     | boolean               { BOOLEAN_LITERAL (Boolean.Parse(lexeme lexbuf)) }
     | identifier			{ tokenize (lexeme lexbuf) }
     | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
@@ -88,12 +89,12 @@ and comment = parse
 and string pos s = parse
     | "\\" ('"' | 'n' | 'r' | 't')
                   { let s' = s + (match Lexing.lexeme lexbuf with
-                          | "\\\"" -> "\""
-                          | "\\n" -> "\n"
-                          | "\\r" -> "\r"
-                          | "\\t" -> "\t"
-                          | "\\\\" -> "\\"
-                          | _ ->      "") in
+                                    | "\\\"" -> "\""
+                                    | "\\n" -> "\n"
+                                    | "\\r" -> "\r"
+                                    | "\\t" -> "\t"
+                                    | "\\\\" -> "\\"
+                                    | _ ->      "") in
                      string pos s' lexbuf }
     | "\""          { s }
     | "\n"          { lexbuf.EndPos <- lexbuf.EndPos.NextLine;

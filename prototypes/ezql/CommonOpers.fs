@@ -41,10 +41,10 @@ let makeWindow duration (uid, prio, parents, context) =
                  | Expired ev -> assert ((!contents).Head = ev)
                                  contents := (!contents).Tail
                  | _ -> failwithf "Invalid changes to window: %A" parentChanges
-               
+               op.Value <- VWindow !contents
                Some (op.Children, parentChanges)
 
-  Operator.Build(uid, prio, eval, parents, context, contents = VWindow contents)
+  Operator.Build(uid, prio, eval, parents, context, contents = VWindow [])
 
 (* Generic operator builder for stream.where(), stream.select() and when() 
    All these operators receive a lambda expression that is to be executed
@@ -87,16 +87,24 @@ let makeWhen = makeEvalOnAdd (fun op inputs ev result ->
 
 (* A timed window for dynamic values *)
 let makeDynValWindow duration (uid, prio, parents, context) =
-  let eval = fun ((op:Operator), inputs) ->
-               match inputs with
-               | [[Added something] as changes] ->
-                   if op.Value <> VNull
-                     then Scheduler.scheduleOffset duration (List.of_seq op.Children, [Expired op.Value])
-                   op.Value <- something
-                   Some (op.Children, changes)
-               | _ -> failwith "timed window: Wrong number of arguments!"
+  let contents = ref []
 
-  Operator.Build(uid, prio, eval, parents, context)
+  let eval = fun (op, inputs) ->
+               let parentChanges = List.hd inputs
+               for change in parentChanges do
+                 match change with
+                 | Added v -> let contents' = !contents
+                              if contents'.Length > 0
+                                then let current = contents'.[contents'.Length - 1]
+                                     Scheduler.scheduleOffset duration (List.of_seq [op, 0, id], [Expired current])
+                              contents := contents' @ [v]
+                 | Expired v -> assert ((!contents).Head = v)
+                                contents := (!contents).Tail
+                 | _ -> failwithf "Invalid changes to window: %A" parentChanges
+               op.Value <- VWindow !contents
+               Some (op.Children, parentChanges)
+
+  Operator.Build(uid, prio, eval, parents, context, contents = VWindow [])
 
 (* Evaluator: this operator evaluates some expression and records its result *)
 let makeEvaluator expr kenv (uid, prio, parents, context) =

@@ -323,6 +323,9 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
             | _ -> failwith "Invalid parameter to dict/select"
           let projType = typeOf (types.Add(arg, valueType)) body
           dataflowDictOps env types graph target paramExps valueType makeInitialOp projType makeDictSelect (nextSymbol methName) expr
+      | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+                                            [target] (makeToStream) graph   
+                     Set.singleton n, g', Id (Identifier n.Uid)       
       | _ -> failwithf "Unkown method: %s" methName
   | TyInt -> match methName with
              | "[]" -> let duration = match paramExps with

@@ -101,7 +101,7 @@ and value =
     | VNull
     | VVariant of string * value list
     | VClosureSpecial of string * expr * NetworkBuilder * Map<string, Operator> ref * string option
-    | VWindow of ref<value list>
+    | VWindow of value list
     
     member self.Clone() =
       match self with
@@ -127,7 +127,7 @@ and value =
               | VClosure _ | VClosureSpecial _ -> "..lambda.."
               | VRef value -> sprintf "@%O" value
               | VVariant (label, metadata) -> sprintf "%s (%s)" label (List.fold (fun acc x -> acc + x.ToString() + " ") "" metadata)
-              | VWindow values -> sprintf "[%s]" (List.fold (fun acc v -> sprintf "%O " v) "" !values)
+              | VWindow values -> sprintf "[%s]" (List.fold (fun acc v -> sprintf "%s %O" acc v) "" values)
               | VNull -> "VNull"
       s
 
@@ -149,6 +149,7 @@ and value =
       | _ -> failwithf "Invalid types in call to +: %A %A" left right
       
     static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
+    static member Div(left, right) = value.IntArithmOp(left, right, (/))
     static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
     static member GreaterThan(left, right) = value.IntCmpOp(left, right, (>))
     static member LessThan(left, right) = value.IntCmpOp(left, right, (<))

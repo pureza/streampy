@@ -24,6 +24,12 @@ sumTempsPerRoom_3secs = temp_readings[3 sec]
 sumTempsPerRoom_3secsb = temp_readings
                            .groupby(:room_id, fun g -> g[3 sec].sum(:temperature));;
 
+// The result of the groupby is a record that contains one field which is
+// a window. When .sum() is first called, that window already contains one event.
+test_init = temp_readings.groupby(:room_id, fun g -> { a = g[3 sec] })
+                         .select (fun r -> r.a.sum(:temperature));;
+
+
 #! temp_readings
 Timestamp, room_id, temperature
 2,               1,      25

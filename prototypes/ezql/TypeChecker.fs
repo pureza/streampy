@@ -276,10 +276,13 @@ and typeOfMethodCall env target name paramExps =
       | "[]" -> match paramExps with
                 | [index] -> valueType
                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "updated" -> match paramExps with
+                     | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
+                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyInt ->
       match name with
-      | "last" | "sum" | "count" ->
+      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
           match paramExps with
           | [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
@@ -362,6 +365,7 @@ and typeOfOp = function
   | Plus, TyInt, TyInt -> TyInt
   | Minus, TyInt, TyInt -> TyInt
   | Times, TyInt, TyInt -> TyInt
+  | Div, TyInt, TyInt -> TyInt
   | GreaterThan, TyInt, TyInt -> TyBool
   | GreaterThanOrEqual, TyInt, TyInt -> TyBool
   | Equal, a, b when a = b -> TyBool

@@ -81,6 +81,7 @@ and evalOp = function
   | Plus, v1, v2 -> value.Add(v1, v2)
   | Minus, v1, v2 -> value.Subtract(v1, v2)
   | Times, v1, v2 -> value.Multiply(v1, v2)
+  | Div, v1, v2 -> value.Div(v1, v2)
   | GreaterThan, v1, v2 -> value.GreaterThan(v1, v2)
   | LessThan, v1, v2 -> value.LessThan(v1, v2)
   | Equal, v1, v2 -> value.Equals(v1, v2)

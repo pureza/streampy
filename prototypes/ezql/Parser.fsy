@@ -12,15 +12,13 @@ open Ast
 %token LET IN WITH IF THEN ELSE FUN DEFINE
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE ASSIGN
 %token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV MOD COMMA
-%token SEMICOLON2
+%token SEMICOLON2 UNDERSCORE
 %token GT GTE EQ DIFF LTE LT AND OR TRUE FALSE
 %token PIPE ENUM OF MATCH END
 %token EOF
 %token INT BOOL STRING
 
 %token ENTITY CREATE_FROM BELONGS_TO HAS_MANY MEMBER
-
-%token DUMMY
 
 %nonassoc LET IN
 %right ARROW
@@ -130,6 +128,7 @@ Expr:
                                                             | _ -> FuncCall ($1, $3) }
   | LPAREN Expr RPAREN                                    { $2 }
   | Expr LBRACKET Expr RBRACKET                           { ArrayIndex ($1, $3) }
+  | Expr LBRACKET Expr TimeUnit RBRACKET                  { ArrayIndex ($1, Time ($3, $4)) }
   | FUN Parameters ARROW Expr                             { Lambda ($2, $4) }
   | Expr SEMICOLON Expr                                   { Seq ($1, $3) }
   | BinaryExpr                                            { $1 }
@@ -139,7 +138,6 @@ Expr:
   | Record                                                { $1 }
   | ID                                                    { Id (Identifier $1) }
   | Symbol                                                { SymbolExpr $1 }
-  | Expr TimeUnit %prec DUMMY                             { Time (Integer $1, $2) }
   | INTEGER_LITERAL                                       { Integer $1 }
   | BOOLEAN_LITERAL                                       { Bool $1 }
   | STRING_LITERAL                                        { String $1 }
@@ -170,6 +168,7 @@ MatchCases:
   | MatchCase                                             { [$1] }
 
 MatchCase:
+  | PIPE ID LPAREN UNDERSCORE RPAREN ARROW Expr           { MatchCase (Identifier $2, Some (Identifier "_"), $7) }
   | PIPE ID LPAREN ID RPAREN ARROW Expr                   { MatchCase (Identifier $2, Some (Identifier $4), $7) }
   | PIPE ID ARROW Expr                                    { MatchCase (Identifier $2, None, $4) }
 
@@ -207,6 +206,7 @@ MoreParams:
   | Parameter MoreParams                                  { $1::$2 }
             
 Parameter:
+  | UNDERSCORE                                            { (Param (Identifier "_", None)) }
   | ID                                                    { (Param (Identifier $1, None)) }
   | LPAREN ID COLON Type RPAREN                           { (Param (Identifier $2, Some $4)) }
 
