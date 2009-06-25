@@ -240,7 +240,7 @@ let rec transListeners types stmt =
     | Lambda (args, _) when List.exists (fun (Param (self', _)) -> self = self') args -> expr
     | _ -> visit expr (replacer self field)
 
-  let transListener def defType replaceInBody (Listener (evOpt, streamOpt, guardOpt, body)) =
+  let transListener def defType replaceInBody (Listener (evOpt, stream, guardOpt, body)) =
     let body' = replaceInBody def body
     let body'' = match guardOpt with
                  | None -> body'
@@ -248,10 +248,6 @@ let rec transListeners types stmt =
     let ev = match evOpt with
              | Some (Identifier ev) -> ev
              | None -> "$ev"
-    let stream = match streamOpt, guardOpt with
-                 | Some stream, _ -> stream
-                 | _, Some guard -> MethodCall (guard, Identifier "updated", [])
-                 | _ , _ -> failwith "Can't happen"
     FuncCall(Id (Identifier "when"),
       [stream; Lambda ([Param (Identifier ev, None)],
                  Lambda ([Param (Identifier def, Some defType)], body''))])

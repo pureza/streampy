@@ -49,7 +49,7 @@ roomsInStateA = Room.all.where  (fun r -> isA(r) and isA2(r.foo))
 define what?() : bool = lastTemp > 30;;
 
 a = A(3)
-  when | if lastTemp > 30 -> C (what?())
+  when | (lastTemp > 30).changes() if lastTemp > 30 -> C (what?())
        | ev in temp_readings -> match a with
                                   | A(v) -> A(v + 1)
                                   | B(v) -> A(ev.temperature + v.a)
@@ -58,7 +58,7 @@ a = A(3)
 
 
 b = 0
-  when | if lastTemp > 30 -> b + 1
+  when | (lastTemp > 30).changes() if lastTemp > 30 -> b + 1
        | entries if lastTemp < 30 -> b - 1;;
 
 

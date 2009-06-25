@@ -89,14 +89,14 @@ let rec types (env:TypeContext) = function
 and checkListeners env def defType listeners =
   for listener in listeners do
     match listener with
-    | Listener (evOpt, streamOpt, guardOpt, body) ->
-        let env' = match evOpt, streamOpt with
-                   | Some (Identifier ev), Some stream ->
+    | Listener (evOpt, stream, guardOpt, body) ->
+        let env' = match evOpt with
+                   | Some (Identifier ev) ->
                        let evType = match typeOf env stream with
                                     | TyStream evType -> evType
                                     | _ -> failwithf "Not a stream!"
                        env.Add(ev, evType)
-                   | _, _ -> env
+                   | _ -> env
         
         let env'' = env'.Add(def, defType)
         match guardOpt with
@@ -276,7 +276,7 @@ and typeOfMethodCall env target name paramExps =
       | "[]" -> match paramExps with
                 | [index] -> valueType
                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "updated" -> match paramExps with
+      | "changes" -> match paramExps with
                      | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                
       | _ -> failwithf "The type %A does not have method %A!" targetType name
@@ -289,19 +289,19 @@ and typeOfMethodCall env target name paramExps =
       | "[]" -> match paramExps with
                 | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "updated" -> match paramExps with
+      | "changes" -> match paramExps with
                      | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyBool ->
       match name with
-      | "updated" -> match paramExps with
+      | "changes" -> match paramExps with
                      | [] -> TyStream (TyRecord (Map.of_list ["value", TyBool]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name  
   | TyVariant _ ->
       match name with
-      | "updated" -> match paramExps with
+      | "changes" -> match paramExps with
                      | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name

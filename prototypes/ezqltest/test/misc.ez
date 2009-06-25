@@ -21,7 +21,7 @@ entity Company =
 
 toSell = Company.where (c -> c.totalQty > 0 && (c.price > c.buyPrice * 1.03 or c.price < c.buyPrice * 0.98));;
 
-when (toSell.updated(), ev -> for c in toSell
+when (toSell.changes(), ev -> for c in toSell
                                 c.sell());;
 
 balance = initialBalance + Company.all.select (c -> c.profit).sum();;
@@ -29,7 +29,7 @@ balance = initialBalance + Company.all.select (c -> c.profit).sum();;
 
 toBuy = Company.where (c -> c.price > 1.03 * c.price@(3 days));;
 
-when (toBuy.updated(), ev -> for c in toSell
+when (toBuy.changes(), ev -> for c in toSell
                                if c.price * 10 < balance then c.buy(10));;
 
 #! hum_readings

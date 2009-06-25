@@ -1,10 +1,12 @@
 temp_readings = stream (:room_id, :temperature);;
 
-blah = temp_readings.groupby(:room_id, fun g -> temp_readings[2 sec])
-                    .select (fun r -> r.last(:temperature));;
+// The dictionary value is a record with a stream
+//e = temp_readings.groupby(:room_id, fun g -> { a = g })
+//                 .select (fun r -> r.a.max(:temperature));;
 
+e = { a = temp_readings }.a.max(:temperature);;
 
-when (blah.updated(), fun _ -> print (blah));;
+when (temp_readings, fun _ -> print (e));;
 
 
 #! temp_readings

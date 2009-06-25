@@ -87,9 +87,8 @@ Listeners:
   | Listener Listeners                                    { $1::$2 }
 
 Listener:
-  | PIPE ID IN Expr OptGuard ARROW Expr                   { Listener (Some (Identifier $2), Some $4, $5, $7) }
-  | PIPE Expr OptGuard ARROW Expr                         { Listener (None, Some $2, $3, $5) }
-  | PIPE Guard ARROW Expr                                 { Listener (None, None, Some $2, $4) }
+  | PIPE ID IN Expr OptGuard ARROW Expr                   { Listener (Some (Identifier $2), $4, $5, $7) }
+  | PIPE Expr OptGuard ARROW Expr                         { Listener (None, $2, $3, $5) }
 
 
 OptGuard:

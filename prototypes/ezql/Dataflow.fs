@@ -189,11 +189,11 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           Set.singleton n, g3, Id (Identifier n.Uid) 
           // FIXME: There is a bug that causes the following case to fail.
           // This bug probably affects the above case too.
-(*      | TyRecord fields ->
+   (*   | TyRecord fields ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"                                                      // XXX
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
-          Set.singleton n, g3, Id (Identifier n.Uid) *)
+          Set.singleton n, g3, Id (Identifier n.Uid)  *)
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
   | Record fields ->
       let deps, g', exprs, unknown =
@@ -323,7 +323,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
             | _ -> failwith "Invalid parameter to dict/select"
           let projType = typeOf (types.Add(arg, valueType)) body
           dataflowDictOps env types graph target paramExps valueType makeInitialOp projType makeDictSelect (nextSymbol methName) expr
-      | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+      | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                             [target] (makeToStream) graph   
                      Set.singleton n, g', Id (Identifier n.Uid)       
       | _ -> failwithf "Unkown method: %s" methName
@@ -334,7 +334,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
                                               [target] (makeDynValWindow duration) graph
                        Set.singleton n, g', Id (Identifier n.Uid)
-             | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
+             | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
                                                    [target] (makeToStream) graph
                             Set.singleton n, g', Id (Identifier n.Uid)
              | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
@@ -344,17 +344,17 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
              | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
              | _ -> failwithf "Unkown method: %s" methName
   | TyBool -> match methName with      
-              | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+              | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                                     [target] (makeToStream) graph
                              Set.singleton n, g', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method: %s" methName       
   | TyVariant _ -> match methName with
-                   | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+                   | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                                          [target] (makeToStream) graph
                                   Set.singleton n, g', Id (Identifier n.Uid)
                    | _ -> failwithf "Unkown method: %s" methName
   | TyRecord _ -> match methName with
-                  | "updated" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
+                  | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
                                                         [target] (makeToStream) graph
                                  Set.singleton n, g', Id (Identifier n.Uid)
                   | _ -> // This may happen if the record field contains a function. 

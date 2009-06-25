@@ -1,6 +1,7 @@
 ﻿#light
 
 open Test
+open Types
 
 [<TestCase ("aggregates/sum.ez")>]
 let test_aggregatesSum (test:Test) =
@@ -71,3 +72,89 @@ let test_aggregatesSum (test:Test) =
                        SetKey "2" " 0" (At  9)
                        SetKey "3" " 0" (At 10)
                        SetKey "1" " 0" (At 12)])
+
+
+[<TestCase ("aggregates/max.ez")>]
+let test_aggregatesMax (test:Test) =
+(*
+2,               1,      25
+4,               3,      45
+5,               1,      25
+6,               2,      50
+7,               3,      30
+9,               1,      23
+*)
+  test.AssertThat (In "a"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "1" "45" (At  4)
+                     SetKey "3" "45" (At  4)
+                     SetKey "1" "50" (At  6)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "50" (At  6)
+                     SetKey "1" "30" (At  8)
+                     SetKey "2" "30" (At  8)
+                     SetKey "3" "30" (At  8)
+                     SetKey "1" "23" (At  9)
+                     SetKey "2" "23" (At  9)
+                     SetKey "3" "23" (At  9)
+                     SetKeyRaw "1" VNull (At 11)
+                     SetKeyRaw "2" VNull (At 11)
+                     SetKeyRaw "3" VNull (At 11)])
+
+  test.AssertThat (In "b"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "1" "45" (At  4)
+                     SetKey "3" "45" (At  4)
+                     SetKey "1" "50" (At  6)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "50" (At  6)])
+
+  test.AssertThat (In "c"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)])                    
+
+  test.AssertThat (In "d"
+                    [SetKey    "1"  "25" (At  2)
+                     SetKeyRaw "1" VNull (At  4)
+                     SetKey    "3"  "45" (At  4)
+                     SetKey    "1"  "25" (At  5)
+                     SetKey    "2"  "50" (At  6)
+                     SetKeyRaw "3" VNull (At  6)
+                     SetKeyRaw "1" VNull (At  7)
+                     SetKey    "3"  "30" (At  7)
+                     SetKeyRaw "2" VNull (At  8)
+                     SetKey    "1"  "23" (At  9)
+                     SetKeyRaw "3" VNull (At  9)
+                     SetKeyRaw "1" VNull (At 11)])                     
+(*
+  test.AssertThat (In "e"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)]) *)
+
+  test.AssertThat (In "f"
+                    [SetKey    "1"  "25" (At  2)
+                     SetKeyRaw "1" VNull (At  4)
+                     SetKey    "3"  "45" (At  4)
+                     SetKey    "1"  "25" (At  5)
+                     SetKey    "2"  "50" (At  6)
+                     SetKeyRaw "3" VNull (At  6)
+                     SetKeyRaw "1" VNull (At  7)
+                     SetKey    "3"  "30" (At  7)
+                     SetKeyRaw "2" VNull (At  8)
+                     SetKey    "1"  "23" (At  9)
+                     SetKeyRaw "3" VNull (At  9)
+                     SetKeyRaw "1" VNull (At 11)])                       
+
+  test.AssertThat (In "g"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)])                     
+
+  test.AssertThat (In "h"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At  9)
+                     SetKey "1" "23" (At 11)])                         

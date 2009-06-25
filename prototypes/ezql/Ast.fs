@@ -77,7 +77,7 @@ and association =
   | HasMany of symbol
 and attribute = Member of id * id * expr * option<listener list>
 
-and listener = Listener of id option * expr option * expr option * expr
+and listener = Listener of id option * expr * expr option * expr
 
 and Type =
   | TyUnit
