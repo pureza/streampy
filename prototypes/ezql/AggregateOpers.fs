@@ -25,8 +25,9 @@ let makeSum getField (uid, prio, parents, context) =
                let initial = if op.Value = VNull then VInt 0 else op.Value
                let balance = List.fold (fun acc diff -> 
                                           match diff with
-                                          | Added (VWindow contents) -> // Initialization
-                                                                        List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) contents
+                                          | Added (VWindow contents) ->
+                                              // Initialization
+                                              List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) contents
                                           | Added v -> value.Add(acc, getField v)
                                           | Expired v -> value.Subtract(acc, getField v)
                                           | _ -> failwithf "Invalid diff in sum: %A" diff)

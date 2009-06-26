@@ -33,7 +33,7 @@ let AddedOrExpired factMaker eventTimestamp expr factTimestamp =
   match value with
   | VRecord fields -> 
       let fields' = Map.fold_left (fun acc k v -> Map.add k v acc) Map.empty fields
-      let ev = VRecord (fields'.Add(VString "timestamp", ref (VInt eventTimestamp)))
+      let ev = VRecord (fields'.Add(VString "timestamp", VInt eventTimestamp))
       (factTimestamp, factMaker ev)
   | _ -> (factTimestamp, factMaker value)
 
@@ -115,10 +115,10 @@ type Test =
                       | ValueAtKey (k, v) ->
                           match oper.Value with
                           | VDict dict ->
-                              if Map.contains k !dict
-                                then let v' = (!dict).[k]
+                              if Map.contains k dict
+                                then let v' = dict.[k]
                                      if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %O\n\t Expected: %O\n"
-                                                               entity now.TotalSeconds k (!dict).[k] v
+                                                               entity now.TotalSeconds k dict.[k] v
                                 else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
                                                entity now.TotalSeconds k
                           | _ -> failwithf "The entity '%s' is not a dictionary!" entity

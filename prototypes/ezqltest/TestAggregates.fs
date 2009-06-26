@@ -127,11 +127,11 @@ let test_aggregatesMax (test:Test) =
                      SetKey    "1"  "23" (At  9)
                      SetKeyRaw "3" VNull (At  9)
                      SetKeyRaw "1" VNull (At 11)])                     
-(*
+
   test.AssertThat (In "e"
                     [SetKey "1" "25" (At  2)
                      SetKey "3" "45" (At  4)
-                     SetKey "2" "50" (At  6)]) *)
+                     SetKey "2" "50" (At  6)])
 
   test.AssertThat (In "f"
                     [SetKey    "1"  "25" (At  2)

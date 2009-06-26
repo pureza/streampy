@@ -12,9 +12,11 @@ open Oper
 
 (* A stream: propagates received events *)
 let makeStream (uid, prio, parents, context) =
-  let eval = fun (op, inputs) ->
+  let eval = fun ((op:Operator), inputs) ->
                match inputs with
-               | [[Added (VRecord _)] as changes] -> Some (op.Children, changes)
+               | [[Added (VRecord _ as ev)] as changes] ->
+                   op.Value <- ev
+                   Some (op.Children, changes)
                | _ -> failwith "stream: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -68,7 +70,9 @@ let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents, context) : Ope
 (* Where: propagates events that pass a given predicate *)
 let makeWhere = makeEvalOnAdd (fun op inputs ev result ->
                                  match result with
-                                 | VBool true -> Some (op.Children, inputs.Head)
+                                 | VBool true ->
+                                     op.Value <- ev
+                                     Some (op.Children, inputs.Head)
                                  | VBool false -> None
                                  | _ -> failwith "Predicate was supposed to return VBool")
 
@@ -76,8 +80,9 @@ let makeWhere = makeEvalOnAdd (fun op inputs ev result ->
 let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
                                   let timestamp = eventTimestamp ev
                                   let ev' = match result with
-                                            | VRecord fields -> VRecord (Map.add (VString "timestamp") (ref timestamp) fields)
+                                            | VRecord fields -> VRecord (Map.add (VString "timestamp") timestamp fields)
                                             | _ -> failwithf "select should return a record"
+                                  op.Value <- ev'
                                   Some (op.Children, [Added ev']))
 
 (* When *)
@@ -122,7 +127,7 @@ let makeEvaluator expr kenv (uid, prio, parents, context) =
 
 
 let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
-  let result = fields |> List.map (fun (f, _) -> (VString f, ref VNull)) |> Map.of_list
+  let result = fields |> List.map (fun (f, _) -> (VString f, VNull)) |> Map.of_list |> ref
   assert (parents = (List.map snd fields))
 
   let recordOp = Operator.Build(uid, prio,
@@ -132,15 +137,16 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
                           |> List.mapi (fun i changes ->
                                           match changes with
                                           | x::xs -> let field, parent = fields.[i]
-                                                     result.[VString field] := parent.Value
+                                                     result := (!result).Add(VString field, parent.Value)
                                                      [RecordDiff (VString field, changes)]
                                           | _ -> [])
                           |> List.concat
+                      op.Value <- VRecord !result
                       Some (op.Children, recordChanges)),
-                   parents, context, contents = VRecord result)
+                   parents, context, contents = VRecord !result)
 
   for field, op in fields do
-    result.[VString field] := op.Value
+    result := (!result).Add(VString field, op.Value)
 
   recordOp
 
@@ -149,7 +155,8 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
 let makeToStream (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                let value = op.Parents.[0].Value
-               let ev = VRecord (Map.of_list [VString "timestamp", ref (VInt (Scheduler.clock().Now.TotalSeconds)); VString "value", ref value])
+               let ev = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.clock().Now.TotalSeconds); VString "value", value])
+               op.Value <- ev
                Some (op.Children, [Added ev])
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -166,19 +173,19 @@ let makeRef getId (uid, prio, (parents:Operator list), context) =
 
 let makeRefProjector field (uid, prio, (parents:Operator list), context) =
   let ref = parents.[0]
-  let entityDict = match parents.[1].Value with
-                   | VDict d -> d
-                   | _ -> failwithf "The projector must be connected with the entity's dictionary."
   
   Operator.Build(uid, prio, 
                  (fun (op, inputs) ->
+                    let entityDict = match parents.[1].Value with
+                                     | VDict d -> d
+                                     | _ -> failwithf "The projector must be connected with the entity's dictionary."
                     if ref.Value <> VNull
                       then let refValue = match ref.Value with
                                           | VRef refValue -> refValue
                                           | _ -> failwithf "ref value is not a VRef?!"
-                           let refObject = (!entityDict).[refValue]
+                           let refObject = entityDict.[refValue]
                            match refObject with
-                           | VRecord r -> setValueAndGetChanges op !r.[VString field]
+                           | VRecord r -> setValueAndGetChanges op r.[VString field]
                            | _ -> failwithf "The referenced object is not an object!"
                       else None),
                  parents, context)
@@ -214,12 +221,12 @@ let makeIndexer index (uid, prio, parents, context) =
                                                       | _ -> None)
                                                    change
                    match indexChanges with
-                   | Some changes -> op.Value <- (!dict).[key]
+                   | Some changes -> op.Value <- dict.[key]
                                      Some (op.Children, changes)
                    | None -> None
                | _ -> // The index changed: return [Added <new value>]
-                      if Map.contains key (!dict)
-                        then op.Value <- (!dict).[key]
+                      if Map.contains key dict
+                        then op.Value <- dict.[key]
                              Some (op.Children, [Added op.Value])
                         else None         
             
@@ -243,7 +250,7 @@ let makeProjector field (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                let fieldChanges =
                  match List.hd inputs with
-                 | [Added (VRecord record)] -> Some [Added !record.[fieldv]]
+                 | [Added (VRecord record)] -> Some [Added record.[fieldv]]
                  | changes -> List.tryPick (function
                                               | RecordDiff (field', chg) when fieldv = field' -> Some chg
                                               | _ -> None)
@@ -251,7 +258,7 @@ let makeProjector field (uid, prio, parents, context) =
                let record = match op.Parents.[0].Value with
                             | VRecord r -> r
                             | _ -> failwithf "The parent of the projector is not a record?!"
-               let newValue = !(record.[fieldv])
+               let newValue = record.[fieldv]
                match fieldChanges with
                | Some changes -> op.Value <- newValue
                                  Some (op.Children, changes)

@@ -55,10 +55,10 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
                                   true
                             
              let keyOp = subGroupStartOp key subgroups
-             keyOp.Value <- (!parentDict).[key]
+             keyOp.Value <- parentDict.[key]
             
              // Convert changes to new keys to the form DictDiff (key, [Added <value>])
-             yield! if created && keyOp.Value <> VNull // FIXME: HACK that works then the dictionary value is a stream (whose value is always VNull)
+             yield! if created
                       then [DictDiff (key, [Added keyOp.Value])]
                       else [chg]
          | Added (VDict dict) ->
@@ -67,7 +67,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
              // appropriate DictDiffs from the initial dictionary and recurse
              yield! initNewGroups op (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
                                                  (DictDiff (x.Key, [Added x.Value]))::acc)
-                                               [] (!dict))
+                                               [] dict)
          | _ -> yield! [chg] ]
 
 
@@ -99,7 +99,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
     let filterKey k =
       List.filter (fun change ->
                      match change with
-                     | Added (VRecord fields) | Expired (VRecord fields) -> !fields.[VString field] = k
+                     | Added (VRecord fields) | Expired (VRecord fields) -> fields.[VString field] = k
                      | _ -> false)
 
     // Collect changes by key returning a list of DictDiff's
@@ -107,7 +107,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
       List.fold (fun acc change -> 
                    match change with
                    | Added (VRecord fields) | Expired (VRecord fields) ->                                 
-                       let key = !fields.[VString field]
+                       let key = fields.[VString field]
                        let v' = if Map.contains key acc then change :: acc.[key] else [change]
                        Map.add key v' acc
                    | _ -> failwith "Invalid changes")
@@ -131,7 +131,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                          [ for change in changes.Head ->
                              match change with
                              | Added (VRecord fields) | Expired (VRecord fields) ->
-                                 let key = !fields.[VString field]
+                                 let key = fields.[VString field]
 
                                  if not (Map.contains key !substreams)
                                    then buildSubGroup key env
@@ -157,10 +157,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                              let value = op.Parents.[i + 1].Value
                                              results := (!results).Add(key, value)
                                              // If the key was just added, return [Added <value>]. Otherwise just return the original change.
-                                             // if added then [DictDiff (key, [Added value])] else chg
-                                             // This fails the consistency check, but returns correct results
-                                             // Streams are supposed to fail the check anyway: their value is always VNull!
-                                             chg
+                                             if added then [DictDiff (key, [Added value])] else chg
                                          | [] -> []
                                          | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
                                       groupChanges
@@ -173,14 +170,13 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                                  // the group's substream. Hence, it depends only on values
                                                  // in the outer scope. Hence, every subgroup has the same value!
                                                  results := (!results).Add(key, op.Parents.[1].Value)
-                                                 // [DictDiff (key, [Added (!results).[key]])]
-                                                 // This fails the consistency check, but returns correct results
-                                                 [chg]
+                                                 [DictDiff (key, [Added (!results).[key]])]
                                              | _ -> [])
                                         parentChanges) @ (List.concat groupChanges')
+                          op.Value <- VDict !results
                           spreadUnlessEmpty op allChanges
                       | _ -> failwith "Empty changes?"),
-                   [groupOp], context, contents = VDict results)
+                   [groupOp], context, contents = VDict !results)
 
     { groupOp with
         Children = dictOp.Children;
@@ -209,7 +205,7 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                       let parentChanges, predChanges = changes.Head, changes.Tail
                       let whereOp = op.Parents.[0]
                       let parentDict = match whereOp.Parents.[0].Value with
-                                       | VDict d -> !d
+                                       | VDict d -> d
                                        | _ -> failwith "The parent of this where is not a dictionary!"
 
                       (* First, take care of the changes reported by the parent dictionary *)
@@ -233,7 +229,7 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                                              then results := (!results).Remove(key)
                                                   yield key, change
                                              else ()
-                                       | Added (VDict dict) when (!dict).IsEmpty -> () // Received on parent initialization
+                                       | Added (VDict dict) when dict.IsEmpty -> () // Received on parent initialization
                                        | _ -> failwithf "Invalid change received in dict/where: %A" change ]
                       let keys1' = Set.of_list keys1
 
@@ -252,8 +248,9 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                             | [DictDiff (key, _)] when (Set.contains key keys1') -> ()
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
 
+                      op.Value <- VDict !results
                       spreadUnlessEmpty op (changes1 @ changes2)),
-                   [], context, contents = VDict results)
+                   [], context, contents = VDict !results)
      
     let whereOp = makeHeadOp dictOp predicates predicateBuilder (uid, prio, parents, context)
     connect whereOp dictOp id
@@ -296,8 +293,9 @@ let makeDictSelect projectorBuilder (uid, prio, parents, context) =
                                        yield DictDiff (key, innerChanges)
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
                       //printfn "Depois %s: Value = %O" op.Uid op.Value
+                      op.Value <- VDict !results
                       spreadUnlessEmpty op (changes1 @ changes2)),                      
-                   [], context, contents = VDict results)
+                   [], context, contents = VDict !results)
     
     let selectOp = makeHeadOp dictOp projectors projectorBuilder (uid, prio, parents, context)
     connect selectOp dictOp id

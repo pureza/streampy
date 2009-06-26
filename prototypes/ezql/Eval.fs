@@ -24,21 +24,21 @@ let rec eval (env:Map<string, value>) = function
   | MemberAccess (expr, Identifier name) ->
       let target = eval env expr
       match target with
-      | VRecord r -> !r.[VString name]
+      | VRecord r -> r.[VString name]
       | _ -> failwith "eval MemberAccess: Not an event!"
   | ArrayIndex (target, index) ->
       let tv = eval env target
       let iv = eval env index
       match tv with
-      | VDict dict -> if Map.contains iv !dict then (!dict).[iv] else VNull //failwithf "Dictionary doesn't contain key %A. env = %A" iv env
+      | VDict dict -> if Map.contains iv dict then dict.[iv] else VNull //failwithf "Dictionary doesn't contain key %A. env = %A" iv env
       | _ -> failwithf "[]: Not a dictionary"
   | Record fields ->
       // This is extremely ineficient - we should create a node if possible
-      VRecord (fields |> List.map (fun (name, expr) -> (VString name, ref (eval env expr)))
+      VRecord (fields |> List.map (fun (name, expr) -> (VString name, eval env expr))
                       |> Map.of_list)
   | RecordWith (source, newFields) ->
       match eval env source with
-      | VRecord fields -> VRecord (List.fold (fun fields (name, expr) -> fields.Add (VString name, ref (eval env expr))) fields newFields)
+      | VRecord fields -> VRecord (List.fold (fun fields (name, expr) -> fields.Add (VString name, eval env expr)) fields newFields)
       | other -> failwithf "RecordWith: the source is not a record: %A" other
   | Lambda (args, body) as fn -> VClosure (env, fn, None)
   | Let (Identifier name, _, (Lambda _ as fn), body) ->

@@ -35,18 +35,10 @@ let getOperEnvValues = getOperEnv >> Map.map (fun k v -> v.Value)
 let eventTimestamp ev =
   let timestamp = VString "timestamp"
   match ev with
-  | VRecord fields when Map.contains timestamp fields -> !fields.[timestamp]
+  | VRecord fields when Map.contains timestamp fields -> fields.[timestamp]
   | _ -> failwithf "Event is not a record or doesn't contain the timestamp field: %A" ev
 
-(*
-let isVariantInit types name =
-  let variantType = typeOf types name
-  if Map.contains types variantType
-    then match types.[variantType] with
-         | TyVariant (_, variants) when List.assoc name variant -> true
-         | _ -> false
-    else false
-*)
+
 let retry fn rescue =
     try
       fn ()
@@ -60,26 +52,28 @@ let rec incorporateChanges changes value =
 
 and incorporateChange change value =
    match change with
-   | Added v -> v.Clone()
-   | Expired _ -> value
+   | Added v -> match value, change with
+                | VWindow contents, Added (VWindow contents') -> (VWindow contents') // TODO: Understand why does this happen
+                | VWindow contents, _ -> VWindow (contents @ [v])
+                | _ -> v
+   | Expired _ -> match value with
+                  | VWindow (x::xs) -> VWindow xs
+                  | _ -> failwithf "Not a VWindow, but a %A" value
    | RecordDiff (field, changes) ->
        match value with
-       | VRecord record -> record.[field] := incorporateChanges changes !record.[field]
-                           value
+       | VRecord record -> VRecord (Map.add field (incorporateChanges changes record.[field]) record)
        | _ -> failwithf "%A is not a record!" value
    | DictDiff (key, changes) ->
        match value with
        | VDict dict ->
-           let v' = if (!dict).ContainsKey(key)
-                      then incorporateChanges changes (!dict).[key]
+           let v' = if dict.ContainsKey(key)
+                      then incorporateChanges changes dict.[key]
                       else incorporateChanges changes VNull
-           dict := Map.add key v' !dict
-           VDict dict
+           VDict (Map.add key v' dict)
        | _ -> failwithf "%A is not a dictionary!" value
    | RemovedKey key ->
        match value with
-       | VDict dict -> dict := Map.remove key !dict
-                       VDict dict
+       | VDict dict -> VDict (Map.remove key dict)
        | _ -> failwithf "%A is not a dictionary!" value
        
 let rebuildValue changes = List.fold (fun value changes -> incorporateChanges changes value) VNull changes

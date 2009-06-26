@@ -24,7 +24,7 @@ type CSVAdapter(stream, reader:TextReader) =
             then None
             else let values = Array.to_list (line.Split [|','|])
                  let values' = List.map tryParse values
-                 let fields = Map.of_list (List.zip (List.map VString columns) (List.map ref values'))
+                 let fields = Map.of_list (List.zip (List.map VString columns) values')
                  Some (VRecord fields)
         
     let read(reader) =
@@ -36,7 +36,7 @@ type CSVAdapter(stream, reader:TextReader) =
     do for ev in events do
            match ev with
            | Some (VRecord fields as ev')  -> 
-               let timestamp = match !fields.[VString "timestamp"] with
+               let timestamp = match fields.[VString "timestamp"] with
                                | VInt t -> DateTime.FromSeconds(t)
                                | _ -> failwithf "timestamp is not an integer"
                Scheduler.schedule timestamp ([stream, 0, id], [Added ev'])

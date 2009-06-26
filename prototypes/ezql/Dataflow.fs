@@ -163,7 +163,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
              let depsIdx, g2, index' = dataflowE env types g1 index
              let deps = Set.union depsTrg depsIdx
              match typeOf types target with
-             | TyDict typ ->
+             | TyDict typ when isContinuous types index' ->
                  let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"                                           // XXX
                  let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"                                                 // XXX
                  let n, g5 = createNode (nextSymbol "[]") typ [t; i]
@@ -182,11 +182,11 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)      
-      | TyType (_, fields, _) ->
+      | TyType (_, fields, _) when isContinuous types target' ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
-          Set.singleton n, g3, Id (Identifier n.Uid) 
+          Set.singleton n, g3, Id (Identifier n.Uid)
           // FIXME: There is a bug that causes the following case to fail.
           // This bug probably affects the above case too.
    (*   | TyRecord fields ->
@@ -414,7 +414,7 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                         | TyType (_, _, id) -> id
                         | _ -> failwithf "Only entities may be referenced"
           let getId = fun entity -> match entity with
-                                    | VRecord m -> !m.[VString refType]
+                                    | VRecord m -> m.[VString refType]
                                     | _ -> failwithf "The entity is not a record?!"
           let n, g2 = makeFinalNode env types g1 expr' deps' "{ }"
           let ref, g3 = createNode (nextSymbol "ref") (TyRef (typeOf types expr)) [n]
@@ -640,7 +640,7 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
               | [SymbolExpr (Symbol name)] -> name
               | _ -> ""
   let getMaker name = function
-    | VRecord fields -> !fields.[VString name]
+    | VRecord fields -> fields.[VString name]
     | other -> failwithf "getMaker expects events but was called with a %A" other
                    
   let getField = match paramExprs, target.Type with
@@ -848,7 +848,7 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
                                                                       failwithf "shit")
                                                     info.ParentUids
                             let op = info.MakeOper (uid, fixPrio orderPrio.[uid], parents, contextRef)
-                            let changes' = if op.Value <> VNull then (op, [Added (op.Value.Clone())])::changes else changes
+                            let changes' = if op.Value <> VNull then (op, [Added (op.Value)])::changes else changes
                             //printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
                             Map.add uid op context, changes')
                   (context, []) graph order

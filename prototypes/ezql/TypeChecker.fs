@@ -137,7 +137,7 @@ and typeOf env expr =
           match name with
           | "all" -> TyDict (TyRecord fields)
           | _ -> failwithf "The type %A does not have field '%s'" targetType name *)
-      | _ -> failwithf "The target type %A doesn't have any fields." targetType
+      | _ -> failwithf "The target type %A doesn't have any fields, including '%s'" targetType name
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
     let type2 = typeOf env expr2

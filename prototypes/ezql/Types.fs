@@ -94,31 +94,24 @@ and value =
     | VBool of bool
     | VInt of int
     | VString of string
-    | VRecord of Map<value, value ref>
-    | VDict of Map<value, value> ref
+    | VRecord of Map<value, value>
+    | VDict of Map<value, value>
     | VClosure of context * expr * string option // The name used by the closure to refer to itself (doesn't belong to the context)
     | VRef of value
     | VNull
     | VVariant of string * value list
     | VClosureSpecial of string * expr * NetworkBuilder * Map<string, Operator> ref * string option
     | VWindow of value list
-    
-    member self.Clone() =
-      match self with
-      | VDict dict -> VDict (ref (Map.map (fun k (v:value) -> v.Clone()) !dict))
-      | VRecord record -> VRecord (Map.map (fun k (v:value ref) -> ref ((!v).Clone())) record)
-      | VRef ref -> VRef (ref.Clone())
-      | other -> other
 
     override self.ToString() =
       let s = match self with
               | VBool b -> b.ToString()
               | VInt v -> v.ToString()
               | VString s -> s
-              | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k (!v))) "" m))
+              | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k v)) "" m))
               | VDict m -> 
                   let s = Text.StringBuilder ()
-                  for pair in !m do
+                  for pair in m do
                     s.Append(sprintf " :%O = %O,\n " pair.Key pair.Value) |> ignore
                   if s.Length > 0
                     then s.Remove(0, 1) |> ignore
@@ -155,7 +148,6 @@ and value =
     static member LessThan(left, right) = value.IntCmpOp(left, right, (<))
     static member Equals(left, right) = value.IntCmpOp(left, right, (=))
 
-
 and diff =
     | Added of value
     | Expired of value
@@ -167,15 +159,6 @@ and changes = diff list
 and link = changes -> changes
 
 and NetworkBuilder = Priority.priority -> Map<uid, Operator> -> Operator list * Operator
-
-let rec cloneDiff = function
-  | Added value -> Added (value.Clone())
-  | Expired value -> Expired (value.Clone())
-  | DictDiff (key, changes) -> DictDiff (key.Clone(), cloneChanges changes)
-  | RecordDiff (key, changes) -> RecordDiff (key.Clone(), cloneChanges changes)
-  | RemovedKey key -> RemovedKey (key.Clone())
-  
-and cloneChanges = List.map cloneDiff
 
 (*
  * Merge two lists of changes
