@@ -104,25 +104,24 @@ and value =
     | VWindow of value list
 
     override self.ToString() =
-      let s = match self with
-              | VBool b -> b.ToString()
-              | VInt v -> v.ToString()
-              | VString s -> s
-              | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k v)) "" m))
-              | VDict m -> 
-                  let s = Text.StringBuilder ()
-                  for pair in m do
-                    s.Append(sprintf " :%O = %O,\n " pair.Key pair.Value) |> ignore
-                  if s.Length > 0
-                    then s.Remove(0, 1) |> ignore
-                         s.Remove (s.Length - 2, 2) |> ignore
-                  sprintf "{ %O }" s
-              | VClosure _ | VClosureSpecial _ -> "..lambda.."
-              | VRef value -> sprintf "@%O" value
-              | VVariant (label, metadata) -> sprintf "%s (%s)" label (List.fold (fun acc x -> acc + x.ToString() + " ") "" metadata)
-              | VWindow values -> sprintf "[%s]" (List.fold (fun acc v -> sprintf "%s %O" acc v) "" values)
-              | VNull -> "VNull"
-      s
+      match self with
+      | VBool b -> b.ToString()
+      | VInt v -> v.ToString()
+      | VString s -> s
+      | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k v)) "" m))
+      | VDict m -> 
+          let s = Text.StringBuilder ()
+          for pair in m do
+            s.Append(sprintf " :%O = %O,\n " pair.Key pair.Value) |> ignore
+          if s.Length > 0
+            then s.Remove(0, 1) |> ignore
+                 s.Remove (s.Length - 2, 2) |> ignore
+          sprintf "{ %O }" s
+      | VClosure _ | VClosureSpecial _ -> "..lambda.."
+      | VRef value -> sprintf "@%O" value
+      | VVariant (label, metadata) -> sprintf "%s (%s)" label (List.fold (fun acc x -> acc + x.ToString() + " ") "" metadata)
+      | VWindow values -> sprintf "[%s]" (List.fold (fun acc v -> sprintf "%s %O" acc v) "" values)
+      | VNull -> "VNull"
 
     static member IntArithmOp(left, right, op) =
       match left, right with

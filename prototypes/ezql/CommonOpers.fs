@@ -143,7 +143,7 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
                           |> List.concat
                       op.Value <- VRecord !result
                       Some (op.Children, recordChanges)),
-                   parents, context, contents = VRecord !result)
+                   parents, context)
 
   for field, op in fields do
     result := (!result).Add(VString field, op.Value)
@@ -203,7 +203,8 @@ let makeRefProjector field (uid, prio, (parents:Operator list), context) =
  * because it actually pipes changes through the dictionary to the next operator,
  * while a simple evaluator would only transmit values, which might not be the
  * desired behavior (imagine that the value of the dictionary is a stream or a
- * window...)
+ * window, or even another dictionary: an evaluator would always be transmiting
+ * [Added <new value>], instead of the diffs.
  *)
 let makeIndexer index (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->

@@ -182,18 +182,11 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)      
-      | TyType (_, fields, _) when isContinuous types target' ->
+      | TyType (_, fields, _) | TyRecord fields when isContinuous types target' ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
           Set.singleton n, g3, Id (Identifier n.Uid)
-          // FIXME: There is a bug that causes the following case to fail.
-          // This bug probably affects the above case too.
-   (*   | TyRecord fields ->
-          let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"                                                      // XXX
-          let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
-                                 (makeProjector name) g2
-          Set.singleton n, g3, Id (Identifier n.Uid)  *)
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
   | Record fields ->
       let deps, g', exprs, unknown =
