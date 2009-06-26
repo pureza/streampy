@@ -304,3 +304,34 @@ let makeDictSelect projectorBuilder (uid, prio, parents, context) =
         Children   = dictOp.Children;
         Contents   = dictOp.Contents;
         AllChanges = dictOp.AllChanges }
+
+
+
+let makeValues (uid, prio, parents, context) =
+  let myDict = ref Map.empty
+
+  let eval = fun (op, allChanges) ->
+               let parentDict = match op.Parents.[0].Value with
+                                | VDict d -> d
+                                | _ -> failwithf "The parent of values() is not a dictionary."
+                            
+               let myChanges =
+                 List.fold (fun myChanges change ->
+                                match change with
+                                | DictDiff (key, _) ->
+                                    let newV = parentDict.[key]
+                                    let myChanges' = myChanges @ (if Map.contains key (!myDict)
+                                                                    then [Expired (!myDict).[key]; Added newV]
+                                                                    else [Added newV])
+                                    myDict := (!myDict).Add(key, newV)
+                                    myChanges'
+                                | RemovedKey key ->
+                                    let myChanges' = myChanges @ [Expired (!myDict).[key]]
+                                    myDict := Map.remove key (!myDict)
+                                    myChanges'
+                                | _ -> failwithf "Can't happen... oh really?")
+                           [] (List.hd allChanges)
+               op.Value <- VWindow [ for pair in (!myDict) -> pair.Value ]
+               Some (op.Children, myChanges)
+
+  Operator.Build(uid, prio, eval, parents, context, contents = VWindow [])

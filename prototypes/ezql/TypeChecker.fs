@@ -252,11 +252,16 @@ and typeOfMethodCall env target name paramExps =
           | [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
-  | TyWindow (TyInt, TimedWindow _) ->
+  | TyWindow (typ, _) ->
       match name with
       | "last" | "sum" | "count" | "max" | "min" | "avg" ->
-          match paramExps with
-          | [] -> TyInt
+          match typ, paramExps with
+          | TyRef typ', [SymbolExpr (Symbol field)] ->
+              match resolveAlias env typ' with
+              | TyType (_, fields, _) when Map.contains field fields -> TyInt
+              | _ -> failwithf "The alias does not refer to a TyType"
+          | (TyType (_, fields, _) | TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
+          | _, [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
       | _ -> failwithf "The type %A does not have method %A!" targetType name
   | TyDict valueType ->
@@ -276,6 +281,7 @@ and typeOfMethodCall env target name paramExps =
       | "[]" -> match paramExps with
                 | [index] -> valueType
                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+      | "values" when paramExps = [] -> TyWindow (valueType, Unbounded)
       | "changes" -> match paramExps with
                      | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
                      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                

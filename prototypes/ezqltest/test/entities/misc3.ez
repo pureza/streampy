@@ -11,10 +11,14 @@ entity Room =
   createFrom(temp_readings, :room_id)
   hasMany :products
 
-  member self.productIds = self.products.select (fun p -> p.product_id);;
+  member self.productIds = self.products.select (fun p -> p.product_id)
+
+  // How many products are in each room; test aggregates on dictionaries.
+  member self.prodCount = self.products.select(fun p -> p.product_id).values().count();;
 
 productIdsPerRoom = Room.all.select (fun r -> r.productIds);;
 
+totalProductsPerRoom = Room.all.select (fun r -> r.prodCount);;
 
 #! hum_readings
 Timestamp, room_id, humidity

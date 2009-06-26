@@ -74,6 +74,19 @@ let test_entitiesMisc3 (test:Test) =
                      SetKeyRaw "2" (VDict ((Map.of_list [VInt 1, VInt 1])))                 (At 9)     // Product 2 leaves room 2
                      SetKeyRaw "3" (VDict ((Map.of_list [VInt 2, VInt 2])))                 (At 9)])  
 
+  test.AssertThat (In "totalProductsPerRoom"
+                     [SetKey "1" "0" (At  2)
+                      SetKey "1" "1" (At  3)
+                      SetKey "3" "0" (At  4)
+                      SetKey "1" "2" (At  4)
+                      SetKey "1" "1" (At  6)
+                      SetKey "2" "1" (At  6)
+                      SetKey "1" "2" (At  7)
+                      SetKey "1" "1" (At  8)
+                      SetKey "2" "2" (At  8)
+                      SetKey "2" "1" (At  9)
+                      SetKey "3" "1" (At  9)])
+
 
 [<TestCase ("entities/misc2.ez")>]
 let test_entitiesMisc2 (test:Test) = ()

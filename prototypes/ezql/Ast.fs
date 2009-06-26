@@ -120,7 +120,8 @@ and Type =
     | _ -> false
 
 and WindowType =
-  | TimedWindow of int    
+  | TimedWindow of int
+  | Unbounded  
 
 
 let freeVars expr =

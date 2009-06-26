@@ -297,7 +297,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
       | "groupby" -> dataflowGroupby env types graph target paramExps expr
       | _ -> failwithf "Unkown method of type Window: %s" methName
-  | TyWindow (_, TimedWindow _) ->
+  | TyWindow (_, _) ->
       match methName with
       | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
       | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
@@ -316,6 +316,9 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
             | _ -> failwith "Invalid parameter to dict/select"
           let projType = typeOf (types.Add(arg, valueType)) body
           dataflowDictOps env types graph target paramExps valueType makeInitialOp projType makeDictSelect (nextSymbol methName) expr
+      | "values" -> let n, g' = createNode (nextSymbol "values") (TyWindow (valueType, Unbounded))
+                                           [target] (makeValues) graph   
+                    Set.singleton n, g', Id (Identifier n.Uid)       
       | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                             [target] (makeToStream) graph   
                      Set.singleton n, g', Id (Identifier n.Uid)       
@@ -638,10 +641,10 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
                    
   let getField = match paramExprs, target.Type with
                  | [SymbolExpr (Symbol name)], TyStream _ -> getMaker name
-                 | [SymbolExpr (Symbol name)], TyWindow (TyStream _, TimedWindow _) -> getMaker name
+                 | [SymbolExpr (Symbol name)], TyWindow _ -> getMaker name
                  | [], TyInt -> id
-                 | [], TyWindow (TyInt, TimedWindow _) -> id
-                 | _ -> failwith "Invalid parameters to %s" aggrName
+                 | [], TyWindow (TyInt, _) -> id
+                 | _ -> failwithf "Invalid parameters to %s" aggrName
   let n, g' = createNode (nextSymbol aggrName) TyInt [target]
                          (opMaker getField) graph
   n.Name <- (sprintf "%s(%s)" aggrName field)
