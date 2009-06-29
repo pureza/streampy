@@ -361,4 +361,3 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                    | _ -> failwithf "Can't happen"
 
   Operator.Build(uid, prio, operEval, parents, context, contents = parents.[0].Value)
- 

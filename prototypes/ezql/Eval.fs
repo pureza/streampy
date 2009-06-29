@@ -83,7 +83,9 @@ and evalOp = function
   | Times, v1, v2 -> value.Multiply(v1, v2)
   | Div, v1, v2 -> value.Div(v1, v2)
   | GreaterThan, v1, v2 -> value.GreaterThan(v1, v2)
+  | GreaterThanOrEqual, v1, v2 -> value.GreaterThanOrEqual(v1, v2)
   | LessThan, v1, v2 -> value.LessThan(v1, v2)
+  | LessThanOrEqual, v1, v2 -> value.LessThanOrEqual(v1, v2)
   | Equal, v1, v2 -> value.Equals(v1, v2)
   | And, v1, v2 -> match v1, v2 with
                    | VBool true, VBool true -> VBool true

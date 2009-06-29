@@ -76,14 +76,6 @@ let test_aggregatesSum (test:Test) =
 
 [<TestCase ("aggregates/max.ez")>]
 let test_aggregatesMax (test:Test) =
-(*
-2,               1,      25
-4,               3,      45
-5,               1,      25
-6,               2,      50
-7,               3,      30
-9,               1,      23
-*)
   test.AssertThat (In "a"
                     [SetKey "1" "25" (At  2)
                      SetKey "1" "45" (At  4)
@@ -157,4 +149,54 @@ let test_aggregatesMax (test:Test) =
                      SetKey "3" "45" (At  4)
                      SetKey "2" "50" (At  6)
                      SetKey "3" "30" (At  9)
-                     SetKey "1" "23" (At 11)])                         
+                     SetKey "1" "23" (At 11)])
+
+
+[<TestCase ("aggregates/any.ez")>]
+let test_aggregatesAny (test:Test) =
+  test.AssertThat (In "a"
+                    [Set "true"  (At  2)
+                     Set "false" (At 4)
+                     Set "true"  (At  5)
+                     Set "false" (At  6)
+                     Set "true"  (At  7)
+                     Set "false" (At 11)])
+
+  test.AssertThat (In "b"
+                     [Set "false" (At 2)
+                      Set "true"  (At 6)])
+                     
+  test.AssertThat (In "c"
+                    [Set "false" (At 2)
+                     Set "true"  (At 5)
+                     Set "false" (At 6)
+                     Set "true"  (At 7)
+                     Set "false" (At 8)])
+
+  test.AssertThat (In "d"
+                     [Set "false" (At 2)
+                      Set "true"  (At 4)])
+                     
+  test.AssertThat (In "e"
+                    [Set "false" (At 2)
+                     Set "true"  (At 4)
+                     Set "false" (At 9)])
+
+  test.AssertThat (In "f"
+                    [SetKey "1" "false" (At  2)
+                     SetKey "3" "true"  (At  4)
+                     SetKey "2" "true"  (At  6)])
+
+
+[<TestCase ("aggregates/all.ez")>]
+let test_aggregatesAll (test:Test) =
+  test.AssertThat (In "a"
+                    [Set "true"  (At  2)
+                     Set "false" (At  4)
+                     Set "true"  (At  5)
+                     Set "false" (At  6)
+                     Set "true"  (At  8)])                     
+
+  test.AssertThat (In "b"
+                    [Set "true" (At 2)
+                     Set "false" (At 9)])                     

@@ -203,116 +203,96 @@ and typeOf env expr =
 
 and typeOfMethodCall env target name paramExps =
   let targetType = typeOf env target
-  match targetType with
-  | TyStream (TyRecord fields as evType) ->
-      match name with
-      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
-          match paramExps with
-          | [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "where" -> 
-          match paramExps with
-          | [Lambda ([Param (Identifier ev, _)], expr)] -> 
-              if (typeOf (env.Add(ev, evType)) expr) <> TyBool
-                then failwithf "The predicate of the where doesn't return a boolean!"
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-          targetType
-      | "select" -> 
-          match paramExps with
-          | [Lambda ([Param (Identifier ev, _)], expr)] -> 
-              match typeOf (env.Add(ev, evType)) expr with
-              | TyRecord projFields -> TyStream (TyRecord (projFields.Add("timestamp", TyInt)))
-              | _ -> failwithf "The projector of the select doesn't return a record!"
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps        
-      | "[]" ->
-          match paramExps with
-          | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "groupby" ->
-          match paramExps with
-          | [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "The type %A does not have method %A!" targetType name
-  // Event Windows
-  | TyWindow (TyStream (TyRecord fields as evType), TimedWindow _) ->
-      match name with
-      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
-          match paramExps with
-          | [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "where" -> 
-          match paramExps with
-          | [Lambda ([Param (Identifier ev, _)], expr)] -> 
-              if (typeOf (env.Add(ev, evType)) expr) <> TyBool
-                then failwithf "The predicate of the where doesn't return a boolean!"
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-          targetType
-      | "groupby" ->
-          match paramExps with
-          | [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields -> TyDict (typeOf (env.Add(g, targetType)) expr)
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "The type %A does not have method %A!" targetType name
-  | TyWindow (typ, _) ->
-      match name with
-      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
+  // Generic methods first
+  match name with
+  | "changes" -> match paramExps with
+                 | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
+                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+  | "last" | "sum" | "count" | "max" | "min" | "avg" ->
+      match targetType, paramExps with
+      | TyRecord fields, [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
+      | TyStream (TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
+      | TyWindow (typ, _), _ ->
           match typ, paramExps with
           | TyRef typ', [SymbolExpr (Symbol field)] ->
               match resolveAlias env typ' with
               | TyType (_, fields, _) when Map.contains field fields -> TyInt
               | _ -> failwithf "The alias does not refer to a TyType"
-          | (TyType (_, fields, _) | TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
+          | (TyType (_, fields, _) | TyRecord fields | TyStream (TyRecord fields)), [SymbolExpr (Symbol field)]
+              when Map.contains field fields -> TyInt
           | _, [] -> TyInt
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "The type %A does not have method %A!" targetType name
-  | TyDict valueType ->
-      match name with
-      | "where" -> 
-          match paramExps with
-          | [Lambda ([Param (Identifier g, _)], expr)] ->
-              if (typeOf (env.Add(g, valueType)) expr) <> TyBool
-                then failwithf "The predicate of the where doesn't return a boolean!"
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-          targetType
-      | "select" -> 
-          let valueType' = match paramExps with
-                           | [Lambda ([Param (Identifier g, _)], expr)] -> typeOf (env.Add(g, valueType)) expr
-                           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-          TyDict valueType'
-      | "[]" -> match paramExps with
-                | [index] -> valueType
-                | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "values" when paramExps = [] -> TyWindow (valueType, Unbounded)
-      | "changes" -> match paramExps with
-                     | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
-                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                
-      | _ -> failwithf "The type %A does not have method %A!" targetType name
-  | TyInt ->
-      match name with
-      | "last" | "sum" | "count" | "max" | "min" | "avg" ->
-          match paramExps with
-          | [] -> TyInt
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "[]" -> match paramExps with
-                | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
-                | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | "changes" -> match paramExps with
-                     | [] -> TyStream (TyRecord (Map.of_list ["value", TyInt]))
-                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "The type %A does not have method %A!" targetType name
-  | TyBool ->
-      match name with
-      | "changes" -> match paramExps with
-                     | [] -> TyStream (TyRecord (Map.of_list ["value", TyBool]))
-                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "The type %A does not have method %A!" targetType name  
-  | TyVariant _ ->
-      match name with
-      | "changes" -> match paramExps with
-                     | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
-                     | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "The type %A does not have method %A!" targetType name
-  | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
-  | _ -> failwithf "The type %A does not have method %A!" targetType name
+          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps         
+      | TyInt, [] -> TyInt
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                 
+  | "any?" | "all?" ->                   
+      match targetType, paramExps with
+      | TyDict _, _ -> failwithf "The type %A does not have method %A!" targetType name
+      | (TyBool | TyWindow (TyBool, _)), [] -> TyBool
+      | (TyStream v | TyWindow (TyStream v, _) | TyWindow (v, _)), [Lambda ([Param (Identifier arg, _)], expr)] ->
+          if (typeOf (env.Add(arg, v)) expr) <> TyBool
+            then failwithf "The predicate of %s doesn't return a boolean!" name
+          TyBool
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+  | "where" ->
+      match targetType, paramExps with
+      | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType), _) | TyDict argType),
+          [Lambda ([Param (Identifier arg, _)], expr)] -> 
+          if (typeOf (env.Add(arg, argType)) expr) <> TyBool
+            then failwithf "The predicate of the where doesn't return a boolean!"
+       
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps      
+      targetType
+  | "groupby" ->
+      match targetType, paramExps with
+      | (TyStream (TyRecord fields as evType) | TyWindow (TyStream (TyRecord fields as evType), _)),
+        [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields ->
+                                                                                TyDict (typeOf (env.Add(g, targetType)) expr)
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+
+  // Specific methods below               
+  | _ -> match targetType with
+          | TyStream (TyRecord fields as evType) ->
+              match name with
+              | "select" -> 
+                  match paramExps with
+                  | [Lambda ([Param (Identifier ev, _)], expr)] -> 
+                      match typeOf (env.Add(ev, evType)) expr with
+                      | TyRecord projFields -> TyStream (TyRecord (projFields.Add("timestamp", TyInt)))
+                      | _ -> failwithf "The projector of the select doesn't return a record!"
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "[]" ->
+                  match paramExps with
+                  | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
+          | TyDict valueType ->
+              match name with
+              | "select" -> 
+                  let valueType' = match paramExps with
+                                   | [Lambda ([Param (Identifier g, _)], expr)] -> typeOf (env.Add(g, valueType)) expr
+                                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+                  TyDict valueType'
+              | "[]" -> match paramExps with
+                        | [index] -> valueType
+                        | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "values" when paramExps = [] -> TyWindow (valueType, Unbounded)             
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
+          | TyInt ->
+              match name with          
+              | "[]" -> match paramExps with
+                        | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                        | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
+          | TyBool ->
+              match name with          
+              | "[]" -> match paramExps with
+                        | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                        | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | _ -> failwithf "The type %A does not have method %A!" targetType name              
+          | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
+          | _ -> failwithf "The type %A does not have method %A!" targetType name
+
+
 
 and typeOfFuncCall env expr =
   match expr with

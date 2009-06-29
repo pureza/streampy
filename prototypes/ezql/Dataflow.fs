@@ -286,6 +286,8 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "where" -> dataflowWhere env types graph target paramExps expr
       | "select" -> dataflowSelect env types graph target paramExps expr
       | "groupby" -> dataflowGroupby env types graph target paramExps expr
+      | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
+      | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
       | _ -> failwithf "Unkown method: %s" methName
   | TyWindow (TyStream fields, TimedWindow _) ->
       match methName with
@@ -296,6 +298,8 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
       | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
       | "groupby" -> dataflowGroupby env types graph target paramExps expr
+      | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
+      | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
       | _ -> failwithf "Unkown method of type Window: %s" methName
   | TyWindow (_, _) ->
       match methName with
@@ -304,6 +308,8 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
       | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
       | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
       | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
+      | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
+      | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
       | _ -> failwithf "Unkown method of type Window: %s" methName
   | TyDict valueType ->
       match methName with
@@ -338,8 +344,17 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
              | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
              | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
              | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
+             | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
              | _ -> failwithf "Unkown method: %s" methName
-  | TyBool -> match methName with      
+  | TyBool -> match methName with
+              | "[]" -> let duration = match paramExps with
+                                       | [Time (Integer v, unit) as t] -> toSeconds v unit
+                                       | _ -> failwith "Invalid duration"
+                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
+                                               [target] (makeDynValWindow duration) graph
+                        Set.singleton n, g', Id (Identifier n.Uid)
+              | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
+              | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
               | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                                     [target] (makeToStream) graph
                              Set.singleton n, g', Id (Identifier n.Uid)
@@ -649,6 +664,32 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
                          (opMaker getField) graph
   n.Name <- (sprintf "%s(%s)" aggrName field)
   Set.singleton n, g', Id (Identifier n.Uid)
+
+and dataflowAnyAll env types graph target paramExprs methName expr =
+  let valueType = match target.Type with
+                  | TyWindow (TyStream v, _) | TyWindow (v, _) | TyStream v | v -> v
+                 
+  let subExpr, env', types', arg =
+    match paramExprs with
+    | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
+        // Put the argument as an Unknown node into the environment
+        // This way it will be ignored by the dataflow algorithm
+        let argNode = NodeInfo.AsUnknown(arg, valueType)
+        body, env.Add(arg, argNode), types.Add(arg, argNode.Type), arg
+    | [] -> // For booleans
+        let arg = "$v"
+        let argNode = NodeInfo.AsUnknown(arg, valueType)
+        BinaryExpr (op.Equal, Id (Identifier arg), Bool true), env.Add(arg, argNode), types.Add(arg, argNode.Type), arg
+    | _ -> failwith "Invalid parameter to any?/all?"
+    
+  let deps, g', expr' = dataflowE env' types' graph subExpr
+  let expr'' = Lambda ([Param (Identifier arg, None)], expr')
+                  
+  // Depends on the stream and on the dependencies of the predicate.
+  let opDeps = target::(Set.to_list deps)
+  let n, g'' = createNode (nextSymbol methName) TyBool opDeps
+                          (makeAnyAll (methName = "any?") expr'') g'
+  Set.singleton n, g'', Id (Identifier n.Uid)
 
 (*
 and renameNetwork renamer root graph =

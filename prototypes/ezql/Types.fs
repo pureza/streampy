@@ -128,9 +128,12 @@ and value =
         | VInt l, VInt r -> VInt (op l r)
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
-    static member IntCmpOp(left, right, op) =
+    static member CmpOp(left, right, op) =
       match left, right with
         | VInt l, VInt r -> VBool (op l r)
+        | VBool true, VBool true -> VBool true
+        | VBool false, VBool false -> VBool true
+        | VBool _, VBool _ -> VBool false
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
     static member Add(left, right) = 
@@ -143,9 +146,11 @@ and value =
     static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
     static member Div(left, right) = value.IntArithmOp(left, right, (/))
     static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
-    static member GreaterThan(left, right) = value.IntCmpOp(left, right, (>))
-    static member LessThan(left, right) = value.IntCmpOp(left, right, (<))
-    static member Equals(left, right) = value.IntCmpOp(left, right, (=))
+    static member GreaterThanOrEqual(left, right) = value.CmpOp(left, right, (>=))
+    static member GreaterThan(left, right) = value.CmpOp(left, right, (>))
+    static member LessThanOrEqual(left, right) = value.CmpOp(left, right, (<=))
+    static member LessThan(left, right) = value.CmpOp(left, right, (<))
+    static member Equals(left, right) = value.CmpOp(left, right, (=))
 
 and diff =
     | Added of value
