@@ -132,11 +132,6 @@ and typeOf env expr =
             else match Map.tryFind name fields with
                  | Some t -> t
                  | None -> failwithf "The entity doesn't have field '%s'" name
-                 (*
-      | TyDict (TyType (_, fields, _)) ->
-          match name with
-          | "all" -> TyDict (TyRecord fields)
-          | _ -> failwithf "The type %A does not have field '%s'" targetType name *)
       | _ -> failwithf "The target type %A doesn't have any fields, including '%s'" targetType name
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
@@ -208,7 +203,7 @@ and typeOfMethodCall env target name paramExps =
   | "changes" -> match paramExps with
                  | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-  | "last" | "sum" | "count" | "max" | "min" | "avg" ->
+  | "last" | "sum" | "count" | "max" | "min" | "avg" | "prev" ->
       match targetType, paramExps with
       | TyRecord fields, [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
       | TyStream (TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
@@ -288,8 +283,15 @@ and typeOfMethodCall env target name paramExps =
               | "[]" -> match paramExps with
                         | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
                         | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "howLong" -> TyInt
               | _ -> failwithf "The type %A does not have method %A!" targetType name              
           | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
+          | TyWindow (TyStream valueType, _) | TyWindow (valueType, _) ->
+              match name with
+              | "[]" -> match paramExps with
+                        | [expr] when typeOf env expr = TyInt -> valueType
+                        | _ -> failwithf "Invalid index in []"
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
           | _ -> failwithf "The type %A does not have method %A!" targetType name
 
 

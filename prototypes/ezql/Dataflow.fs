@@ -268,111 +268,78 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
   | _ -> failwithf "Expression type not supported: %A" expr
 
 and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
-  match target.Type with
-  | TyStream fields ->
-      match methName with
-      | "last" -> dataflowAggregate env types graph target paramExps makeLast methName expr
-      | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
-      | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
-      | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
-      | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
-      | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
-      | "[]" -> let duration = match paramExps with
-                               | [Time (Integer v, unit) as t] -> toSeconds v unit
-                               | _ -> failwith "Invalid duration"
-                let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
-                                       (makeWindow duration) graph
-                Set.singleton n, g', Id (Identifier n.Uid)
-      | "where" -> dataflowWhere env types graph target paramExps expr
-      | "select" -> dataflowSelect env types graph target paramExps expr
-      | "groupby" -> dataflowGroupby env types graph target paramExps expr
-      | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
-      | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
-      | _ -> failwithf "Unkown method: %s" methName
-  | TyWindow (TyStream fields, TimedWindow _) ->
-      match methName with
-      | "last" -> dataflowAggregate env types graph target paramExps makeLast methName expr
-      | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
-      | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
-      | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
-      | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
-      | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
-      | "groupby" -> dataflowGroupby env types graph target paramExps expr
-      | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
-      | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
-      | _ -> failwithf "Unkown method of type Window: %s" methName
-  | TyWindow (_, _) ->
-      match methName with
-      | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
-      | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
-      | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
-      | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
-      | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
-      | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
-      | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
-      | _ -> failwithf "Unkown method of type Window: %s" methName
-  | TyDict valueType ->
-      match methName with
-      | "where" -> dataflowDictOps env types graph target paramExps valueType makeInitialOp valueType makeDictWhere (nextSymbol methName) expr
-      | "select" ->
-          let arg, body =
-            match paramExps with
-            | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
-                arg, body
-            | _ -> failwith "Invalid parameter to dict/select"
-          let projType = typeOf (types.Add(arg, valueType)) body
-          dataflowDictOps env types graph target paramExps valueType makeInitialOp projType makeDictSelect (nextSymbol methName) expr
-      | "values" -> let n, g' = createNode (nextSymbol "values") (TyWindow (valueType, Unbounded))
-                                           [target] (makeValues) graph   
-                    Set.singleton n, g', Id (Identifier n.Uid)       
-      | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
-                                            [target] (makeToStream) graph   
-                     Set.singleton n, g', Id (Identifier n.Uid)       
-      | _ -> failwithf "Unkown method: %s" methName
-  | TyInt -> match methName with
-             | "[]" -> let duration = match paramExps with
-                                      | [Time (Integer v, unit) as t] -> toSeconds v unit
-                                      | _ -> failwith "Invalid duration"
-                       let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
-                                              [target] (makeDynValWindow duration) graph
-                       Set.singleton n, g', Id (Identifier n.Uid)
-             | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
-                                                   [target] (makeToStream) graph
-                            Set.singleton n, g', Id (Identifier n.Uid)
-             | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
-             | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
-             | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
-             | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
-             | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
-             | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
-             | _ -> failwithf "Unkown method: %s" methName
-  | TyBool -> match methName with
+  match methName with
+  | "sum" -> dataflowAggregate env types graph target paramExps makeSum methName expr
+  | "count" -> dataflowAggregate env types graph target paramExps makeCount methName expr
+  | "max" -> dataflowAggregate env types graph target paramExps makeMax methName expr
+  | "min" -> dataflowAggregate env types graph target paramExps makeMin methName expr
+  | "avg" -> dataflowAggregate env types graph target paramExps makeAvg methName expr
+  | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
+  | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
+  | "last" -> dataflowAggregate env types graph target paramExps makeLast methName expr
+  | "prev" -> dataflowAggregate env types graph target paramExps makePrev methName expr
+  | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+                                        [target] (makeToStream) graph
+                 Set.singleton n, g', Id (Identifier n.Uid)
+  | _ -> match target.Type with
+          | TyStream fields ->
+              match methName with
               | "[]" -> let duration = match paramExps with
                                        | [Time (Integer v, unit) as t] -> toSeconds v unit
                                        | _ -> failwith "Invalid duration"
-                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
-                                               [target] (makeDynValWindow duration) graph
+                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
+                                               (makeWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
-              | "any?" -> dataflowAnyAll env types graph target paramExps methName expr
-              | "all?" -> dataflowAnyAll env types graph target paramExps methName expr
-              | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
-                                                    [target] (makeToStream) graph
-                             Set.singleton n, g', Id (Identifier n.Uid)
-              | _ -> failwithf "Unkown method: %s" methName       
-  | TyVariant _ -> match methName with
-                   | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
-                                                         [target] (makeToStream) graph
-                                  Set.singleton n, g', Id (Identifier n.Uid)
-                   | _ -> failwithf "Unkown method: %s" methName
-  | TyRecord _ -> match methName with
-                  | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", TyInt])))
-                                                        [target] (makeToStream) graph
-                                 Set.singleton n, g', Id (Identifier n.Uid)
-                  | _ -> // This may happen if the record field contains a function. 
-                         // So, convert the method call into a function call and proceed.
-                         let expr' = FuncCall (MemberAccess (Id (Identifier target.Uid), Identifier methName), paramExps)
-                         dataflowE (env.Add(target.Uid, target)) (types.Add(target.Uid, target.Type)) graph expr'
-  | _ -> failwith "Unknown target type"
+              | "where" -> dataflowWhere env types graph target paramExps expr
+              | "select" -> dataflowSelect env types graph target paramExps expr
+              | "groupby" -> dataflowGroupby env types graph target paramExps expr
+              | _ -> failwithf "Unkown method: %s" methName
+          | TyWindow _ ->
+              match methName with
+              | "groupby" -> dataflowGroupby env types graph target paramExps expr
+              | _ -> failwithf "Unkown method of type Window: %s" methName
+          | TyDict valueType ->
+              match methName with
+              | "where" -> dataflowDictOps env types graph target paramExps valueType makeInitialOp valueType makeDictWhere (nextSymbol methName) expr
+              | "select" ->
+                  let arg, body =
+                    match paramExps with
+                    | [Lambda ([Param (Identifier arg, _)], body) as fn] ->
+                        arg, body
+                    | _ -> failwith "Invalid parameter to dict/select"
+                  let projType = typeOf (types.Add(arg, valueType)) body
+                  dataflowDictOps env types graph target paramExps valueType makeInitialOp projType makeDictSelect (nextSymbol methName) expr
+              | "values" -> let n, g' = createNode (nextSymbol "values") (TyWindow (valueType, Unbounded))
+                                                   [target] (makeValues) graph   
+                            Set.singleton n, g', Id (Identifier n.Uid)       
+              | _ -> failwithf "Unkown method: %s" methName
+          | TyInt -> match methName with
+                     | "[]" -> let duration = match paramExps with
+                                              | [Time (Integer v, unit) as t] -> toSeconds v unit
+                                              | _ -> failwith "Invalid duration"
+                               let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
+                                                      [target] (makeDynValWindow duration) graph
+                               Set.singleton n, g', Id (Identifier n.Uid)
+                     | _ -> failwithf "Unkown method: %s" methName
+          | TyBool -> match methName with
+                      | "[]" -> let duration = match paramExps with
+                                               | [Time (Integer v, unit) as t] -> toSeconds v unit
+                                               | _ -> failwith "Invalid duration"
+                                let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
+                                                       [target] (makeDynValWindow duration) graph
+                                Set.singleton n, g', Id (Identifier n.Uid)
+                      | "howLong" -> let n, g' = createNode (nextSymbol "howLong") TyInt
+                                                            [target] (makeHowLong) graph
+                                     Set.singleton n, g', Id (Identifier n.Uid)
+                      | _ -> failwithf "Unkown method: %s" methName       
+          | TyVariant _ -> match methName with
+                           | _ -> failwithf "Unkown method: %s" methName
+          | TyRecord _ -> match methName with
+                          | _ -> // This may happen if the record field contains a function. 
+                                 // So, convert the method call into a function call and proceed.
+                                 let expr' = FuncCall (MemberAccess (Id (Identifier target.Uid), Identifier methName), paramExps)
+                                 dataflowE (env.Add(target.Uid, target)) (types.Add(target.Uid, target.Type)) graph expr'
+          | _ -> failwith "Unknown target type"
 
 and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps expr =
   // Used to dataflow primitive (print, ...) and recursive functions

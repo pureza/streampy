@@ -155,8 +155,7 @@ let test_aggregatesMax (test:Test) =
 [<TestCase ("aggregates/any.ez")>]
 let test_aggregatesAny (test:Test) =
   test.AssertThat (In "a"
-                    [Set "true"  (At  2)
-                     Set "false" (At 4)
+                    [Set "false" (At  2)
                      Set "true"  (At  5)
                      Set "false" (At  6)
                      Set "true"  (At  7)

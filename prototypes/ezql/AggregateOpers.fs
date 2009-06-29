@@ -1,5 +1,6 @@
 ﻿#light
 
+open Extensions.DateTimeExtensions
 open Util
 open Types
 open Ast
@@ -20,6 +21,27 @@ let makeLast getField (uid, prio, parents, context) =
  
   Operator.Build(uid, prio, eval, parents, context)
 
+(* Prev: records one field of the previous event *)
+let makePrev getField (uid, prio, parents, context) =
+  let curr = ref VNull
+
+  let eval = fun (op, inputs) -> 
+               let added = List.tryPick (fun diff -> match diff with
+                                                     | Added (VWindow contents) ->
+                                                         match contents with
+                                                         | [] -> None
+                                                         | [x] -> curr := x
+                                                                  None
+                                                         | _ -> curr := contents.[contents.Length - 1]
+                                                                Some contents.[contents.Length - 2]
+                                                     | Added ev -> let prev = !curr
+                                                                   curr := ev
+                                                                   if prev <> VNull then Some prev else None
+                                                     | _ -> None)
+                                        (List.hd inputs)
+               Option.bind (fun ev -> setValueAndGetChanges op (getField ev)) added
+ 
+  Operator.Build(uid, prio, eval, parents, context)
 
 (* Sum *)
 let makeSum getField (uid, prio, parents, context) =
@@ -166,3 +188,24 @@ let makeAnyAll isAny pred (uid, prio, parents, context) =
                setValueAndGetChanges op result                                                                          
 
   Operator.Build(uid, prio, eval, parents, context)  
+
+
+(* howLong: for how long was a given condition true *)
+let makeHowLong (uid, prio, parents, context) =
+  let lastUpdate = ref -1
+
+  let eval = fun (op:Operator, inputs) -> 
+               match List.hd inputs with
+               | [Added (VBool true)] -> lastUpdate := (Scheduler.clock()).Now.TotalSeconds
+                                         None
+               | [Added (VBool false)] -> 
+                   let now = Scheduler.clock().Now.TotalSeconds
+                   if !lastUpdate <> -1
+                     then let total = value.Add(op.Value, VInt (now - !lastUpdate))
+                          lastUpdate := now
+                          setValueAndGetChanges op total
+                     else lastUpdate := now
+                          None
+               | _ -> failwithf "Can't happen"
+ 
+  Operator.Build(uid, prio, eval, parents, context, contents = VInt 0)  

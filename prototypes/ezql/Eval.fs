@@ -31,6 +31,13 @@ let rec eval (env:Map<string, value>) = function
       let iv = eval env index
       match tv with
       | VDict dict -> if Map.contains iv dict then dict.[iv] else VNull //failwithf "Dictionary doesn't contain key %A. env = %A" iv env
+      | VWindow contents ->
+          match iv with
+          | VInt i when i < 0 ->
+              let i' = i + contents.Length
+              if i' >= 0 && i' < contents.Length then contents.[i'] else VNull
+          | VInt i -> if i < contents.Length then contents.[i] else VNull
+          | _ -> failwithf "The index is not an integer, but a %A" iv
       | _ -> failwithf "[]: Not a dictionary"
   | Record fields ->
       // This is extremely ineficient - we should create a node if possible

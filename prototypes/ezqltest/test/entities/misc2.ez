@@ -3,32 +3,21 @@ hum_readings = stream (:room_id, :humidity);;
 entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
+
+
 temps5mins = lastTemp[2 sec];;
 
-define x2(n:int) : int = n * 2;;
+fst = temps5mins[0];;
+prev = temps5mins[-2];;
+curr = temps5mins[-1];;
+
+prevTemp = lastTemp.prev();;
 
 
-// .any? on continuous value windows
-a = temps5mins.any? (fun t -> x2(t) > x2(lastTemp));;
+trueFor = (lastTemp > 10).howLong();;
 
 
-// .any? on streams
-b = temp_readings.any? (fun ev -> ev.temperature > 45);;
-
-
-
-// .any? on event windows
-c = temp_readings[2 sec].any? (fun ev -> x2(ev.temperature) > x2(lastTemp));;
-
-
-// .any? on continuous booleans
-d = (lastTemp > 30).any?();;
-
-
-
-// .any? on continuous boolean windows
-e = (lastTemp > 30)[2 sec].any?();;
-
+when (trueFor.changes(), fun _ -> print (now()); print (trueFor));;
 
 #! temp_readings
 Timestamp, room_id, temperature
