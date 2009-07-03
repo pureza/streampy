@@ -192,20 +192,20 @@ let makeAnyAll isAny pred (uid, prio, parents, context) =
 
 (* howLong: for how long was a given condition true *)
 let makeHowLong (uid, prio, parents, context) =
-  let lastUpdate = ref -1
+  let prevValue = ref false
 
   let eval = fun (op:Operator, inputs) -> 
-               match List.hd inputs with
-               | [Added (VBool true)] -> lastUpdate := (Scheduler.clock()).Now.TotalSeconds
-                                         None
-               | [Added (VBool false)] -> 
-                   let now = Scheduler.clock().Now.TotalSeconds
-                   if !lastUpdate <> -1
-                     then let total = value.Add(op.Value, VInt (now - !lastUpdate))
-                          lastUpdate := now
-                          setValueAndGetChanges op total
-                     else lastUpdate := now
-                          None
-               | _ -> failwithf "Can't happen"
+               match op.Parents.[0].Value, !prevValue with
+               | VBool true, true ->
+                   let total = value.Add(op.Value, VInt 1)
+                   setValueAndGetChanges op total
+               | VBool true, false ->
+                   prevValue := true
+                   None
+               | VBool false, true ->
+                   prevValue := false
+                   let total = value.Add(op.Value, VInt 1)
+                   setValueAndGetChanges op total
+               | _ -> None
  
   Operator.Build(uid, prio, eval, parents, context, contents = VInt 0)  

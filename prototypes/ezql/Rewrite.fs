@@ -143,37 +143,43 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                          | TyStream (TyRecord f) -> f
                          | _ -> failwith "can't happen!"
       // Translate the fields inherited from the stream                         
-      let streamFields = Map.of_list [ for pair in streamFields ->
-                                         (pair.Key, MethodCall (Id (Identifier "g"), Identifier "last",
-                                                                 [SymbolExpr (Symbol pair.Key)]))]
+      let streamFields = [ for pair in streamFields ->
+                             (pair.Key, MethodCall (Id (Identifier "g"), Identifier "last",
+                                                    [SymbolExpr (Symbol pair.Key)]))]
+                                                
       // Translate associations                                                                
-      let assocFields = List.fold (fun (acc:Map<string, expr>) assoc ->
+      let assocFields = List.fold (fun acc assoc ->
                                      match assoc with
                                      | BelongsTo (Symbol entity) -> 
-                                         let entityIdExpr = acc.[entity + "_id"]
+                                         let entityIdExpr = Id (Identifier (sprintf ":%s_id" entity))
                                          let indexEntity = ArrayIndex (Id (Identifier (entityDict (String.capitalize entity))), entityIdExpr)
                                          let fieldExpr = FuncCall(Id (Identifier "$ref"), [indexEntity])
-                                         acc.Add(entity, fieldExpr)
+                                         acc @ [entity, fieldExpr]
                                      | HasMany (Symbol entity) ->
                                          let entityName = String.capitalize entity |> String.singular
-                                         let entityId = (name + "_id").ToLower()
+                                         let entityId = sprintf "%s_id" (name.ToLower())
                                          let x = Identifier "x"
-                                         let filter = Lambda ([Param (x, None)], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), acc.[entityId]))
+                                         let filter = Lambda ([Param (x, None)], BinaryExpr (Equal, MemberAccess (Id x, Identifier entityId), Id (Identifier (":" + entityId))))
                                          let whereExpr = MethodCall (Id (Identifier (entityDict entityName)), Identifier "where", [filter])
                                          let toRef = Lambda ([Param (x, None)], FuncCall (Id (Identifier "$ref"), [Id x]))
                                          let selectRef = MethodCall (whereExpr, Identifier "select", [toRef])
-                                         acc.Add(entity, selectRef))
+                                         acc @ [entity, selectRef])
                                    streamFields assocs
+                                      
       // Translate additional member declarations.                                      
       let allFields = List.fold (fun acc (Member (self, Identifier name, expr, listeners)) ->
                                    let expr' = transDictAll entities expr
-                                   let expr'' = transSelf acc expr' self
-                                   acc.Add(name, expr''))
+                                   let expr'' = transSelf expr' self
+                                   acc @ [name, expr''])
                                 assocFields members
 
-      let record = Record (Map.to_list allFields)
+      // Create let's for all fields
+      let record = List.map (fun (k, v) -> (k, Id (Identifier (sprintf ":%s" k)))) allFields
+      let fieldDecls = List.foldBack (fun (k, v) acc -> Let (Identifier (sprintf ":%s" k), None, v, acc)) allFields (Record record)
+
+      //let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
-                                   [SymbolExpr uniqueId; Lambda ([Param (Identifier "g", None)], record)])
+                                   [SymbolExpr uniqueId; Lambda ([Param (Identifier "g", None)], fieldDecls)])
       let assign = Def (Identifier (entityDict name), groupByExpr, None)                 
       entities.Add(name), assign
   | _ -> failwithf "Won't happen because function translations happen first."
@@ -186,9 +192,9 @@ and transDictAll entities expr =
   replacer expr
 
 (* Replaces self.field with the expression that originates field. *)
-and transSelf (fieldExprs:Map<string, expr>) expr self =
+and transSelf expr self =
   let rec replacer expr = match expr with
-                          | MemberAccess (Id self', Identifier field) when self = self' -> fieldExprs.[field]
+                          | MemberAccess (Id self', Identifier field) when self = self' -> Id (Identifier (sprintf ":%s" field))
                           | Let (self', _, _, _) when self = self' -> expr
                           | Lambda (args, _) when List.exists (fun (Param (self', _)) -> self = self') args -> expr
                           | _ -> visit expr replacer

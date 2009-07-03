@@ -9,6 +9,37 @@ let toSeconds value unit =
   | Min -> value * 60
 
 
+let rec diffsBetween old neu =
+  match old, neu with
+  | VRecord ov, VRecord nv ->
+      let oKeys = Set.of_list (Map.to_list ov |> List.map fst)
+      let nKeys = Set.of_list (Map.to_list nv |> List.map fst)
+      if oKeys = nKeys
+        then List.collect (fun k -> match diffsBetween ov.[k] nv.[k] with
+                                    | [] -> []
+                                    | changes -> [RecordDiff (k, changes)]) (Set.to_list nKeys)
+        else [Added neu]
+  | VDict ov, VDict nv ->
+      let oKeys = Set.of_list (Map.to_list ov |> List.map fst)
+      let nKeys = Set.of_list (Map.to_list nv |> List.map fst)
+      let removedKeys = oKeys - nKeys
+      let removedChanges = List.map (fun k -> RemovedKey k) (Set.to_list removedKeys)
+      
+      let addedKeys = nKeys - oKeys
+      let addedChanges = List.map (fun k -> DictDiff (k, [Added nv.[k]])) (Set.to_list addedKeys)
+      
+      let otherKeys = nKeys - addedKeys
+      let otherChanges = List.collect (fun k -> match diffsBetween ov.[k] nv.[k] with
+                                                | [] -> []
+                                                | changes -> [DictDiff (k, changes)])  
+                                      (Set.to_list otherKeys)
+      otherChanges @ addedChanges @ removedChanges
+  | VWindow _, VWindow _ -> failwithf "n/a %A, %A" old neu
+  | VClosure _, _ -> [Added neu]
+  | VClosureSpecial _, _ -> [Added neu]
+  | _, _ when old <> neu -> [Added neu]
+  | _ -> []
+
 // Changes the current value of a continuous value if the new value differs
 // from the current one. Also gets the list of changes to propagate.
 let setValueAndGetChanges (op:Operator) v =
@@ -16,8 +47,10 @@ let setValueAndGetChanges (op:Operator) v =
                | VClosureSpecial _ | VClosure _ -> true
                | _ -> v <> op.Value
   if differ
-    then op.Value <- v
-         Some (op.Children, [Added v])
+    then let changes = diffsBetween op.Value v
+         assert (changes.Length > 0)
+         op.Value <- v
+         Some (op.Children, changes)
     else None
 
 
@@ -77,3 +110,5 @@ and incorporateChange change value =
        | _ -> failwithf "%A is not a dictionary!" value
        
 let rebuildValue changes = List.fold (fun value changes -> incorporateChanges changes value) VNull changes
+
+

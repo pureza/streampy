@@ -132,6 +132,10 @@ and typeOf env expr =
             else match Map.tryFind name fields with
                  | Some t -> t
                  | None -> failwithf "The entity doesn't have field '%s'" name
+      | TyInt ->
+          match name with
+          | "sec" | "min" -> TyInt
+          | _ -> failwithf "The type %A doesn't have field %s" targetType name 
       | _ -> failwithf "The target type %A doesn't have any fields, including '%s'" targetType name
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
@@ -203,7 +207,8 @@ and typeOfMethodCall env target name paramExps =
   | "changes" -> match paramExps with
                  | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-  | "last" | "sum" | "count" | "max" | "min" | "avg" | "prev" ->
+  | "count" -> TyInt
+  | "last" | "sum" | "max" | "min" | "avg" | "prev" ->
       match targetType, paramExps with
       | TyRecord fields, [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
       | TyStream (TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
@@ -354,6 +359,7 @@ and typeOfOp = function
   | Minus, TyInt, TyInt -> TyInt
   | Times, TyInt, TyInt -> TyInt
   | Div, TyInt, TyInt -> TyInt
+  | Mod, TyInt, TyInt -> TyInt
   | GreaterThan, TyInt, TyInt -> TyBool
   | GreaterThanOrEqual, TyInt, TyInt -> TyBool
   | Equal, a, b when a = b -> TyBool

@@ -120,8 +120,20 @@ let createNode uid typ parents makeOp graph =
   node, Graph.add (parentUids, uid, node, []) graph
 
 exception IncompleteRecord of (NodeInfo Set * DataflowGraph * expr) * string Set
+exception IncompleteLet of (string * NodeContext * TypeContext * DataflowGraph * expr) * string
 
-let rec dataflow (env:NodeContext, types:TypeContext, (graph:DataflowGraph), roots) = function
+let rec dataflowAnalysis types ast =
+  let ticks, g = createNode "ticks" (TyStream (TyRecord (Map.of_list ["timestamp", TyInt]))) [] makeTicks Graph.empty
+  let env = Map.empty.Add("ticks", ticks)
+  let roots = ["ticks"]
+  let env', types', g', roots' = List.fold dataflow (env, types, g, roots) ast
+
+  //Graph.Viewer.display graph (fun v info -> (sprintf "%s (%s)" info.Name v))
+  let operators = makeOperNetwork g' (Graph.nodes g') id Map.empty
+  Map.fold_left (fun acc k v -> Map.add k operators.[v.Uid] acc) Map.empty env'
+
+
+and dataflow (env:NodeContext, types:TypeContext, (graph:DataflowGraph), roots) = function
   | DefVariant _ -> env, types, graph, roots
   | Def (Identifier name, exp, None) ->
       let deps, g1, expr' = dataflowE env types graph exp
@@ -197,11 +209,14 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                      with
                        | UnknownId id -> depsAcc, g, exprsAcc, Set.add id unknown)
                   (Set.empty, graph, [], Set.empty) fields
-                  
+      
+      deps, g', Record exprs  
+      //let n, g'' = makeFinalNode env types g' (Record exprs) deps "record"          
+      //Set.singleton n, g'', Id (Identifier n.Uid)
       // If some field could not be dataflowed, raise an exception.
-      if (Set.isEmpty unknown)
-        then deps, g', Record exprs
-        else raise (IncompleteRecord ((deps, g', Record exprs), unknown))
+      //if (Set.isEmpty unknown)
+      //  then deps, g', Record exprs
+      //  else raise (IncompleteRecord ((deps, g', Record exprs), unknown))
   | Lambda (args, body) ->
       //Set.empty, graph, expr
       dataflowClosure env types graph expr None
@@ -220,7 +235,12 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       let depsBody, g3, body' = dataflowE env' types' g1 body
       Set.union depsBinder' depsBody, g3, Let (Identifier name, Some typ, binder', body')
   | Let (Identifier name, optType, binder, body) ->
-      let depsBinder, g1, binder' = dataflowE env types graph binder
+      let depsBinder, g1, binder' =
+        try
+          dataflowE env types graph binder
+        with
+          | UnknownId id -> raise (IncompleteLet ((name, env, types, graph, body), id))
+        
       // We must create a final node for the binder in order to extend the
       // environment with it, to dataflow the body.
       let binderNode, g2 = makeFinalNode env types g1 binder' depsBinder name
@@ -329,7 +349,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                                                        [target] (makeDynValWindow duration) graph
                                 Set.singleton n, g', Id (Identifier n.Uid)
                       | "howLong" -> let n, g' = createNode (nextSymbol "howLong") TyInt
-                                                            [target] (makeHowLong) graph
+                                                            [target; env.["ticks"]] (makeHowLong) graph
                                      Set.singleton n, g', Id (Identifier n.Uid)
                       | _ -> failwithf "Unkown method: %s" methName       
           | TyVariant _ -> match methName with
@@ -383,19 +403,20 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
       | _ -> failwithf "Invalid parameters to when: %A" paramExps
   | Id (Identifier "$ref") ->
       match paramExps with
-      | [expr] ->
-          let deps', g1, expr' = dataflowE env types graph expr
+      | [innerExpr] ->
+          let deps', g1, innerExpr' = dataflowE env types graph innerExpr
           
           // Get the type of the referenced object and create a function that
           // will return its unique id
-          let refType = match typeOf types expr with
-                        | TyType (_, _, id) -> id
-                        | _ -> failwithf "Only entities may be referenced"
+          let entity, refType = match typeOf types innerExpr with
+                                | TyType (name, _, id) -> name, id
+                                | _ -> failwithf "Only entities may be referenced"
           let getId = fun entity -> match entity with
                                     | VRecord m -> m.[VString refType]
                                     | _ -> failwithf "The entity is not a record?!"
-          let n, g2 = makeFinalNode env types g1 expr' deps' "{ }"
-          let ref, g3 = createNode (nextSymbol "ref") (TyRef (typeOf types expr)) [n]
+          let n, g2 = makeFinalNode env types g1 innerExpr' deps' "{ }"
+          // The type must be a TyRef (TyAlias entity), so that dataflowE will create a refProjector.
+          let ref, g3 = createNode (nextSymbol "ref") (TyRef (TyAlias entity)) [n]
                                    (makeRef getId) g2
           Set.singleton ref, g3, Id (Identifier ref.Uid)
       | _ -> invalid_arg "paramExps"
@@ -475,6 +496,21 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
      
       let g'' = Graph.add (p, n.Uid, n, s) g'
       g''
+      
+    // Remove a field from an entity dictionary declaration
+    // Remember that these declarations have the following form:
+    // let $a = ...
+    // let $b = ...
+    // { a = $a, b = $b }
+    //
+    // If a is removed and b depends on a, then b is also removed.
+    let rec removeField field expr =
+      match expr with
+      | Let (Identifier field', optType, binder, body) ->
+          if Set.contains field (freeVars binder)
+            then removeField field' (removeField field body)
+            else Let (Identifier field', optType, binder, removeField field body)
+      | Record fields -> Record (List.filter (fun (_, expr) -> (not (Set.contains field (freeVars expr)))) fields)
 
     // Try the normal dataflow first. If there is an error, we add "action" as a continuation.
     retry (fun () -> dataflowE env types graph body)
@@ -484,6 +520,12 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
                             theForwardDeps.Add(id, action)
                          
                           deps, g', expr'
+                      | IncompleteLet ((field, env, types, graph, letBody), causeId) ->
+                          theForwardDeps.Add(causeId, action)
+                          
+                          // Remove the missing field from the declaration and proceed
+                          let letBody' = removeField field letBody
+                          dataflowE env types graph letBody'
                       | _ -> raise err)
 
   and dataflowSubExpr (env:NodeContext) (types:TypeContext) (graph:DataflowGraph) =
@@ -622,6 +664,7 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
     | other -> failwithf "getMaker expects events but was called with a %A" other
                    
   let getField = match paramExprs, target.Type with
+                 | [], _ when aggrName = "count" -> id
                  | [SymbolExpr (Symbol name)], TyStream _ -> getMaker name
                  | [SymbolExpr (Symbol name)], TyWindow _ -> getMaker name
                  | [], TyInt -> id
@@ -732,7 +775,15 @@ and dataflowWhere env types graph target paramExps expr =
                           (makeWhere expr'') g'
   Set.singleton n, g'', Id (Identifier n.Uid)
 
-
+and isEntityInit typ =
+  match typ with
+  | TyType _ -> true
+  | _ -> false
+  
+and extractRecord expr =  
+  match expr with
+  | Let (_, _, _, body) -> extractRecord body
+  | _ -> expr
 
 (* Create the necessary nodes to evaluate an expression.
  *  - If the expression is a simple variable access, no new nodes are necessary;
@@ -781,6 +832,8 @@ and makeFinalNode env types graph expr deps name =
                     makeRecord parentOps (uid, prio, parents, context))
                  g''
 
+  | _ when isEntityInit (typeOf types' expr) -> makeFinalNode env types graph (extractRecord expr) deps name
+  
   (* The result is an arbitrary expression and we need to evaluate it *)
   | _ -> createNode (nextSymbol name) (typeOf types' expr) (Set.to_list deps)
                     (makeEvaluator expr Map.empty) graph

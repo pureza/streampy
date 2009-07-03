@@ -145,6 +145,7 @@ and value =
       
     static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
     static member Div(left, right) = value.IntArithmOp(left, right, (/))
+    static member Mod(left, right) = value.IntArithmOp(left, right, (%))
     static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
     static member GreaterThanOrEqual(left, right) = value.CmpOp(left, right, (>=))
     static member GreaterThan(left, right) = value.CmpOp(left, right, (>))

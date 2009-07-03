@@ -45,6 +45,7 @@ let mergeStack (stack:EvalStack) (toMerge:EvalStack) : EvalStack =
 
 let checkConsistency op changes =
   op.AllChanges := !op.AllChanges @ [changes]
+  (*
   match op.Value with
   | VClosureSpecial _ | VNull -> ()
   | VWindow _ -> ()
@@ -52,6 +53,7 @@ let checkConsistency op changes =
          if op.Value <> rebuilt
            then printfn "Operator %O doesn't meet the 'all changes must be seen' invariant.\n Value is %O\n Rebuilt value gives %O\n Changes propagated: %A\n"
                         op op.Value rebuilt !op.AllChanges 
+*)                        
 
 let toEvalStack children (changes:changes) : EvalStack =
   [ for child, idx, link in children -> (child, [(idx, (link changes))]) ]
@@ -79,7 +81,7 @@ let rec spread (stack:EvalStack) =
         try
           match op.Eval (op, filledChanges) with
           | Some (children, changes) ->
-              //checkConsistency op changes
+              checkConsistency op changes
               spread (mergeStack xs (toEvalStack children changes))
           | _ -> spread xs
         with

@@ -77,6 +77,8 @@
     <Compile Include="TestDicts.fs" />
     <Compile Include="TestEntities.fs" />
     <Compile Include="TestListenN.fs" />
+    <Compile Include="TestLRB.fs" />
+    <Compile Include="TestMuggy.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

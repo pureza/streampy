@@ -25,6 +25,10 @@ let rec eval (env:Map<string, value>) = function
       let target = eval env expr
       match target with
       | VRecord r -> r.[VString name]
+      | VInt i -> match name with
+                  | "sec" -> target
+                  | "min" -> VInt (i * 60)
+                  | _ -> failwithf "eval: the type TyInt doesn't have field %s" name
       | _ -> failwith "eval MemberAccess: Not an event!"
   | ArrayIndex (target, index) ->
       let tv = eval env target
@@ -55,8 +59,7 @@ let rec eval (env:Map<string, value>) = function
   | If (cond, thn, els) ->
       match eval env cond with
       | VBool true -> eval env thn
-      | VBool false -> eval env els
-      | x -> failwithf "The if condition is not a boolean: %A" x
+      | _ -> eval env els
    | Match (expr, cases) ->
        match eval env expr with
        | VVariant (label, meta) ->
@@ -89,6 +92,7 @@ and evalOp = function
   | Minus, v1, v2 -> value.Subtract(v1, v2)
   | Times, v1, v2 -> value.Multiply(v1, v2)
   | Div, v1, v2 -> value.Div(v1, v2)
+  | Mod, v1, v2 -> value.Mod(v1, v2)
   | GreaterThan, v1, v2 -> value.GreaterThan(v1, v2)
   | GreaterThanOrEqual, v1, v2 -> value.GreaterThanOrEqual(v1, v2)
   | LessThan, v1, v2 -> value.LessThan(v1, v2)

@@ -183,10 +183,20 @@ let makeRefProjector field (uid, prio, (parents:Operator list), context) =
                       then let refValue = match ref.Value with
                                           | VRef refValue -> refValue
                                           | _ -> failwithf "ref value is not a VRef?!"
+                           let objChanges = [ for change in inputs.[1] do
+                                                match change with
+                                                | DictDiff (key, keyChanges) -> yield! if key = ref.Value then keyChanges else []
+                                                | _ -> failwithf "Unexpected change in refProjector: %A" change ]
                            let refObject = entityDict.[refValue]
-                           match refObject with
-                           | VRecord r -> setValueAndGetChanges op r.[VString field]
-                           | _ -> failwithf "The referenced object is not an object!"
+                           let fieldValue = match refObject with
+                                            | VRecord r -> r.[VString field]
+                                            | _ -> failwithf "The referenced object is not an object!"
+                           
+                           match op.Value = refObject, objChanges with
+                           | true, [] -> None
+                           | true, _ -> Some (op.Children, objChanges)
+                           | false, [] -> setValueAndGetChanges op fieldValue
+                           | false, _ -> setValueAndGetChanges op fieldValue
                       else None),
                  parents, context)
 
@@ -361,3 +371,18 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                    | _ -> failwithf "Can't happen"
 
   Operator.Build(uid, prio, operEval, parents, context, contents = parents.[0].Value)
+
+
+(* ticks *)
+let makeTicks (uid, prio, parents, context) =
+  let nextEvent () =
+    let timestamp = Scheduler.clock().Now.TotalSeconds + 1
+    VRecord (Map.of_list [VString "timestamp", VInt timestamp])
+  
+  let eval = fun ((op:Operator), inputs) ->
+               Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])
+               Some (op.Children, List.hd inputs)
+
+  let op = Operator.Build(uid, prio, eval, parents, context)
+  Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])
+  op

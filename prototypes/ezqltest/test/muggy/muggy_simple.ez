@@ -1,16 +1,21 @@
 temp_readings = stream (:room_id, :temperature);;
 entries = stream(:room_id, :product_id);;
 
-lastTemp = temp_readings.last(:temperature);;
+
+entity Room =
+  createFrom(temp_readings, :room_id);;
 
 
-b = 0
-  when | (lastTemp > 30).changes() if lastTemp > 30 -> b + 1
-       | entries if lastTemp < 30 -> b - 1;;
+entity Product =
+  createFrom (entries, :product_id)
+  belongsTo :room
+  member x.temperature = x.room.temperature;;
 
 
+spoiled = Product.all.where(fun p -> (p.temperature > 25).howLong() > 10.min);;
 
 
+when (spoiled.changes(), fun _ -> print(spoiled));;
 
 #! temp_readings
 Timestamp, room_id, temperature

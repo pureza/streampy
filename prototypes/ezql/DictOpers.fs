@@ -329,7 +329,15 @@ let makeValues (uid, prio, parents, context) =
                                     let myChanges' = myChanges @ [Expired (!myDict).[key]]
                                     myDict := Map.remove key (!myDict)
                                     myChanges'
-                                | _ -> failwithf "Can't happen... oh really?")
+                                | Added (VDict dict) ->
+                                    // Expire the current dictionary
+                                    let myChanges' = myChanges @ [ for pair in !myDict ->
+                                                                     Expired pair.Value ]
+                                    myDict := Map.empty
+                                    myChanges' @ [ for pair in dict ->
+                                                     myDict := (!myDict).Add(pair.Key, pair.Value)
+                                                     Added pair.Value ]
+                                | _ -> failwithf "Can't happen... oh really: %A" change)
                            [] (List.hd allChanges)
                op.Value <- VWindow [ for pair in (!myDict) -> pair.Value ]
                Some (op.Children, myChanges)

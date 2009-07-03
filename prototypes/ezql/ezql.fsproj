@@ -84,8 +84,8 @@
     <Compile Include="Scheduler.fs" />
     <Compile Include="Eval.fs" />
     <Compile Include="AggregateOpers.fs" />
-    <Compile Include="CommonOpers.fs" />
     <Compile Include="DictOpers.fs" />
+    <Compile Include="CommonOpers.fs" />
     <Compile Include="Dataflow.fs" />
     <Compile Include="Engine.fs" />
     <Compile Include="Adapters.fs" />
