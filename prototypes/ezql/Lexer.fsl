@@ -37,6 +37,7 @@ let alpha      = ['a'-'z' 'A'-'Z']
 let identifier = alpha + (alpha | ['_'] | num)* + ('?')?
 let integer    = '-'? num
 let boolean    = "true" | "false"
+let null       = "null"
 let whitespace = ' ' | '\t'
 let newline    = '\n' | '\r' '\n'
 
@@ -70,6 +71,7 @@ rule token = parse
     | ";;"      			{ SEMICOLON2 }
     | "_"                   { UNDERSCORE }
     | boolean               { BOOLEAN_LITERAL (Boolean.Parse(lexeme lexbuf)) }
+    | null                  { NULL }
     | identifier			{ tokenize (lexeme lexbuf) }
     | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
     | "//"  [^'\n''\r']*    { token lexbuf  }

@@ -21,6 +21,7 @@ and expr =
   | Integer of int
   | Bool of bool
   | String of string
+  | Null
   | Time of expr * timeUnit
   | SymbolExpr of symbol
   | Id of id
@@ -42,6 +43,7 @@ and expr =
     | Integer i -> i.ToString()
     | Bool b -> b.ToString()
     | String s -> sprintf "\"%O\"" s
+    | Null -> "null"
     | Time _ -> "Time"
     | SymbolExpr (Symbol sym) -> sprintf ":%s" sym
     | Id (Identifier id) -> id
@@ -84,6 +86,7 @@ and Type =
   | TyBool
   | TyInt
   | TyString
+  | TyNull
   | TySymbol
   | TyType of string * Map<string, Type> * string (* name * fields * unique id field *)
   | TyArrow of Type * Type
@@ -102,6 +105,7 @@ and Type =
     | TyBool -> "bool"
     | TyInt -> "int"
     | TyString -> "string"
+    | TyNull -> "null"
     | TySymbol -> "symbol"
     | TyType _ -> "type"
     | TyArrow (type1, type2) -> sprintf "%O -> %O" type1 type2
@@ -165,6 +169,7 @@ let freeVars expr =
     | Time _ -> Set.empty
     | Integer i -> Set.empty
     | String s -> Set.empty
+    | Null -> Set.empty
     | SymbolExpr _ -> Set.empty
     | Bool b -> Set.empty
     

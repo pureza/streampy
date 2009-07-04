@@ -197,6 +197,7 @@ and typeOf env expr =
   | Integer v -> TyInt
   | String s -> TyString
   | Bool b -> TyBool
+  | Null -> TyNull
   | other -> failwithf "typeOf: Not implemented: %A" other
 
 
@@ -362,8 +363,8 @@ and typeOfOp = function
   | Mod, TyInt, TyInt -> TyInt
   | GreaterThan, TyInt, TyInt -> TyBool
   | GreaterThanOrEqual, TyInt, TyInt -> TyBool
-  | Equal, a, b when a = b -> TyBool
-  | NotEqual, a, b when a = b -> TyBool
+  | Equal, a, b when a = b || a = TyNull || b = TyNull -> TyBool
+  | NotEqual, a, b when a = b || a = TyNull || b = TyNull -> TyBool
   | LessThanOrEqual, TyInt, TyInt -> TyBool
   | LessThan, TyInt, TyInt -> TyBool
   | Plus, _, TyString -> TyString
@@ -371,7 +372,6 @@ and typeOfOp = function
   | And, TyBool, TyBool -> TyBool
   | Or, TyBool, TyBool -> TyBool
   | x -> failwithf "typeOfOp: op not implemented %A" x
-
 
 
 and metaTypeForLabel (env:TypeContext) label =
@@ -404,5 +404,6 @@ let rec isContinuous (env:TypeContext) expr =
   | Time _ -> true
   | Integer i -> true
   | String s -> true
+  | Null -> true
   | SymbolExpr _ -> true
   | Bool b -> true

@@ -129,12 +129,16 @@ type Test =
             | [] -> failwithf "  In %s, at %A: entity is spreading empty changes." entity (Engine.now().TotalSeconds)) |> ignore
     | _ -> failwithf "\n\n\nAssertThat: Couldn't find symbol '%s'\n\n\n" entity
 
-let init code inputs =
+let init code inputs ticksUpTo =
   let env = Engine.compile code
   for inputStream, events in inputs do
     match Map.tryFind inputStream env with
     | Some op -> CSVAdapter.FromString(op, events) |> ignore
     | _ -> failwithf "Cannot find the input stream '%s'" inputStream
+  
+  // Tell "ticks" to stop at ticksUpTo
+  env.["ticks"].Eval(env.["ticks"], [[diff.Expired (VInt ticksUpTo)]]) |> ignore
+  
   { code = code; env = env; allFacts = List<FactMap ref>() }
 
 let testsLeft test =
@@ -154,12 +158,13 @@ let parseTestFile fileName =
                                 (File.ReadAllLines(fileName))
     code, inputs
 
-type TestCaseAttribute(srcFile:string) =
+type TestCaseAttribute(srcFile:string, ticksUpTo:int) =
     inherit Attribute()
+    new (srcFile) = TestCaseAttribute(srcFile, -1)
+    member self.TicksUpTo = ticksUpTo
     member self.CreateTest() =
-        //let code, inputs = parseTestFile (@"C:\streampy\prototypes\ezql\test\" + srcFile)
         let code, inputs = parseTestFile (@"test/" + srcFile)
-        init code inputs
+        init code inputs ticksUpTo
 
 
 //printfn "%A" (Assembly.GetExecutingAssembly().Location)

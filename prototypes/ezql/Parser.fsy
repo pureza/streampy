@@ -16,7 +16,7 @@ open Ast
 %token GT GTE EQ DIFF LTE LT AND OR TRUE FALSE
 %token PIPE ENUM OF MATCH END
 %token EOF
-%token INT BOOL STRING
+%token INT BOOL STRING NULL
 
 %token ENTITY CREATE_FROM BELONGS_TO HAS_MANY MEMBER
 
@@ -140,6 +140,7 @@ Expr:
   | INTEGER_LITERAL                                       { Integer $1 }
   | BOOLEAN_LITERAL                                       { Bool $1 }
   | STRING_LITERAL                                        { String $1 }
+  | NULL                                                  { Null }
 
 BinaryExpr:
   | Arith                                                 { $1 }

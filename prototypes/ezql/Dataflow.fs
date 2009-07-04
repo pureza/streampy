@@ -119,7 +119,6 @@ let createNode uid typ parents makeOp graph =
                MakeOper = makeOp; ParentUids = parentUids }
   node, Graph.add (parentUids, uid, node, []) graph
 
-exception IncompleteRecord of (NodeInfo Set * DataflowGraph * expr) * string Set
 exception IncompleteLet of (string * NodeContext * TypeContext * DataflowGraph * expr) * string
 
 let rec dataflowAnalysis types ast =
@@ -201,25 +200,14 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           Set.singleton n, g3, Id (Identifier n.Uid)
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
   | Record fields ->
-      let deps, g', exprs, unknown =
-        List.fold (fun (depsAcc, g, exprsAcc, unknown) (field, expr) ->
-                     try
+      let deps, g', exprs =
+        List.fold (fun (depsAcc, g, exprsAcc) (field, expr) ->
                        let deps, g', expr' = dataflowE env types g expr
-                       Set.union depsAcc deps, g', exprsAcc @ [field, expr'], unknown
-                     with
-                       | UnknownId id -> depsAcc, g, exprsAcc, Set.add id unknown)
-                  (Set.empty, graph, [], Set.empty) fields
+                       Set.union depsAcc deps, g', exprsAcc @ [field, expr'])
+                  (Set.empty, graph, []) fields
       
       deps, g', Record exprs  
-      //let n, g'' = makeFinalNode env types g' (Record exprs) deps "record"          
-      //Set.singleton n, g'', Id (Identifier n.Uid)
-      // If some field could not be dataflowed, raise an exception.
-      //if (Set.isEmpty unknown)
-      //  then deps, g', Record exprs
-      //  else raise (IncompleteRecord ((deps, g', Record exprs), unknown))
-  | Lambda (args, body) ->
-      //Set.empty, graph, expr
-      dataflowClosure env types graph expr None
+  | Lambda (args, body) -> dataflowClosure env types graph expr None
   | Let (Identifier name, Some typ, (Lambda (args, binderBody) as binder), body) ->
       // Check if the binder is recursive
       let isRec = isRecursive name binder
@@ -282,9 +270,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                         else Set.singleton info', graph, Id (Identifier info'.Uid)
                         
       | _ -> raise (UnknownId name)
-  | Integer i -> Set.empty, graph, expr
-  | String s -> Set.empty, graph, expr
-  | Bool b -> Set.empty, graph, expr
+  | Integer _ | String _ | Bool _ | Null -> Set.empty, graph, expr
   | _ -> failwithf "Expression type not supported: %A" expr
 
 and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
@@ -515,11 +501,6 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
     // Try the normal dataflow first. If there is an error, we add "action" as a continuation.
     retry (fun () -> dataflowE env types graph body)
           (fun err -> match err with
-                      | IncompleteRecord ((deps, g', expr'), ids) ->
-                          for id in ids do
-                            theForwardDeps.Add(id, action)
-                         
-                          deps, g', expr'
                       | IncompleteLet ((field, env, types, graph, letBody), causeId) ->
                           theForwardDeps.Add(causeId, action)
                           
@@ -832,6 +813,8 @@ and makeFinalNode env types graph expr deps name =
                     makeRecord parentOps (uid, prio, parents, context))
                  g''
 
+  (* If this is an entity initialization (i.e. let a = ... in let b = ... in { a = $a, b = $b }),
+     ignore all the lets and create a final node just for the record *)
   | _ when isEntityInit (typeOf types' expr) -> makeFinalNode env types graph (extractRecord expr) deps name
   
   (* The result is an arbitrary expression and we need to evaluate it *)

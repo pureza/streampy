@@ -17,6 +17,7 @@ spoiled = Product.all.where(fun p -> (p.temperature > 25).howLong() > 10.min);;
 
 when (spoiled.changes(), fun _ -> print(spoiled));;
 
+
 #! temp_readings
 Timestamp, room_id, temperature
 2,               1,      25

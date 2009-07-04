@@ -5,9 +5,11 @@ entity Segment =
    createFrom(seg_speed_str, :segment_id)
    hasMany :vehicles
 
+   member self.avg5mins = seg_speed_str.where(fun ev -> ev.segment_id == self.segment_id)[5 min].avg(:speed)
+
     // A segment is congested if the speed average reported over the
     // last 5 minutes is less than 40 MPH
-   member self.isCongested = seg_speed_str.where(fun ev -> ev.segment_id == self.segment_id)[5 min].avg(:speed) < 80
+   member self.isCongested = if self.avg5mins != null then self.avg5mins < 80 else false
 
    member self.vehicleCount = self.vehicles.values().count();;
 
@@ -20,14 +22,13 @@ entity Vehicle =
   // a congested segment
   member self.toll = 0
         when | self.segment.changes() ->
+                 print (self.segment.avg5mins + " " + now());
                  if self.segment.isCongested
                    then self.segment.vehicleCount
                    else 0
 
 
-  member self.totalToll = self.toll.changes().sum(:value);;  
-
-//  member self.tollPerSegment = self.segment_id.changes().groupby(:value, fun g -> self.toll);;
+  member self.totalToll = self.toll.changes().sum(:value);;
 
 
 

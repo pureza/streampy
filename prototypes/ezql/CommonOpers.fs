@@ -375,13 +375,20 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
 
 (* ticks *)
 let makeTicks (uid, prio, parents, context) =
+  let maxLimit = ref None
+  let timestamp () = Scheduler.clock().Now.TotalSeconds
+
   let nextEvent () =
-    let timestamp = Scheduler.clock().Now.TotalSeconds + 1
-    VRecord (Map.of_list [VString "timestamp", VInt timestamp])
+    VRecord (Map.of_list [VString "timestamp", VInt (timestamp () + 1)])
   
   let eval = fun ((op:Operator), inputs) ->
-               Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])
-               Some (op.Children, List.hd inputs)
+               match List.hd inputs with
+               | [Expired (VInt n)] -> maxLimit := Some n // Used by the testing system to set a maximum limit.
+                                       None
+               | _ -> match !maxLimit with
+                      | Some max when timestamp () > max -> None
+                      | _ -> Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])
+                             Some (op.Children, List.hd inputs)
 
   let op = Operator.Build(uid, prio, eval, parents, context)
   Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])

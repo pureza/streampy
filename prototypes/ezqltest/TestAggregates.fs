@@ -175,10 +175,9 @@ let test_aggregatesAny (test:Test) =
   test.AssertThat (In "d"
                      [Set "false" (At 2)
                       Set "true"  (At 4)])
-                     
+                   
   test.AssertThat (In "e"
-                    [Set "false" (At 2)
-                     Set "true"  (At 4)
+                    [Set "true"  (At 4)
                      Set "false" (At 9)])
 
   test.AssertThat (In "f"

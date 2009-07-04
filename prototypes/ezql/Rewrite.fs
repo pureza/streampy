@@ -23,7 +23,7 @@ let rec visit expr visitor =
   | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)
   | RecordWith (source, newFields) -> RecordWith (visitor source, List.map (fun (n, e) -> (n, visitor e)) newFields)
   | Time (length, unit) -> Time (visitor length, unit)
-  | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ -> expr
+  | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ | Null -> expr
 
 (*
  * Delay window creation as much as possible.

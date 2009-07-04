@@ -85,30 +85,23 @@ let rec eval (env:Map<string, value>) = function
   | Integer v -> VInt v
   | String v -> VString v
   | Bool v -> VBool v
+  | Null -> VNull
   | other -> failwithf "Not implemented: %A" other
 
 and evalOp = function
-  | Plus, v1, v2 -> value.Add(v1, v2)
-  | Minus, v1, v2 -> value.Subtract(v1, v2)
-  | Times, v1, v2 -> value.Multiply(v1, v2)
-  | Div, v1, v2 -> value.Div(v1, v2)
-  | Mod, v1, v2 -> value.Mod(v1, v2)
-  | GreaterThan, v1, v2 -> value.GreaterThan(v1, v2)
+  | Plus,               v1, v2 -> value.Add(v1, v2)
+  | Minus,              v1, v2 -> value.Subtract(v1, v2)
+  | Times,              v1, v2 -> value.Multiply(v1, v2)
+  | Div,                v1, v2 -> value.Div(v1, v2)
+  | Mod,                v1, v2 -> value.Mod(v1, v2)
+  | GreaterThan,        v1, v2 -> value.GreaterThan(v1, v2)
   | GreaterThanOrEqual, v1, v2 -> value.GreaterThanOrEqual(v1, v2)
-  | LessThan, v1, v2 -> value.LessThan(v1, v2)
-  | LessThanOrEqual, v1, v2 -> value.LessThanOrEqual(v1, v2)
-  | Equal, v1, v2 -> value.Equals(v1, v2)
-  | And, v1, v2 -> match v1, v2 with
-                   | VBool true, VBool true -> VBool true
-                   | VBool _, VBool _ -> VBool false
-                   | _ -> failwithf "And was called on a %A and a %A" v1 v2
-  | Or, v1, v2 -> match v1, v2 with
-                   | VBool true, VBool _ -> VBool true
-                   | VBool _, VBool true -> VBool true
-                   | VBool _, VBool _ -> VBool false
-                   | _ -> failwithf "Or was called on a %A and a %A" v1 v2                   
-  | _ -> failwith "op not implemented"
-
+  | LessThan,           v1, v2 -> value.LessThan(v1, v2)
+  | LessThanOrEqual,    v1, v2 -> value.LessThanOrEqual(v1, v2)
+  | Equal,              v1, v2 -> value.Equals(v1, v2)
+  | NotEqual,           v1, v2 -> value.Differ(v1, v2)
+  | And,                v1, v2 -> value.And(v1, v2)
+  | Or,                 v1, v2 -> value.Or(v1, v2)
 
 and apply value =
   match value with
