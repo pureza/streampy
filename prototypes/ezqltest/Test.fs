@@ -96,36 +96,43 @@ type Test =
     let operOpt = Map.tryFind entity self.env
     match operOpt with
     | Some oper ->
+        let delayed = ref None
         addSinkTo oper
           (function
             | changes::_ ->
                 //printfn "changes = %A" changes
                 let now = Engine.now()
-                let facts = Map.tryFind now (!timeToFact)
-                match facts with
-                | Some facts' ->
-                    if facts'.Length <> changes.Length
-                      then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
-                                     entity now.TotalSeconds changes facts'
-                    for fact' in facts' do
-                      match fact' with
-                      | Diff fact'' -> if not (List.contains fact'' changes)
-                                         then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
-                                                        entity now.TotalSeconds changes facts'
-                      | ValueAtKey (k, v) ->
-                          match oper.Value with
-                          | VDict dict ->
-                              if Map.contains k dict
-                                then let v' = dict.[k]
-                                     if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %O\n\t Expected: %O\n"
-                                                               entity now.TotalSeconds k dict.[k] v
-                                else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
-                                               entity now.TotalSeconds k
-                          | _ -> failwithf "The entity '%s' is not a dictionary!" entity
-                      | Value v -> printfn "ola"
-                    timeToFact := Map.remove now !timeToFact
-                | _ -> failwithf "  In %s, at %A: unpredicted event happened:\n\t %A\n"
-                                 entity now.TotalSeconds changes
+                
+                match !delayed with
+                | Some (time, prevChanges, _) when time = now -> delayed := Some (time, prevChanges @ changes, oper.Value)
+                | None -> delayed := Some (now, changes, oper.Value)
+                | Some (pTime, pChanges, value) ->
+                    let facts = Map.tryFind pTime (!timeToFact)
+                    match facts with
+                    | Some facts' ->
+                        if facts'.Length <> pChanges.Length
+                          then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
+                                         entity pTime.TotalSeconds pChanges facts'
+                        for fact' in facts' do
+                          match fact' with
+                          | Diff fact'' -> if not (List.contains fact'' pChanges)
+                                             then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
+                                                            entity pTime.TotalSeconds pChanges facts'
+                          | ValueAtKey (k, v) ->
+                              match value with
+                              | VDict dict ->
+                                  if Map.contains k dict
+                                    then let v' = dict.[k]
+                                         if v <> v' then failwithf "In %s, at %A: the values for key %A differ!\n\t Current: %O\n\t Expected: %O\n"
+                                                                   entity pTime.TotalSeconds k dict.[k] v
+                                    else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
+                                                   entity pTime.TotalSeconds k
+                              | _ -> failwithf "The entity '%s' is not a dictionary!" entity
+                          | Value v -> printfn "ola"
+                        timeToFact := Map.remove pTime !timeToFact
+                    | _ -> failwithf "  In %s, at %A: unpredicted event happened:\n\t %A\n"
+                                     entity pTime.TotalSeconds pChanges
+                    delayed := Some (now, changes, oper.Value)
             | [] -> failwithf "  In %s, at %A: entity is spreading empty changes." entity (Engine.now().TotalSeconds)) |> ignore
     | _ -> failwithf "\n\n\nAssertThat: Couldn't find symbol '%s'\n\n\n" entity
 

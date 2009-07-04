@@ -86,9 +86,38 @@ let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
                                   Some (op.Children, [Added ev']))
 
 (* When *)
-let makeWhen = makeEvalOnAdd (fun op inputs ev result ->
+let makeWhen2 = makeEvalOnAdd (fun op inputs ev result ->
                                 setValueAndGetChanges op result)
 
+(* When is composed of two operators: the first receives inputs and postpones their
+   evaluation which will take place at the second operator. *)
+let makeWhen eventHandler (uid, prio, parents, context) =
+  let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
+  
+  let rec opTop = Operator.Build(uid, prio,
+                    (fun (op, inputs) -> 
+                       match List.hd inputs with
+                       | [] -> ()
+                       | ev -> Scheduler.scheduleOffset 0 (List.of_seq [opBottom, 0, id], ev)
+                       None),
+                    parents, context)
+ 
+                  
+  and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
+                   (fun (op, inputs) ->
+                      let env = getOperEnvValues opTop
+                      match inputs with
+                      | [Added ev]::_ ->
+                          let env' = Map.add "ev" ev env
+                          let result = eval env' expr
+                          setValueAndGetChanges op result
+                      | _ -> failwithf "Wrong number of arguments! %A" inputs),
+                   [opTop], context) 
+                              
+  { opTop with
+        Children = opBottom.Children;
+        Contents = opBottom.Contents;
+        AllChanges = opBottom.AllChanges }
 
 (* A timed window for dynamic values *)
 let makeDynValWindow duration (uid, prio, parents, context) =
@@ -279,8 +308,8 @@ let makeProjector field (uid, prio, parents, context) =
   
 
 let makeClosure lambda closureBuilder itself (uid, prio, parents, context) =
-  let eval = fun (op:Operator, inputs) ->
-               None
+  let eval = fun (op:Operator, inputs) -> None
+
   Operator.Build(uid, prio, eval, parents, context, contents = VClosureSpecial (uid, lambda, closureBuilder, context, itself))
 
 
@@ -332,6 +361,7 @@ let makeFuncCall (uid, prio, parents, context) =
                let param's = [ for parent in parents.Tail -> Id (Identifier parent.Uid) ]
                let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), param's))
                Some (List<_> ([resultOp, 0, id]), [Added result])
+           | VNull -> None
            | other -> failwithf "Expecting a VClosure[Special], but the parent's value is %A" other),
       parents, context)
 
@@ -358,16 +388,19 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                    match inputs with
                    | [Added v]::rest when op.Value = VNull -> setValueAndGetChanges op v // Initializing
                    | _::listenerInputs ->
-                       let parentIdx = List.findIndex (fun input -> input <> []) listenerInputs
-                       let closure = 
-                         match op.Parents.[parentIdx + 1].Value with
-                         | VClosureSpecial _ as special ->
-                             convertClosureSpecial special
-                         | VClosure _ as closure -> closure
-                         | _ -> failwithf "Listener didn't return a closure!!!"
-                       let env = Map.of_list ["$curr", op.Value]
-                       let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
-                       setValueAndGetChanges op result
+                       let parentIdx = List.tryFindIndex (fun input -> input <> []) listenerInputs
+                       match parentIdx with
+                       | None -> None
+                       | Some idx ->
+                           let closure = 
+                             match op.Parents.[idx + 1].Value with
+                             | VClosureSpecial _ as special ->
+                                 convertClosureSpecial special
+                             | VClosure _ as closure -> closure
+                             | _ -> failwithf "Listener didn't return a closure!!!"
+                           let env = Map.of_list ["$curr", op.Value]
+                           let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
+                           setValueAndGetChanges op result
                    | _ -> failwithf "Can't happen"
 
   Operator.Build(uid, prio, operEval, parents, context, contents = parents.[0].Value)

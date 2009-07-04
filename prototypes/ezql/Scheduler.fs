@@ -33,8 +33,8 @@ let rec reSchedule sched =
                                                                                   mergeStack acc [childOp, ([idx, link changes])])
                                                                                acc children))
                                                                  [] queue.Values.[0]
-                                           spread stack
                                            queue.RemoveAt 0
+                                           spread stack
                                            reSchedule sched)
                                            
 let schedule time action =
