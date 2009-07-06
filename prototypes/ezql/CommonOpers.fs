@@ -90,7 +90,7 @@ let makeWhen2 = makeEvalOnAdd (fun op inputs ev result ->
                                 setValueAndGetChanges op result)
 
 (* When is composed of two operators: the first receives inputs and postpones their
-   evaluation which will take place at the second operator. *)
+   evaluation, which will be done by the second operator, in a second eval stage. *)
 let makeWhen eventHandler (uid, prio, parents, context) =
   let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
   

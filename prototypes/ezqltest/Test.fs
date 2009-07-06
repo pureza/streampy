@@ -76,9 +76,12 @@ let In entity (facts:(DateTime * fact) list) =
 (* Operator support *)
 
 let addSinkTo op action =
-  Operator.Build("__sink" + op.Uid, (Priority.add op.Priority (Priority.of_list [0; 0; 0; 1])),
-    (fun (op, changes) -> action(changes); None),
-    [op], op.Context)
+  let sink = Operator.Build("__sink" + op.Uid, (Priority.add op.Priority (Priority.of_list [0; 0; 0; 1])),
+                            (fun (op, changes) -> action(changes); None),
+                            [op], op.Context)
+  // Force the sink to verify the last assert.                            
+  Scheduler.scheduleOffset 1000000 (List.of_seq [sink, 0, id], [diff.Added VNull])
+  sink
     
 (* A Test *)
 
@@ -103,6 +106,7 @@ type Test =
                 //printfn "changes = %A" changes
                 let now = Engine.now()
                 
+                // We only assert changes for timestamp n after n
                 match !delayed with
                 | Some (time, prevChanges, _) when time = now -> delayed := Some (time, prevChanges @ changes, oper.Value)
                 | None -> delayed := Some (now, changes, oper.Value)
