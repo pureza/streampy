@@ -5,6 +5,7 @@ open System.Collections.Generic
 open Clock
 open Types
 open Oper
+open Extensions.DateTimeExtensions
 
 type action = ChildData list * changes
 
@@ -47,3 +48,4 @@ let schedule time action =
 let scheduleOffset offset action =
     schedule ((!sched).clock.Now + TimeSpan(0, 0, offset)) action
     
+let now () = clock().Now.TotalSeconds

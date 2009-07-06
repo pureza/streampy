@@ -649,9 +649,10 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
                  | [SymbolExpr (Symbol name)], TyStream _ -> getMaker name
                  | [SymbolExpr (Symbol name)], TyWindow _ -> getMaker name
                  | [], TyInt -> id
+                 | [], TyBool -> id
                  | [], TyWindow (TyInt, _) -> id
                  | _ -> failwithf "Invalid parameters to %s" aggrName
-  let n, g' = createNode (nextSymbol aggrName) TyInt [target]
+  let n, g' = createNode (nextSymbol aggrName) (typeOf types expr) [target]
                          (opMaker getField) graph
   n.Name <- (sprintf "%s(%s)" aggrName field)
   Set.singleton n, g', Id (Identifier n.Uid)

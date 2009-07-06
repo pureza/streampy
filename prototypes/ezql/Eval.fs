@@ -16,7 +16,7 @@ let rec eval (env:Map<string, value>) = function
       match label with
       | Id (Identifier label') -> VVariant (label', paramValues)
       | _ -> failwithf "Label is not a string."
-  | FuncCall (Id (Identifier "now"), []) -> VInt (Scheduler.clock()).Now.TotalSeconds
+  | FuncCall (Id (Identifier "now"), []) -> VInt (Scheduler.now ())
   | FuncCall (expr, paramExps) ->
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps

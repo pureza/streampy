@@ -46,14 +46,15 @@ let makeWindow duration (uid, prio, parents, context) =
                op.Value <- VWindow !contents
                Some (op.Children, parentChanges)
 
-  Operator.Build(uid, prio, eval, parents, context, contents = VWindow [])
+  Operator.Build(uid, prio, eval, parents, context, contents = VWindow !contents)
 
-(* Generic operator builder for stream.where(), stream.select() and when() 
+
+(* Generic operator builder for stream.where() and stream.select()
    All these operators receive a lambda expression that is to be executed
    when an event arrives. How to handle the result of this evaluation
    is specific to each operator, and is abstracted by the resultHandler
    function. *)
-let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents, context) : Operator =
+let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents:Operator list, context) : Operator =
     let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
     let eval = fun (op, inputs) ->
                  let env = getOperEnvValues op
@@ -64,7 +65,12 @@ let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents, context) : Ope
                  | []::_ -> None // Ignore changes to the handler dependencies
                  | _ -> failwithf "Wrong number of arguments! %A" inputs
 
-    Operator.Build(uid, prio, eval, parents, context)
+    let initialValue =
+      match parents.[0].Value with
+      | VRecord fields as ev when Map.tryFind (VString "timestamp") fields = Some (VInt (Scheduler.now())) -> ev
+      | _ -> VNull
+
+    Operator.Build(uid, prio, eval, parents, context, contents = initialValue)
 
 
 (* Where: propagates events that pass a given predicate *)
@@ -121,7 +127,7 @@ let makeWhen eventHandler (uid, prio, parents, context) =
 
 (* A timed window for dynamic values *)
 let makeDynValWindow duration (uid, prio, parents, context) =
-  let contents = ref []
+  let contents = ref [VNull]
 
   let eval = fun (op, inputs) ->
                let parentChanges = List.hd inputs
@@ -138,7 +144,8 @@ let makeDynValWindow duration (uid, prio, parents, context) =
                op.Value <- VWindow !contents
                Some (op.Children, parentChanges)
 
-  Operator.Build(uid, prio, eval, parents, context, contents = VWindow [])
+  Operator.Build(uid, prio, eval, parents, context, contents = VWindow !contents)
+
 
 (* Evaluator: this operator evaluates some expression and records its result *)
 let makeEvaluator expr kenv (uid, prio, parents, context) =
@@ -184,7 +191,7 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
 let makeToStream (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                let value = op.Parents.[0].Value
-               let ev = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.clock().Now.TotalSeconds); VString "value", value])
+               let ev = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.now ()); VString "value", value])
                op.Value <- ev
                Some (op.Children, [Added ev])
 
@@ -409,7 +416,7 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
 (* ticks *)
 let makeTicks (uid, prio, parents, context) =
   let maxLimit = ref None
-  let timestamp () = Scheduler.clock().Now.TotalSeconds
+  let timestamp () = Scheduler.now()
 
   let nextEvent () =
     VRecord (Map.of_list [VString "timestamp", VInt (timestamp () + 1)])

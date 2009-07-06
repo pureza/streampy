@@ -224,6 +224,7 @@ and typeOfMethodCall env target name paramExps =
           | _, [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps         
       | TyInt, [] -> TyInt
+      | TyBool, [] -> TyBool
       | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                 
   | "any?" | "all?" ->                   
       match targetType, paramExps with

@@ -51,8 +51,9 @@ let makeSum getField (uid, prio, parents, context) =
                                           match diff with
                                           | Added (VWindow contents) ->
                                               // Initialization
-                                              List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) contents
+                                              List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) (List.filter (fun v -> v <> VNull) contents)
                                           | Added v -> value.Add(acc, getField v)
+                                          | Expired VNull -> acc
                                           | Expired v -> value.Subtract(acc, getField v)
                                           | _ -> failwithf "Invalid diff in sum: %A" diff)
                                        initial (List.hd inputs)
@@ -69,6 +70,7 @@ let makeCount getField (uid, prio, parents, context) =
                                           | Added (VWindow contents) -> VInt contents.Length
                                           | Added v -> getField v |> ignore // assert that v is what we're waiting for
                                                        value.Add(acc, VInt 1)
+                                          | Expired VNull -> acc
                                           | Expired v -> getField v |> ignore
                                                          value.Subtract(acc, VInt 1)
                                           | _ -> failwithf "Invalid diff in sum: %A" diff)
@@ -83,7 +85,7 @@ let makeMax getField (uid, prio, (parents:Operator list), context) =
     | VWindow contents ->
         match contents with
         | [] -> VNull
-        | _ -> List.max (List.map getField contents)
+        | _ -> List.max (List.map getField (List.filter (fun v -> v <> VNull) contents))
     | other -> failwithf "Expecting a VWindow, but got a %A instead." other
 
   let eval = fun ((op:Operator), inputs) -> 
@@ -110,7 +112,7 @@ let makeMin getField (uid, prio, (parents:Operator list), context) =
     | VWindow contents ->
         match contents with
         | [] -> VNull
-        | contents' -> List.min (List.map getField contents')
+        | _ -> List.min (List.map getField (List.filter (fun v -> v <> VNull) contents))
     | other -> failwithf "Expecting a VWindow, but got a %A instead." other
 
   let eval = fun ((op:Operator), inputs) -> 
@@ -139,7 +141,7 @@ let makeAvg getField (uid, prio, parents, context) =
                for change in List.hd inputs do
                  match change with
                  | Added (VWindow contents as window) ->
-                     sum := List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) contents
+                     sum := List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) (List.filter (fun v -> v <> VNull) contents)
                      count := VInt (contents.Length)
                  | Added v -> let v' = getField v
                               sum := value.Add(!sum, v')
@@ -172,7 +174,9 @@ let makeAnyAll isAny pred (uid, prio, parents, context) =
                                        match window with
                                        | Some window' ->
                                            // The predicate changed or there was an expiration: must re-evaluate the entire window
-                                           (if isAny then List.exists else List.forall) (fun v -> eval (env.Add("$v", v)) expr = VBool true) window'
+                                           (if isAny then List.exists else List.forall)
+                                             (fun v -> eval (env.Add("$v", v)) expr = VBool true)
+                                             (List.filter (fun v -> v <> VNull) window')
                                        | None -> failwithf ".any?: The predicate changed but I can't re-evaluate past values!"
                                    | winChanges::_ ->
                                        // If this is .any?() and the value is already true or is .all?() and
