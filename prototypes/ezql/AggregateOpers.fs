@@ -146,6 +146,7 @@ let makeAvg getField (uid, prio, parents, context) =
                  | Added v -> let v' = getField v
                               sum := value.Add(!sum, v')
                               count := value.Add(!count, VInt 1)
+                 | Expired VNull -> ()
                  | Expired v -> let v' = getField v
                                 sum := value.Subtract(!sum, v')
                                 count := value.Subtract(!count, VInt 1)

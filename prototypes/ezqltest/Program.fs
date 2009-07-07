@@ -5,7 +5,7 @@ open Dataflow
 open Types
 open Test
 
-
+(*
 Test.runTests [(Test.findTest "test_streamsWhere")]
 Test.runTests [(Test.findTest "test_streamsSelect")]
 Test.runTests [(Test.findTest "test_functions")]
@@ -19,7 +19,7 @@ Test.runTests [(Test.findTest "test_aggregatesAny")]
 Test.runTests [(Test.findTest "test_aggregatesAll")]
 Test.runTests [(Test.findTest "test_listenN")]
 Test.runTests [(Test.findTest "test_muggySimple")]
-
+*)
 
 Test.runTests [(Test.findTest "test_entitiesMisc2")]
 

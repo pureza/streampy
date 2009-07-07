@@ -205,9 +205,10 @@ and typeOfMethodCall env target name paramExps =
   let targetType = typeOf env target
   // Generic methods first
   match name with
-  | "changes" -> match paramExps with
-                 | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
-                 | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+  | "changes" | "updates" ->
+    match paramExps with
+    | [] -> TyStream (TyRecord (Map.of_list ["value", targetType]))
+    | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
   | "count" -> TyInt
   | "last" | "sum" | "max" | "min" | "avg" | "prev" ->
       match targetType, paramExps with

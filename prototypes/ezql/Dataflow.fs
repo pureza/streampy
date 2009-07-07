@@ -287,6 +287,10 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
   | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                         [target] (makeToStream) graph
                  Set.singleton n, g', Id (Identifier n.Uid)
+  | "updates" -> let ancestors = getAncestorRoots target.Uid graph
+                 let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
+                                        (target::(Set.to_list ancestors)) (makeToStream) graph
+                 Set.singleton n, g', Id (Identifier n.Uid)                 
   | _ -> match target.Type with
           | TyStream fields ->
               match methName with
@@ -682,6 +686,16 @@ and dataflowAnyAll env types graph target paramExprs methName expr =
   let n, g'' = createNode (nextSymbol methName) TyBool opDeps
                           (makeAnyAll (methName = "any?") expr'') g'
   Set.singleton n, g'', Id (Identifier n.Uid)
+
+
+(* Returns the ancestor roots of any given node in the graph *)
+and getAncestorRoots node graph =
+  match graph with
+  | Extract node ((p, _, v, _), gr) ->
+      if p.IsEmpty
+        then Set.singleton v
+        else List.fold (fun acc a -> Set.union acc (getAncestorRoots a gr)) Set.empty p
+  | _ -> failwithf "getAncestors: Can't find the node in the graph"
 
 (*
 and renameNetwork renamer root graph =
