@@ -128,6 +128,7 @@ Expr:
   | LPAREN Expr RPAREN                                    { $2 }
   | Expr LBRACKET Expr RBRACKET                           { ArrayIndex ($1, $3) }
   | Expr LBRACKET Expr TimeUnit RBRACKET                  { ArrayIndex ($1, Time ($3, $4)) }
+  | LBRACE Expr RBRACE                                    { FixedAccess ($2) }
   | FUN Parameters ARROW Expr                             { Lambda ($2, $4) }
   | Expr SEMICOLON Expr                                   { Seq ($1, $3) }
   | BinaryExpr                                            { $1 }

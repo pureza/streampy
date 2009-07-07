@@ -2,6 +2,7 @@
 
 open Types
 open Ast
+open Extensions
 
 let toSeconds value unit =
   match unit with
@@ -34,11 +35,23 @@ let rec diffsBetween old neu =
                                                 | changes -> [DictDiff (k, changes)])  
                                       (Set.to_list otherKeys)
       otherChanges @ addedChanges @ removedChanges
-  | VWindow _, VWindow _ -> failwithf "n/a %A, %A" old neu
+  | VWindow ov, VWindow nv -> winDiffs ov nv
   | VClosure _, _ -> [Added neu]
   | VClosureSpecial _, _ -> [Added neu]
   | _, _ when old <> neu -> [Added neu]
   | _ -> []
+
+
+and winDiffs ow nw =
+  let lccs, n1, n2 = List.lccs ow nw
+  match List.lccs ow nw with
+  (* If the lccs does not start at the beginning of the new window or it does
+   * not finish at the end of the old window, don't bother... *)
+  | lccs, n, m when m > 0 || n + lccs.Length <> ow.Length -> [Added (VWindow nw)]
+  | lccs, n, _ ->
+      let removedFront = List.map (fun x -> Expired x) (Seq.take n ow |> Seq.to_list)
+      let added = List.map (fun x -> Added x) (Seq.skip lccs.Length nw |> Seq.to_list)
+      removedFront @ added
 
 // Changes the current value of a continuous value if the new value differs
 // from the current one. Also gets the list of changes to propagate.

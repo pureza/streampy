@@ -13,6 +13,7 @@ let rec visit expr visitor =
   | MethodCall (target, name, paramExps) -> MethodCall (visitor target, name, List.map visitor paramExps)
   | FuncCall (fn, paramExps) -> FuncCall (visitor fn, List.map visitor paramExps)
   | MemberAccess (target, name) -> MemberAccess (visitor target, name)
+  | FixedAccess expr -> FixedAccess (visitor expr)
   | ArrayIndex(target, index) -> ArrayIndex (visitor target, visitor index)
   | Lambda (ids, expr) -> Lambda (ids, visitor expr) 
   | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
@@ -25,19 +26,6 @@ let rec visit expr visitor =
   | Time (length, unit) -> Time (visitor length, unit)
   | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ | Null -> expr
 
-(*
- * Delay window creation as much as possible.
- *
- * Example transformations:
- *   - stream[3 sec].where(...) => stream.where(...)[3 sec]
- *
- *   - x = stream[3 sec]        => x = stream[3 sec]
- *     x.where(...)                stream.where(...)[3 sec]
- *
- * Note that window creation occurs always at the end of the line.
- * This is not always possible: for example, join receives at least
- * one window and results in a second window.
- *)
 
 type ExprsContext = Map<string, expr>
 
@@ -45,61 +33,6 @@ let rec lookupExpr var (varExprs:ExprsContext) =
   match varExprs.[var] with
   | Id (Identifier var') -> lookupExpr var' varExprs
   | other -> other
-
-let rec delayWindows (varExprs:ExprsContext) (types:TypeContext) = function
-  | DefVariant _ as expr -> varExprs, expr
-  | Def (Identifier name, expr, None) ->
-      let expr' = delayWindowsExpr varExprs types expr
-      varExprs.Add(name, expr'), Def (Identifier name, expr', None)
-  | Expr expr -> varExprs, Expr (delayWindowsExpr varExprs types expr)
-  | Entity (name, ((source, uniqueId), assocs, attributes)) as expr ->
-      varExprs, Entity (name, ((delayWindowsExpr varExprs types source, uniqueId), assocs, attributes))
-  | _ -> failwithf "Won't happen because function translations happen first."
-
-and delayWindowsExpr varExprs types expr =   
-  match expr with
-  | MethodCall (ArrayIndex (target, index), (Identifier name), paramExps) ->
-      // The most simple case: reorder the operations so that the window
-      // creation happens later
-      let targetType = typeOf types target
-      match targetType with
-      | TyStream _ -> 
-          match name with
-          | "where" -> ArrayIndex(MethodCall (target, (Identifier name), paramExps), index)
-          | _ -> expr
-      | _ -> expr
-  | MethodCall (Id (Identifier var), (Identifier name), paramExps) ->
-      // Replace the var's id with its defining expression and recurse
-      match types.[var] with
-      | TyWindow (TyStream _, TimedWindow _) ->
-          match name with
-          | "where" -> delayWindowsExpr varExprs types (MethodCall (lookupExpr var varExprs, (Identifier name), paramExps))
-          | _ -> expr
-      | _ -> expr
-  | MethodCall (target, (Identifier name), paramExps) ->
-      // General case: delay the target and delay the entire expression if needed.
-      let target' = delayWindowsExpr varExprs types target
-      let expr' = MethodCall (target', (Identifier name), paramExps)
-      if target' <> target
-        then delayWindowsExpr varExprs types expr'
-        else expr'
-
-  // BinOps in continuous value windows won't be allowed, so this will be removed eventually.        
-        (*
-  | BinaryExpr (oper, expr1, expr2) ->
-    // Delay both subexpressions and then delay the entire expression if needed
-    let expr1' = delayWindowsExpr varExprs types expr1
-    let expr2' = delayWindowsExpr varExprs types expr2
-    
-    match expr1', expr2' with
-    | Id (Identifier name1), _ -> delayWindowsExpr varExprs types (BinaryExpr (oper, lookupExpr name1 varExprs, expr2'))
-    | _, Id (Identifier name2) -> delayWindowsExpr varExprs types (BinaryExpr (oper, expr1', lookupExpr name2 varExprs))
-    | ArrayIndex (source1, index1), ArrayIndex (source2, index2) -> ArrayIndex (BinaryExpr (oper, source1, source2), index1)
-    | ArrayIndex (source1, index1), _ -> ArrayIndex (BinaryExpr (oper, source1, expr2'), index1)
-    | _, ArrayIndex (source2, index2) -> ArrayIndex (BinaryExpr (oper, expr1', source2), index2)
-    | _, _ -> BinaryExpr (oper, expr1', expr2')
-    *)
-  | _ -> expr
 
 
 (*
@@ -109,28 +42,33 @@ and delayWindowsExpr varExprs types expr =
  *
  * entity Room =
  *   createFrom(temp_readings, :room_id)
+ *   hasMany :products
  *
  * entity Product =
  *   createFrom (entries, :product_id)
  *   belongsTo :room
  *   member self.temperature = self.room.temperature;;
  *
- * gets translated into:
+ * is translated into:
  *
  * $Room_all = temp_readings
- *               .groupby(:room_id, g -> { :room_id     = g.last(:room_id),
- *                                         temperature = g.last(:temperature) }  
+ *               .groupby(:room_id, fun g -> let %room_id     = g.last(:room_id) in
+ *                                           let %temperature = g.last(:temperature) in
+ *                                           let %products    = $Product_all.where (fun p -> p.room_id == %room_id)
+ *                                                                          .select (fun p -> $ref (p)) in
+ *                                           { room_id     = %room_id,
+ *                                             temperature = %temperature
+ *                                             products    = %products }  
  *
  * $Product_all = entries
- *                  .groupby(:product_id, g -> let room_id = g.last(:room_id) in
- *                                             let room = Room.all[room_id] in
- *                                             { :product_id  = g.last(:product_id),
- *                                               :room_id     = room_id,
- *                                               :room        = $ref(room),
- *                                               temperature = room.temperature })
- *
- * (The "let's" are shown here only to improve readability, they are not
- * generated by the algorithm)
+ *                  .groupby(:product_id, fun g -> let %product_id  = g.last(:product_id) in
+ *                                                 let %room_id     = g.last(:room_id) in
+ *                                                 let %room        = $ref(Room.all[%room_id]) in
+ *                                                 let %temperature = %room.temperature
+ *                                                 { product_id  = %product_id,
+ *                                                   room_id     = %room_id,
+ *                                                   room        = %room,
+ *                                                   temperature = %temperature })
  *
  * "entities" collects the names of declared entities.
  *)
@@ -292,17 +230,18 @@ let rewrite types ast =
                  stmts @ [stmt'])
               [] stmts1              
 
+(*
   let _, stmts3 =
     List.fold (fun (varExprs, stmts) stmt ->
                  let varExprs', stmt' = delayWindows varExprs types stmt
                  varExprs', stmts @ [stmt'])
               (Map.empty, []) stmts2
-                        
+                        *)
   let _, stmts4 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transEntities entities types stmt
                  entities, stmts @ [stmt'])
-              (Set.empty, []) stmts3
+              (Set.empty, []) stmts2
 
   let _, stmts5 =
     List.fold (fun (entities, stmts) stmt ->

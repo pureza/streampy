@@ -49,51 +49,71 @@ let makeWindow duration (uid, prio, parents, context) =
   Operator.Build(uid, prio, eval, parents, context, contents = VWindow !contents)
 
 
-(* Generic operator builder for stream.where() and stream.select()
-   All these operators receive a lambda expression that is to be executed
-   when an event arrives. How to handle the result of this evaluation
-   is specific to each operator, and is abstracted by the resultHandler
-   function. *)
-let makeEvalOnAdd resultHandler eventHandler (uid, prio, parents:Operator list, context) : Operator =
-    let expr = FuncCall (eventHandler, [Id (Identifier "ev")])
-    let eval = fun (op, inputs) ->
-                 let env = getOperEnvValues op
-                 match inputs with
-                 | [Added ev]::_ ->
-                     let env' = Map.add "ev" ev env
-                     resultHandler op inputs ev (eval env' expr)
-                 | []::_ -> None // Ignore changes to the handler dependencies
-                 | _ -> failwithf "Wrong number of arguments! %A" inputs
-
-    let initialValue =
-      match parents.[0].Value with
-      | VRecord fields as ev when Map.tryFind (VString "timestamp") fields = Some (VInt (Scheduler.now())) -> ev
-      | _ -> VNull
-
-    Operator.Build(uid, prio, eval, parents, context, contents = initialValue)
-
-
 (* Where: propagates events that pass a given predicate *)
-let makeWhere = makeEvalOnAdd (fun op inputs ev result ->
-                                 match result with
-                                 | VBool true ->
-                                     op.Value <- ev
-                                     Some (op.Children, inputs.Head)
-                                 | VBool false -> None
-                                 | _ -> failwith "Predicate was supposed to return VBool")
+let makeWhere predicate (uid, prio, parents:Operator list, context) =
+  let expr = FuncCall (predicate, [Id (Identifier "ev")])
+  let applyPredicate op ev =
+    let env = getOperEnvValues op
+    let env' = Map.add "ev" ev env
+    match eval env' expr with
+    | VBool bool -> bool
+    | _ -> failwithf "where's predicate should return a boolean"
+  
+  let eval = fun (op, inputs) ->
+               let env = getOperEnvValues op
+               let output = [ for change in List.hd inputs do
+                                match change with
+                                | Added ev -> if applyPredicate op ev
+                                                then op.Value <- ev
+                                                     yield Added ev
+                                | Expired ev -> if applyPredicate op ev then yield Expired ev
+                                | _ -> failwithf "where received an unexpected change: %A" change ]
+                                
+               match output with
+               | [] -> None
+               | _ -> Some (op.Children, output)
+
+  let initialValue =
+    match parents.[0].Value with
+    | VRecord fields as ev when Map.tryFind (VString "timestamp") fields = Some (VInt (Scheduler.now())) -> ev
+    | _ -> VNull
+
+  Operator.Build(uid, prio, eval, parents, context, contents = initialValue)
+
 
 (* Select: projects an event *)
-let makeSelect = makeEvalOnAdd (fun op inputs ev result ->
-                                  let timestamp = eventTimestamp ev
-                                  let ev' = match result with
-                                            | VRecord fields -> VRecord (Map.add (VString "timestamp") timestamp fields)
-                                            | _ -> failwithf "select should return a record"
-                                  op.Value <- ev'
-                                  Some (op.Children, [Added ev']))
+let makeSelect handler (uid, prio, parents:Operator list, context) =
+  let expr = FuncCall (handler, [Id (Identifier "ev")])
+  let project op ev =
+    let timestamp = eventTimestamp ev
+    let env = getOperEnvValues op
+    let env' = Map.add "ev" ev env
+    let result = eval env' expr
+    match result with
+    | VRecord fields -> VRecord (Map.add (VString "timestamp") timestamp fields)
+    | _ -> failwithf "select should return a record"
+  
+  let eval = fun (op, inputs) ->
+               let env = getOperEnvValues op
+               let output = [ for change in List.hd inputs ->
+                                match change with
+                                | Added ev -> let ev' = project op ev
+                                              op.Value <- ev'
+                                              Added ev'
+                                | Expired ev -> Expired (project op ev)
+                                | _ -> failwithf "select received an unexpected change: %A" change ]
+                                
+               match output with
+               | [] -> None
+               | _ -> Some (op.Children, output)
 
-(* When *)
-let makeWhen2 = makeEvalOnAdd (fun op inputs ev result ->
-                                setValueAndGetChanges op result)
+  let initialValue =
+    match parents.[0].Value with
+    | VRecord fields as ev when Map.tryFind (VString "timestamp") fields = Some (VInt (Scheduler.now())) -> ev
+    | _ -> VNull
+
+  Operator.Build(uid, prio, eval, parents, context, contents = initialValue)
+
 
 (* When is composed of two operators: the first receives inputs and postpones their
    evaluation, which will be done by the second operator, in a second eval stage. *)

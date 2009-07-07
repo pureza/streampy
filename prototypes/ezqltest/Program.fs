@@ -29,7 +29,7 @@ Test.runTests [(Test.findTest "test_entitiesMisc2")]
 
 
 
-//Test.runTests (Test.findTests ())
+Test.runTests (Test.findTests ())
     
 Console.ReadLine() |> ignore
 

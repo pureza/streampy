@@ -11,6 +11,7 @@ and expr =
   | MethodCall of expr * id * expr list
   | FuncCall of expr * expr list
   | MemberAccess of expr * id
+  | FixedAccess of expr
   | Lambda of param list * expr
   | If of expr * expr * expr
   | Match of expr * matchCase list
@@ -33,6 +34,7 @@ and expr =
     | MethodCall (target, Identifier name, _) -> sprintf "%s.%s(...)" target.Name name
     | FuncCall (func, _) -> sprintf "%s(...)" func.Name
     | MemberAccess _ -> "MemberAccess"
+    | FixedAccess expr -> sprintf "Fixed(%s)" expr.Name
     | Lambda _ -> "Lambda"
     | If _ -> "if"
     | Match _ -> "match"
@@ -140,6 +142,7 @@ let freeVars expr =
         List.fold (fun acc paramExpr -> Set.union acc (freeVars' boundVars paramExpr))
                   (freeVars' boundVars fn) paramExps
     | MemberAccess (target, (Identifier name)) -> freeVars' boundVars target
+    | FixedAccess expr -> freeVars' boundVars expr
     | Record fields ->
         List.fold (fun acc (_, fieldExpr) -> Set.union acc (freeVars' boundVars fieldExpr))
                   Set.empty fields

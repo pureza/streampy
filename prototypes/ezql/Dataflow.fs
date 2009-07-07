@@ -306,6 +306,8 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
               | _ -> failwithf "Unkown method: %s" methName
           | TyWindow _ ->
               match methName with
+              | "where" -> dataflowWhere env types graph target paramExps expr
+              | "select" -> dataflowSelect env types graph target paramExps expr
               | "groupby" -> dataflowGroupby env types graph target paramExps expr
               | _ -> failwithf "Unkown method of type Window: %s" methName
           | TyDict valueType ->
@@ -501,6 +503,7 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
             then removeField field' (removeField field body)
             else Let (Identifier field', optType, binder, removeField field body)
       | Record fields -> Record (List.filter (fun (_, expr) -> (not (Set.contains field (freeVars expr)))) fields)
+      | _ -> failwithf "removeField: Unexpected expression %A" expr
 
     // Try the normal dataflow first. If there is an error, we add "action" as a continuation.
     retry (fun () -> dataflowE env types graph body)
@@ -716,12 +719,12 @@ and renameNetwork renamer root graph =
 *)  
 
 (*
- * Handles stream.select()
+ * Handles <stream|window>.select()
  *)
 and dataflowSelect env types graph target paramExps expr =
   let inEvType = match target.Type with
-                 | TyStream evType -> evType
-                 | _ -> failwithf "stream.select can only be applied to streams"
+                 | TyStream evType | TyWindow (TyStream evType, _) -> evType
+                 | _ -> failwithf "stream.select can only be applied to streams and windows"
                  
   let subExpr, env', types', arg =
     match paramExps with
@@ -734,14 +737,9 @@ and dataflowSelect env types graph target paramExps expr =
   let deps, g', expr' = dataflowE env' types' graph subExpr
   let expr'' = Lambda ([Param (Identifier arg, None)], expr')
  
-  // Find the type of the resulting stream
-  let resultType = match typeOf (types.Add(arg, inEvType)) expr' with
-                   | TyRecord fields -> TyStream (TyRecord (fields.Add("timestamp", TyInt)))
-                   | _ -> failwithf "stream.select must return an event"
- 
-  // Depends on the stream and on the dependencies of the predicate.
+  // Depends on the parent and on the dependencies of the predicate.
   let opDeps = target::(Set.to_list deps)
-  let n, g'' = createNode (nextSymbol "Select") resultType opDeps
+  let n, g'' = createNode (nextSymbol "Select") (typeOf types expr) opDeps
                           (makeSelect expr'') g'
   Set.singleton n, g'', Id (Identifier n.Uid)
   
@@ -751,8 +749,8 @@ and dataflowSelect env types graph target paramExps expr =
  *)
 and dataflowWhere env types graph target paramExps expr =
   let evType = match target.Type with
-               | TyStream evType -> evType
-               | _ -> failwithf "stream.select can only be applied to streams"
+               | TyStream evType | TyWindow (TyStream evType, _) -> evType
+               | _ -> failwithf "stream.select can only be applied to streams and windows"
 
   let subExpr, env', types', arg =
     match paramExps with

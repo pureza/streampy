@@ -137,6 +137,7 @@ and typeOf env expr =
           | "sec" | "min" -> TyInt
           | _ -> failwithf "The type %A doesn't have field %s" targetType name 
       | _ -> failwithf "The target type %A doesn't have any fields, including '%s'" targetType name
+  | FixedAccess expr -> typeOf env expr
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
     let type2 = typeOf env expr2
@@ -294,7 +295,20 @@ and typeOfMethodCall env target name paramExps =
               | "howLong" -> TyInt
               | _ -> failwithf "The type %A does not have method %A!" targetType name              
           | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
-          | TyWindow (TyStream valueType, _) | TyWindow (valueType, _) ->
+          | TyWindow (TyStream evType, windowType) ->
+              match name with
+              | "select" ->
+                  match paramExps with
+                  | [Lambda ([Param (Identifier ev, _)], expr)] -> 
+                      match typeOf (env.Add(ev, evType)) expr with
+                      | TyRecord projFields -> TyWindow (TyStream (TyRecord (projFields.Add("timestamp", TyInt))), windowType)
+                      | _ -> failwithf "The projector of the select doesn't return a record!"
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "[]" -> match paramExps with
+                        | [expr] when typeOf env expr = TyInt -> evType
+                        | _ -> failwithf "Invalid index in []"
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
+          | TyWindow (valueType, windowType) ->
               match name with
               | "[]" -> match paramExps with
                         | [expr] when typeOf env expr = TyInt -> valueType
@@ -394,6 +408,7 @@ let rec isContinuous (env:TypeContext) expr =
   | FuncCall (fn, paramExps) ->
       (isContinuous env fn) && List.forall (isContinuous env) paramExps
   | MemberAccess (target, (Identifier name)) -> isContinuous env target
+  | FixedAccess expr -> isContinuous env expr
   | Record fields -> List.forall (isContinuous env) (List.map snd fields)
   | RecordWith (record, fields) -> isContinuous env record && List.forall (isContinuous env) (List.map snd fields)
   | Lambda (args, body) -> isContinuous env body

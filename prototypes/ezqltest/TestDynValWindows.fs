@@ -13,17 +13,18 @@ let test_windowsCreation (test:Test) =
 
 
   test.AssertThat (In "last3secs"
-                    [Added   -1 "25" (At  2)
-                     Added   -1 "45" (At  4)
-                     Added   -1 "25" (At  5)
-                     Added   -1 "50" (At  6)
-                     Added   -1 "30" (At  7)
-                     Expired -1 "25" (At  7)
-                     Expired -1 "45" (At  8)
-                     Added   -1 "23" (At  9)
-                     Expired -1 "25" (At  9)
-                     Expired -1 "50" (At 10)
-                     Expired -1 "30" (At 12)])
+                    [Added   -1   "25" (At  2)
+                     Added   -1   "45" (At  4)
+                     Expired -1 "null" (At  5)
+                     Added   -1   "25" (At  5)
+                     Added   -1   "50" (At  6)
+                     Added   -1   "30" (At  7)
+                     Expired -1   "25" (At  7)
+                     Expired -1   "45" (At  8)
+                     Added   -1   "23" (At  9)
+                     Expired -1   "25" (At  9)
+                     Expired -1   "50" (At 10)
+                     Expired -1   "30" (At 12)])
                      
   test.AssertThat (In "sumLast3secs"
                     [Set " 25" (At  2)
