@@ -5,6 +5,7 @@ open TypeChecker
 open Extensions
 open Util
 
+
 (*
  * Replaces the given expression with another.
  *)
@@ -14,7 +15,7 @@ let rec visit expr visitor =
   | FuncCall (fn, paramExps) -> FuncCall (visitor fn, List.map visitor paramExps)
   | MemberAccess (target, name) -> MemberAccess (visitor target, name)
   | FixedAccess expr -> FixedAccess (visitor expr)
-  | ArrayIndex(target, index) -> ArrayIndex (visitor target, visitor index)
+  | ArrayIndex (target, index) -> ArrayIndex (visitor target, visitor index)
   | Lambda (ids, expr) -> Lambda (ids, visitor expr) 
   | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
   | Let (Identifier name, optType, binder, body) -> Let (Identifier name, optType, visitor binder, visitor body)
@@ -25,6 +26,64 @@ let rec visit expr visitor =
   | RecordWith (source, newFields) -> RecordWith (visitor source, List.map (fun (n, e) -> (n, visitor e)) newFields)
   | Time (length, unit) -> Time (visitor length, unit)
   | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ | Null -> expr
+  
+  
+let rec visitWithTypes (types:TypeContext) expr visitor =
+  match expr with
+  | MethodCall (target, Identifier name, paramExps) ->
+      let paramExps' = match name, paramExps with
+                       | "groupby", [field; Lambda ([Param (Identifier arg, None)], body)] ->
+                           [field; Lambda ([Param (Identifier arg, Some (typeOf types target))], body)]
+                       | ("where" | "select"), [Lambda ([Param (Identifier arg, None)], body)] ->
+                           match typeOf types target with
+                           | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType), _) | TyDict argType) ->
+                             [Lambda ([Param (Identifier arg, Some argType)], body)]
+                           | _ -> failwithf "Can't happen"
+                       | ("any?" | "all?"), [Lambda ([Param (Identifier arg, None)], body)] ->
+                           match typeOf types target with
+                           | (TyStream v | TyWindow (TyStream v, _) | TyWindow (v, _)) -> [Lambda ([Param (Identifier arg, Some v)], body)]
+                           | _ -> failwithf "Can't happen"
+                       | _ -> paramExps
+                        
+      MethodCall (visitor types target, Identifier name, List.map (visitor types) paramExps')
+  | FuncCall (fn, paramExps) ->
+      let paramExps' = match fn, paramExps with
+                       | Id (Identifier "when"), [target; Lambda ([Param (Identifier arg, None)], body)] ->
+                           match typeOf types target with
+                           | TyStream evType -> [target; Lambda ([Param (Identifier arg, Some evType)], body)]
+                           | _ -> failwithf "Can't happen"
+                       | _ -> paramExps
+      FuncCall (visitor types fn, List.map (visitor types) paramExps')
+  | MemberAccess (target, name) -> MemberAccess (visitor types target, name)
+  | FixedAccess expr -> FixedAccess (visitor types expr)
+  | ArrayIndex (target, index) -> ArrayIndex (visitor types target, visitor types index)
+  | Lambda (ids, expr) ->
+      let types' = List.fold (fun (acc:TypeContext) (Param (Identifier arg, optType)) ->
+                                match optType with
+                                | _ when arg = "_" -> acc
+                                | Some typ -> acc.Add(arg, typ)
+                                | None -> failwithf "visitWithTypes: Can't determine the type of %A" arg)
+                             types ids
+      Lambda (ids, visitor types' expr) 
+  | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor types left, visitor types right)
+  | Let (Identifier name, optType, binder, body) ->
+      let binderType = match optType with
+                       | Some typ -> typ
+                       | None -> typeOf types binder
+      Let (Identifier name, optType, visitor types binder, visitor (types.Add(name, binderType)) body)
+  | If (cond, thn, els) -> If (visitor types cond, visitor types thn, visitor types els)
+  | Match (expr, cases) ->
+      Match (visitor types expr, List.map (fun (MatchCase (Identifier label, meta, body)) ->
+                                                                  let types' = match meta with
+                                                                               | Some (Identifier meta') -> types.Add(meta', metaTypeForLabel types label)
+                                                                               | None -> types             
+                                                                  MatchCase (Identifier label, meta, visitor types' body))
+                                                               cases)
+  | Seq (expr1, expr2) -> Seq (visitor types expr1, visitor types expr2)
+  | Record fields -> Record (List.map (fun (n, e) -> (n, visitor types e)) fields)
+  | RecordWith (source, newFields) -> RecordWith (visitor types source, List.map (fun (n, e) -> (n, visitor types e)) newFields)
+  | Time (length, unit) -> Time (visitor types length, unit)
+  | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ | Null -> expr  
 
 
 type ExprsContext = Map<string, expr>
@@ -129,7 +188,7 @@ and transDictAll entities expr =
                           | _ -> visit expr replacer
   replacer expr
 
-(* Replaces self.field with the expression that originates field. *)
+(* Replaces self.field with the generated variable that contains the value of the field *)
 and transSelf expr self =
   let rec replacer expr = match expr with
                           | MemberAccess (Id self', Identifier field) when self = self' -> Id (Identifier (sprintf ":%s" field))
@@ -138,6 +197,7 @@ and transSelf expr self =
                           | _ -> visit expr replacer
 
   replacer expr                            
+
 
 (* Replaces RecordWith expressions with equivalent Record expressions *)     
 let rec transRecordWith (varExprs:Map<string, expr>) stmt =
@@ -161,7 +221,22 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
   | _ -> failwithf "Won't happen because entity and function translations happens first."
 
 
-(* Replaces Function definitions with equivalent let expressions *)     
+(* Replaces Function definitions with equivalent let expressions 
+ *
+ * Example:
+ *
+ * define x2(n:int) : int = n * 2
+ *
+ *  => x2 = let x2 = fun (n:int) -> n * 2 in
+ *          x2
+ *
+ * Also creates the initializers for variants:
+ *
+ * enum State =
+ *   | A of int
+ *
+ *  => define A($1:int) : State = $makeEnum ("A", $1)
+ *)     
 let rec transFunctions (types:TypeContext) stmt =
   match stmt with
   | DefVariant (Identifier name, variants) ->
@@ -175,7 +250,16 @@ let rec transFunctions (types:TypeContext) stmt =
       [Def (Identifier name, Let (Identifier name, Some fnType, Lambda (parameters, body), Id (Identifier name)), None)]
   | _ -> [stmt]
 
-(* Translate listeners into calls to listenN *)
+
+(* Translate listeners into calls to listenN
+ *
+ * x = 0
+ *   | when ev in temp_readings -> x + ev.temperature
+ *   | when ev in hum_readings if ev.humidity > 30 -> -1
+ *
+ *  => x = listenN (0, when (temp_readings, fun ev -> fun def -> def + ev.temperature),
+ *                     when (hum_readings, fun ev -> fun def -> if ev.humidity > 30 then -1 else def))
+ *)
 let rec transListeners types stmt =
   let rec replacer self field expr =
     match expr with
@@ -208,7 +292,7 @@ let rec transListeners types stmt =
                      match listenersOpt with
                      | None -> members @ [memb]
                      | Some listeners ->
-                         let types' = types.Add(self, types.[ename])
+                         let types' =  types.Add(self, types.[ename])
                          let memberType = typeOf types' expr
                          let whens = List.map (transListener name memberType (replacer (Identifier self))) listeners
                          let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
@@ -216,6 +300,64 @@ let rec transListeners types stmt =
                   [] members
       Entity (Identifier ename, (createFrom, assocs, members'))
   | _ -> stmt
+
+
+(* Replaces {target.member}.other[...] *)     
+let rec transFixedAccesses (varExprs:Map<string, expr>) (types:TypeContext) stmt =
+  let rec splitFixedSegment expr = 
+    match expr with
+    | MemberAccess (target, (Identifier name)) ->
+        let fixd, rest = splitFixedSegment target
+        fixd, rest @ [name]
+    | FixedAccess expr -> expr, []
+    | Id (Identifier ident) -> expr, [] 
+
+  let rec replacer (types:TypeContext) expr =
+    match expr with
+    | FuncCall (fn, [param]) ->
+        match typeOf types param with
+        | TyFixed (_, fixedExpr) ->
+            let fixd, rest = splitFixedSegment fixedExpr
+            match typeOf types fixd with
+            | TyRef (TyAlias entityType) as typ ->
+                let entityType', entityIdField =
+                  match types.[entityType] with
+                  | TyType (name, _, id) -> name, id
+                  | _ -> failwithf "The referenced entity is not a TyType? Can't happen."
+                let typeDict = entityDict entityType
+                let memberAccess = List.fold (fun acc attr -> MemberAccess (acc, Identifier attr)) (Id (Identifier "$o")) rest
+                let projector = Lambda ([Param (Identifier "$o", Some typ)], FuncCall(fn, [memberAccess]))
+                let dict = MethodCall (Id (Identifier typeDict), Identifier "select", [projector])
+                ArrayIndex (dict, MemberAccess (fixd, Identifier entityIdField))
+            | other -> failwithf "The target of the fixed access is not an entity: %A" other
+        | _ -> expr
+    | ArrayIndex (target, (Time _ as time)) ->
+        match typeOf types target with
+        | TyFixed (_, fixedExpr) ->
+            let fixd, rest = splitFixedSegment fixedExpr
+            match typeOf types fixd with
+            | TyRef (TyAlias entityType) as typ ->
+                let entityType', entityIdField =
+                  match types.[entityType] with
+                  | TyType (name, _, id) -> name, id
+                  | _ -> failwithf "The referenced entity is not a TyType? Can't happen."
+                let typeDict = entityDict entityType
+                let memberAccess = List.fold (fun acc attr -> MemberAccess (acc, Identifier attr)) (Id (Identifier "$o")) rest
+                let projector = Lambda ([Param (Identifier "$o", Some typ)], ArrayIndex (memberAccess, time))
+                let dict = MethodCall (Id (Identifier typeDict), Identifier "select", [projector])
+                ArrayIndex (dict, MemberAccess (fixd, Identifier entityIdField))
+            | other -> failwithf "The target of the fixed access is not an entity: %A" other
+        | _ -> expr
+    | _ -> visitWithTypes types expr replacer
+
+  match stmt with
+  | DefVariant _ as expr -> varExprs, expr
+  | Def (Identifier name, expr, None) ->
+      let expr' = replacer types expr
+      varExprs.Add(name, expr'), Def (Identifier name, expr', None)
+  | Expr expr -> varExprs, Expr (replacer types expr)
+  | _ -> failwithf "Won't happen because everything else is translated first."
+
 
 let rewrite types ast =
   let stmts1 =
@@ -230,25 +372,24 @@ let rewrite types ast =
                  stmts @ [stmt'])
               [] stmts1              
 
-(*
   let _, stmts3 =
-    List.fold (fun (varExprs, stmts) stmt ->
-                 let varExprs', stmt' = delayWindows varExprs types stmt
-                 varExprs', stmts @ [stmt'])
-              (Map.empty, []) stmts2
-                        *)
-  let _, stmts4 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transEntities entities types stmt
                  entities, stmts @ [stmt'])
               (Set.empty, []) stmts2
 
+  let _, stmts4 =
+    List.fold (fun (varExprs, stmts) stmt ->
+                 let varExprs', stmt' = transRecordWith varExprs stmt
+                 varExprs', stmts @ [stmt'])
+              (Map.empty, []) stmts3
+  
   let _, stmts5 =
-    List.fold (fun (entities, stmts) stmt ->
-                 let entities, stmt' = transRecordWith entities stmt
-                 entities, stmts @ [stmt'])
+    List.fold (fun (varExprs, stmts) stmt ->
+                 let varExprs', stmt' = transFixedAccesses varExprs types stmt
+                 varExprs', stmts @ [stmt'])
               (Map.empty, []) stmts4
-                   
+                               
   stmts5
   
       

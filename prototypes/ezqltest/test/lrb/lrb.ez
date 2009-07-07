@@ -23,31 +23,11 @@ entity Vehicle =
   // a congested segment
   member self.toll = 0
         when | self.segment_id.changes() ->
-
-                 if Segment.all.select(fun s -> justNow(s.isCongested))[self.segment_id]
-
- //                if with (self.segment, fun s -> justNow(s.isCongested))
-
-//if self.segment.isCongested[5 min]
-//if {self.segment}.isCongested[5 min]
-
-//if Segment.all.select (fun s -> s.isCongested[5 min])[self.segment_id]
-//   ...
-//   ...
-
-//PRECISO APENAS DE SUBIR O SUFICIENTE PARA ENFIAR A JANELA DENTRO DO SELECT.ALL
-
-//if self.segment.(isCongested[5 min])
-
-
-//                 if justNow(self.segment::isCongested)              
-//                 if justNow(self.segment.isCongested)
-
+                 if justNow({self.segment}.isCongested)
                    then self.segment.vehicleCount
                    else 0
 
-
-  member self.totalToll = self.toll.changes().sum(:value);;
+  member self.totalToll = self.toll.updates().sum(:value);;
 
 
 

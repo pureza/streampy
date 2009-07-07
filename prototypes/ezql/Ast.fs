@@ -99,6 +99,7 @@ and Type =
   | TyDict of Type
   | TyRef of Type
   | TyVariant of id * (id * Type) list
+  | TyFixed of Type * expr
   | TyUnknown of Type
   
   override self.ToString() =
@@ -118,11 +119,17 @@ and Type =
     | TyDict _ -> "dict"
     | TyRef t -> sprintf "ref<%O>" t
     | TyVariant (Identifier id, cases) -> sprintf "%s<%s>" id (List.fold (fun acc (Identifier name, _) -> acc + "|" + name) "" cases)
+    | TyFixed (t, expr) -> sprintf "fixed<%O>" t
     | TyUnknown t -> sprintf "unk<%O>" t
     
   member self.IsUnknown () =
     match self with
     | TyUnknown _ -> true
+    | _ -> false
+    
+  member self.IsFixed () =
+    match self with
+    | TyFixed _ -> true
     | _ -> false
 
 and WindowType =
@@ -184,3 +191,21 @@ let isRecursive name expr =
   | Lambda (args, body) -> Set.contains name (freeVars expr)
   | _ -> false
   
+
+let rec hasFixedSegment expr = 
+  match expr with
+  | MethodCall (target, (Identifier name), paramExps) -> hasFixedSegment target || List.exists hasFixedSegment paramExps
+  | ArrayIndex (target, index) -> hasFixedSegment target || hasFixedSegment index
+  | FuncCall (fn, paramExps) -> hasFixedSegment fn || List.exists hasFixedSegment paramExps
+  | MemberAccess (target, (Identifier name)) -> hasFixedSegment target
+  | FixedAccess expr -> true
+  | Record fields -> List.exists hasFixedSegment (List.map snd fields)
+  | RecordWith (record, fields) -> hasFixedSegment record || List.exists hasFixedSegment (List.map snd fields)
+  | Lambda (args, body) -> hasFixedSegment body
+  | Let (Identifier name, optType, binder, body) -> hasFixedSegment binder || hasFixedSegment body
+  | If (cond, thn, els) -> hasFixedSegment cond || hasFixedSegment thn || hasFixedSegment els
+  | Match (expr, cases) -> hasFixedSegment expr || List.exists (fun (MatchCase (label, meta, body)) -> hasFixedSegment body) cases
+  | BinaryExpr (oper, expr1, expr2) as expr -> hasFixedSegment expr1 || hasFixedSegment expr2
+  | Seq (expr1, expr2) -> hasFixedSegment expr1 || hasFixedSegment expr2
+  | Id (Identifier name) -> false
+  | Time _ | Integer _ | String _ | Null | SymbolExpr _ | Bool _ -> false

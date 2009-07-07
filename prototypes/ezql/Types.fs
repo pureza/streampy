@@ -136,6 +136,8 @@ and value =
     static member LogicalOp(left, right, op) =
       match left, right with
         | VBool l, VBool r -> VBool (op l r)
+        | VNull, VNull -> VBool (op false false)
+        | VNull, _ | _, VNull -> VBool (op false true)
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
     static member Add(left, right) = 

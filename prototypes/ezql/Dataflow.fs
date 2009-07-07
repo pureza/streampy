@@ -163,7 +163,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
   | MethodCall (target, (Identifier name), paramExps) ->
       let deps, g1, target' = dataflowE env types graph target
       if not ((typeOf types target).IsUnknown())
-        then let n, g2 = makeFinalNode env types g1 target' deps ("<X>." + name + "()")                                         // XXX
+        then let n, g2 = makeFinalNode env types g1 target' deps ("<X>." + name + "()")
              let deps', g3, expr' = dataflowMethod env types g2 n name paramExps expr
              deps', g3, expr'
         else deps, g1, MethodCall (target', (Identifier name), paramExps)
@@ -175,8 +175,8 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
              let deps = Set.union depsTrg depsIdx
              match typeOf types target with
              | TyDict typ when isContinuous types index' ->
-                 let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"                                           // XXX
-                 let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"                                                 // XXX
+                 let t, g3 = makeFinalNode env types g2 target' depsTrg "target[xxx]"
+                 let i, g4 = makeFinalNode env types g3 index' depsIdx "xxx[i]"
                  let n, g5 = createNode (nextSymbol "[]") typ [t; i]
                                         (makeIndexer (Id (Identifier i.Uid))) g4
                  Set.singleton n, g5, Id (Identifier n.Uid)
@@ -199,6 +199,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                                  (makeProjector name) g2
           Set.singleton n, g3, Id (Identifier n.Uid)
       | _ -> deps, g1, MemberAccess (target', (Identifier name))
+  | FixedAccess _ -> Set.empty, graph, expr
   | Record fields ->
       let deps, g', exprs =
         List.fold (fun (depsAcc, g, exprsAcc) (field, expr) ->
@@ -287,9 +288,9 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
   | "changes" -> let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
                                         [target] (makeToStream) graph
                  Set.singleton n, g', Id (Identifier n.Uid)
-  | "updates" -> let ancestors = getAncestorRoots target.Uid graph
+  | "updates" -> let ancestors = getAncestorNodes target.Uid graph
                  let n, g' = createNode (nextSymbol "toStream") (TyStream (TyRecord (Map.of_list ["value", target.Type])))
-                                        (target::(Set.to_list ancestors)) (makeToStream) graph
+                                        (target::ancestors) (makeToStream) graph
                  Set.singleton n, g', Id (Identifier n.Uid)                 
   | _ -> match target.Type with
           | TyStream fields ->
@@ -698,7 +699,14 @@ and getAncestorRoots node graph =
       if p.IsEmpty
         then Set.singleton v
         else List.fold (fun acc a -> Set.union acc (getAncestorRoots a gr)) Set.empty p
+  | _ -> failwithf "getAncestorRoots: Can't find the node in the graph"
+
+(* Returns the ancestors of any given node in the graph *)
+and getAncestorNodes node graph =
+  match graph with
+  | Extract node ((p, _, _, _), gr) -> List.map (fun x -> Graph.labelOf x graph) p
   | _ -> failwithf "getAncestors: Can't find the node in the graph"
+  
 
 (*
 and renameNetwork renamer root graph =

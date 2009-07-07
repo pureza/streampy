@@ -132,12 +132,19 @@ and typeOf env expr =
             else match Map.tryFind name fields with
                  | Some t -> t
                  | None -> failwithf "The entity doesn't have field '%s'" name
+      | TyFixed (TyRef t, fixedExpr) ->
+          let fields = match resolveAlias env t with
+                       | TyType (_, fields, _) -> fields
+                       | _ -> failwithf "The entity is not a TyType?!"
+          match Map.tryFind name fields with
+          | Some t -> TyFixed (t, MemberAccess (fixedExpr, Identifier name))
+          | None -> failwithf "The entity doesn't have field '%s'" name
       | TyInt ->
           match name with
           | "sec" | "min" -> TyInt
           | _ -> failwithf "The type %A doesn't have field %s" targetType name 
       | _ -> failwithf "The target type %A doesn't have any fields, including '%s'" targetType name
-  | FixedAccess expr -> typeOf env expr
+  | FixedAccess expr -> TyFixed ((typeOf env expr), expr)
   | BinaryExpr (oper, expr1, expr2) ->
     let type1 = typeOf env expr1
     let type2 = typeOf env expr2
@@ -203,7 +210,10 @@ and typeOf env expr =
 
 
 and typeOfMethodCall env target name paramExps =
-  let targetType = typeOf env target
+  let targetType = match typeOf env target with
+                   | TyFixed (t, _) -> t
+                   | other -> other
+
   // Generic methods first
   match name with
   | "changes" | "updates" ->
@@ -213,16 +223,16 @@ and typeOfMethodCall env target name paramExps =
   | "count" -> TyInt
   | "last" | "sum" | "max" | "min" | "avg" | "prev" ->
       match targetType, paramExps with
-      | TyRecord fields, [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
-      | TyStream (TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> TyInt
+      | TyRecord fields, [SymbolExpr (Symbol field)] when Map.contains field fields -> fields.[field]
+      | TyStream (TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> fields.[field]
       | TyWindow (typ, _), _ ->
           match typ, paramExps with
           | TyRef typ', [SymbolExpr (Symbol field)] ->
               match resolveAlias env typ' with
-              | TyType (_, fields, _) when Map.contains field fields -> TyInt
+              | TyType (_, fields, _) when Map.contains field fields -> fields.[field]
               | _ -> failwithf "The alias does not refer to a TyType"
           | (TyType (_, fields, _) | TyRecord fields | TyStream (TyRecord fields)), [SymbolExpr (Symbol field)]
-              when Map.contains field fields -> TyInt
+              when Map.contains field fields -> fields.[field]
           | _, [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps         
       | TyInt, [] -> TyInt
@@ -364,7 +374,9 @@ and typeOfFuncCall env expr =
         
       let funType = typeOf env f
       let argTypes = arrow2list funType |> Seq.take param's.Length |> Seq.to_list      
-      let matching = List.forall2 (fun arg paramType -> (typeOf env arg) = paramType) param's argTypes
+      let matching = List.forall2 (fun arg paramType -> let argType = typeOf env arg
+                                                        argType = paramType || argType.IsFixed ())
+                                  param's argTypes
       if matching
         then getReturnType param's.Length funType
         else failwithf "Parameters don't match argument types in function call"

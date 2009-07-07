@@ -1,6 +1,5 @@
 seg_speed_str = stream (:vehicle_id, :speed, :segment_id);;
 
-/*
 define justNow(x:bool) : bool = x[1 sec][0];;
 
 entity Segment =
@@ -20,13 +19,7 @@ entity Vehicle =
 
 
 
-when (seg_speed_str, fun _ -> print (Vehicle.all.select(fun v -> v.blahBad)));;
-*/
-
-
-x = seg_speed_str.select(fun ev -> ev)[1 sec].where(fun ev -> ev.speed == 10);;
-
-when (x.changes(), fun ev -> print (ev));;
+when (seg_speed_str, fun _ -> print (Vehicle.all));;
 
 
 #! seg_speed_str
