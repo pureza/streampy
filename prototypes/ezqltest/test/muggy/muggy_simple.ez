@@ -12,10 +12,8 @@ entity Product =
   member x.temperature = x.room.temperature;;
 
 
-spoiled = Product.all.where(fun p -> (p.temperature > 25).howLong() > 10.min);;
-
-
-when (spoiled.changes(), fun _ -> print(spoiled));;
+spoiled = Product.all.where(fun p -> (p.temperature > 25).howLong() >= 10.min)
+                     .select (fun p -> p.product_id);;
 
 
 #! temp_readings
@@ -26,6 +24,8 @@ Timestamp, room_id, temperature
 6,               2,      50
 7,               3,      30
 9,               1,      23
+20,              3,      10
+30,              3,      40
 
 #! entries
 Timestamp, room_id, product_id

@@ -108,7 +108,7 @@ type Test =
                 
                 // We only assert changes for timestamp n after n
                 match !delayed with
-                | Some (time, prevChanges, _) when time = now -> delayed := Some (time, prevChanges @ changes, oper.Value)
+                | Some (time, prevChanges, _) when time = now -> delayed := Some (time, mergeChanges prevChanges changes, oper.Value)
                 | None -> delayed := Some (now, changes, oper.Value)
                 | Some (pTime, pChanges, value) ->
                     let facts = Map.tryFind pTime (!timeToFact)

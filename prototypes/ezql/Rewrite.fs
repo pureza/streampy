@@ -113,19 +113,23 @@ let rec lookupExpr var (varExprs:ExprsContext) =
  * $Room_all = temp_readings
  *               .groupby(:room_id, fun g -> let %room_id     = g.last(:room_id) in
  *                                           let %temperature = g.last(:temperature) in
+ *                                           let %events      = g
  *                                           let %products    = $Product_all.where (fun p -> p.room_id == %room_id)
  *                                                                          .select (fun p -> $ref (p)) in
  *                                           { room_id     = %room_id,
  *                                             temperature = %temperature
+ *                                             events      = %events
  *                                             products    = %products }  
  *
  * $Product_all = entries
  *                  .groupby(:product_id, fun g -> let %product_id  = g.last(:product_id) in
  *                                                 let %room_id     = g.last(:room_id) in
+ *                                                 let %events      = g
  *                                                 let %room        = $ref(Room.all[%room_id]) in
  *                                                 let %temperature = %room.temperature
  *                                                 { product_id  = %product_id,
  *                                                   room_id     = %room_id,
+ *                                                   events      = %events
  *                                                   room        = %room,
  *                                                   temperature = %temperature })
  *
@@ -135,7 +139,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
   | DefVariant _ as expr -> entities, expr
   | Def (Identifier name, expr, None) -> entities, Def (Identifier name, transDictAll entities expr, None)
   | Expr expr -> entities, Expr (transDictAll entities expr)
-  | Entity (Identifier name, ((source, uniqueId), assocs, members)) as expr ->
+  | Entity (Identifier name, ((source, Symbol uniqueId), assocs, members)) as expr ->
       let streamFields = match typeOf types source with
                          | TyStream (TyRecord f) -> f
                          | _ -> failwith "can't happen!"
@@ -143,7 +147,10 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
       let streamFields = [ for pair in streamFields ->
                              (pair.Key, MethodCall (Id (Identifier "g"), Identifier "last",
                                                     [SymbolExpr (Symbol pair.Key)]))]
-                                                
+
+      // self.events
+      let autoGenFields = streamFields @ ["events", Id (Identifier "g")]
+
       // Translate associations                                                                
       let assocFields = List.fold (fun acc assoc ->
                                      match assoc with
@@ -161,7 +168,7 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                          let toRef = Lambda ([Param (x, None)], FuncCall (Id (Identifier "$ref"), [Id x]))
                                          let selectRef = MethodCall (whereExpr, Identifier "select", [toRef])
                                          acc @ [entity, selectRef])
-                                   streamFields assocs
+                                   autoGenFields assocs
                                       
       // Translate additional member declarations.                                      
       let allFields = List.fold (fun acc (Member (self, Identifier name, expr, listeners)) ->
@@ -170,13 +177,15 @@ let rec transEntities (entities:Set<string>) (types:TypeContext) = function
                                    acc @ [name, expr''])
                                 assocFields members
 
+      
+
       // Create let's for all fields
       let record = List.map (fun (k, v) -> (k, Id (Identifier (sprintf ":%s" k)))) allFields
       let fieldDecls = List.foldBack (fun (k, v) acc -> Let (Identifier (sprintf ":%s" k), None, v, acc)) allFields (Record record)
 
       //let record = Record (Map.to_list allFields)
       let groupByExpr = MethodCall(source, Identifier "groupby",
-                                   [SymbolExpr uniqueId; Lambda ([Param (Identifier "g", None)], fieldDecls)])
+                                   [SymbolExpr (Symbol uniqueId); Lambda ([Param (Identifier "g", None)], fieldDecls)])
       let assign = Def (Identifier (entityDict name), groupByExpr, None)                 
       entities.Add(name), assign
   | _ -> failwithf "Won't happen because function translations happen first."

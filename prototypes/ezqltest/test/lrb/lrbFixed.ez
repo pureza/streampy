@@ -1,13 +1,16 @@
 seg_speed_str = stream (:vehicle_id, :speed, :segment_id);;
 
+define justNow(x:bool) : bool = x[1 sec][0];;
+
 entity Segment =
    createFrom(seg_speed_str, :segment_id)
    hasMany :vehicles
 
+   member self.avg5mins = self.events[5 min].avg(:speed)
+
     // A segment is congested if the speed average reported over the
-    // last 5 minutes is less than 80
-   member self.isCongested = let avg5mins = self.events[5 min].avg(:speed) in
-                             if avg5mins != null then avg5mins < 80 else false
+    // last 5 minutes is less than 80 MPH
+   member self.isCongested = if self.avg5mins != null then self.avg5mins < 80 else false
 
    member self.vehicleCount = self.vehicles.values().count();;
 
@@ -20,20 +23,14 @@ entity Vehicle =
   // a congested segment
   member self.toll = 0
         when | self.segment_id.changes() ->
-                 if self.segment.isCongested
-                   then self.segment.vehicleCount // The real formula is a little bit more complex
+                 if justNow({self.segment}.isCongested)
+                   then self.segment.vehicleCount
                    else 0
 
-  // Whenever the toll is updated (even if it retains the same value
-  // -- thus the .updates() instead of .changes()), sum it.
   member self.totalToll = self.toll.updates().sum(:value);;
 
 
-// vehicles per segment
-volume = Segment.all.select (fun s -> s.vehicleCount);;
-
-// totalToll per vehicle
-total = Vehicle.all.select (fun v -> v.totalToll);;
+total = Vehicle.all.select(fun v -> v.totalToll);;
 
 
 

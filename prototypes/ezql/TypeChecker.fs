@@ -55,7 +55,8 @@ let rec types (env:TypeContext) = function
         else failwithf "The function body doesn't return %A" retType
   | Entity (Identifier ename, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with
-      | TyStream (TyRecord fields) ->
+      | TyStream (TyRecord fields) as streamType ->
+          let autoGenFields = fields.Add("events", streamType)
           let members1 =
             List.fold (fun (acc:TypeContext) assoc -> 
                          match assoc with
@@ -65,7 +66,7 @@ let rec types (env:TypeContext) = function
                          | HasMany (Symbol entity) ->
                              let entityName = String.capitalize entity |> String.singular
                              acc.Add(entity, TyDict (TyRef (TyAlias entityName))))
-                      (fields) assocs
+                      autoGenFields assocs
 
           let members2 = List.fold (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr, listenersOpt)) ->
                                       let selfType = TyRecord acc
