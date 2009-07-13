@@ -55,9 +55,12 @@ let makeWhere predicate (uid, prio, parents:Operator list, context) =
   let applyPredicate op ev =
     let env = getOperEnvValues op
     let env' = Map.add "ev" ev env
-    match eval env' expr with
-    | VBool bool -> bool
-    | _ -> failwithf "where's predicate should return a boolean"
+    try
+      // May fail on null pointer exception
+      match eval env' expr with
+      | VBool bool -> bool
+      | _ -> failwithf "where's predicate should return a boolean"
+    with err -> false
 
 
   let rec opTop = Operator.Build(uid, prio,
@@ -94,10 +97,12 @@ let makeSelect handler (uid, prio, parents:Operator list, context) =
   let project env ev =
     let timestamp = eventTimestamp ev
     let env' = Map.add "ev" ev env
-    let result = eval env' expr
-    match result with
-    | VRecord fields -> VRecord (Map.add (VString "timestamp") timestamp fields)
-    | _ -> failwithf "select should return a record"
+    try
+      let result = eval env' expr    
+      match result with
+      | VRecord fields -> Some (VRecord (Map.add (VString "timestamp") timestamp fields))
+      | _ -> failwithf "select should return a record"
+    with err -> None
  
   let rec opTop = Operator.Build(uid, prio,
                     (fun (op, inputs) -> 
@@ -110,12 +115,16 @@ let makeSelect handler (uid, prio, parents:Operator list, context) =
   and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
                    (fun (op, inputs) ->
                       let env = getOperEnvValues opTop
-                      let output = [ for change in List.hd inputs ->
+                      let output = [ for change in List.hd inputs do
                                         match change with
-                                        | Added ev -> let ev' = project env ev
-                                                      op.Value <- ev'
-                                                      Added ev'
-                                        | Expired ev -> Expired (project env ev)
+                                        | Added ev -> match project env ev with
+                                                      | Some ev' -> op.Value <- ev'
+                                                                    yield Added ev'
+                                                      | None -> ()
+                                        | Expired ev -> match project env ev with
+                                                        | Some ev' -> op.Value <- ev'
+                                                                      yield Expired ev'
+                                                        | None -> ()
                                         | _ -> failwithf "select received an unexpected change: %A" change ]
                       match output with
                       | [] -> Nothing
@@ -145,12 +154,17 @@ let makeWhen eventHandler (uid, prio, parents, context) =
   and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
                    (fun (op, inputs) ->
                       let env = getOperEnvValues opTop
-                      match inputs with
-                      | [Added ev]::_ ->
-                          let env' = Map.add "ev" ev env
-                          let result = eval env' expr
-                          setValueAndGetChanges op result
-                      | _ -> failwithf "Wrong number of arguments! %A" inputs),
+                      
+                      // eval all received events and collect the result of the last.
+                      let result = List.fold (fun acc change ->
+                                                match change with
+                                                | Added ev ->
+                                                    let env' = Map.add "ev" ev env
+                                                    eval env' expr
+                                                | _ -> acc)
+                                             VNull (List.hd inputs)
+                      
+                      setValueAndGetChanges op result),
                    [opTop], context) 
                               
   { opTop with
@@ -467,3 +481,34 @@ let makeTicks (uid, prio, parents, context) =
   let op = Operator.Build(uid, prio, eval, parents, context)
   Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])
   op
+
+
+(* merge *)
+let makeMerge joinField allFields (uid, prio, parents, context) =
+ 
+  let tryPickEvent changes =
+    List.tryPick (fun chg -> match chg with
+                             | Added (VRecord fields) -> Some fields
+                             | _ -> None)
+                 changes
+ 
+  let completeWithNull fields =
+    Set.fold (fun acc f -> if Map.contains (VString f) acc
+                             then acc
+                             else acc.Add(VString f, VNull))
+             fields allFields
+ 
+  let eval = fun ((op:Operator), inputs:changes list) ->
+               let ev1 = tryPickEvent inputs.[0]
+               let ev2 = tryPickEvent inputs.[1]
+               
+               let changes = match ev1, ev2 with
+                             | Some ev1', None -> [Added (VRecord (completeWithNull ev1'))]
+                             | None, Some ev2' -> [Added (VRecord (completeWithNull ev2'))]
+                             | Some ev1', Some ev2' when ev1'.[joinField] = ev2'.[joinField] -> [Added (VRecord (Map.merge (fun a b -> a) ev1' ev2'))]
+                             | Some ev1', Some ev2' -> [Added (VRecord (completeWithNull ev1')); Added (VRecord (completeWithNull ev2'))]
+                             | _ -> failwithf "Can't happen"
+               
+               SpreadChildren changes
+
+  Operator.Build(uid, prio, eval, parents, context)

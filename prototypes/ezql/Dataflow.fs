@@ -431,6 +431,22 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
   | Id (Identifier "now") -> Set.empty, graph, expr
   | Id (Identifier "print") -> dataflowByEval ()
   | Id (Identifier "$makeEnum") -> dataflowByEval ()
+  | Id (Identifier "merge") ->
+      match paramExps with
+      | [stream1; stream2; SymbolExpr (Symbol field)] ->
+          let deps1, g1, stream1' = dataflowE env types graph stream1
+          let stream1Node, g2 = makeFinalNode env types g1 stream1' deps1 "merge-stream1"
+          
+          let deps2, g3, stream2' = dataflowE env types g2 stream2
+          let stream2Node, g4 = makeFinalNode env types g3 stream2' deps2 "merge-stream2"
+          
+          let allFields = match typeOf types expr with
+                          | TyStream (TyRecord fields) -> Map.fold_left (fun acc k v -> Set.add k acc) Set.empty fields
+                          | _ -> failwithf "merge results in a stream"
+          let node, g5 = createNode (nextSymbol "merge") (typeOf types expr) [stream1Node; stream2Node] 
+                                    (makeMerge (VString field) allFields) g4
+          Set.singleton node, g5, Id (Identifier node.Uid)
+      | _ -> failwithf "Invalid parameters to merge."
   | _ when not (isContinuous types expr) -> dataflowByEval ()
   | _ -> // Dataflow the function expression itself
          let funDeps, g1, func' = dataflowE env types graph func

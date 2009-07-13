@@ -362,6 +362,13 @@ and typeOfFuncCall env expr =
             else failwithf "Not all the listeners have the same type."
       | _ -> failwithf "Invalid parameters to listenN."
   | FuncCall (Id (Identifier "now"), []) -> TyInt
+  | FuncCall (Id (Identifier "merge"), [stream1; stream2; SymbolExpr (Symbol field)]) ->
+      match typeOf env stream1, typeOf env stream2 with
+      | TyStream (TyRecord fields1), TyStream (TyRecord fields2) ->
+          if Map.contains field fields1 && Map.contains field fields2
+            then TyStream (TyRecord (Map.merge (fun a b -> a) fields1 fields2))
+            else failwithf "Both streams must contain field %A" field
+      | _ -> failwithf "merge() can only be used on streams."
   | FuncCall (f, param's) ->
       let rec getReturnType argCount funType =
         match argCount, funType with

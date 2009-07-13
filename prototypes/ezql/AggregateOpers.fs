@@ -14,7 +14,7 @@ let makeLast getField (uid, prio, parents, context) =
                                                          match contents with
                                                          | [] -> None
                                                          | _ -> Some contents.[contents.Length - 1]
-                                                     | Added ev -> Some ev
+                                                     | Added ev when getField ev <> VNull -> Some ev
                                                      | _ -> None)
                                         (List.hd inputs)
                match added with
@@ -36,9 +36,10 @@ let makePrev getField (uid, prio, parents, context) =
                                                                   None
                                                          | _ -> curr := contents.[contents.Length - 1]
                                                                 Some contents.[contents.Length - 2]
-                                                     | Added ev -> let prev = !curr
-                                                                   curr := ev
-                                                                   if prev <> VNull then Some prev else None
+                                                     | Added ev when getField ev <> VNull ->
+                                                         let prev = !curr
+                                                         curr := ev
+                                                         if prev <> VNull then Some prev else None
                                                      | _ -> None)
                                         (List.hd inputs)
 
@@ -57,6 +58,7 @@ let makeSum getField (uid, prio, parents, context) =
                                           | Added (VWindow contents) ->
                                               // Initialization
                                               List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) (List.filter (fun v -> v <> VNull) contents)
+                                          | Added v when getField v = VNull -> acc
                                           | Added v -> value.Add(acc, getField v)
                                           | Expired VNull -> acc
                                           | Expired v -> value.Subtract(acc, getField v)
@@ -73,6 +75,7 @@ let makeCount getField (uid, prio, parents, context) =
                let balance = List.fold (fun acc diff ->
                                           match diff with
                                           | Added (VWindow contents) -> VInt contents.Length
+                                          | Added v when getField v = VNull -> acc
                                           | Added v -> getField v |> ignore // assert that v is what we're waiting for
                                                        value.Add(acc, VInt 1)
                                           | Expired VNull -> acc
@@ -98,6 +101,7 @@ let makeMax getField (uid, prio, (parents:Operator list), context) =
                let nextValue = List.fold (fun current diff -> 
                                             match diff with
                                             | Added (VWindow contents as window) -> getWindowMax window // Initialization
+                                            | Added v when getField v = VNull -> current
                                             | Added v -> let newValue = getField v
                                                          if current = VNull || value.GreaterThan(newValue, current) = VBool true
                                                            then newValue
@@ -125,6 +129,7 @@ let makeMin getField (uid, prio, (parents:Operator list), context) =
                let nextValue = List.fold (fun current diff -> 
                                             match diff with
                                             | Added (VWindow contents as window) -> getWindowMin window // Initialization
+                                            | Added v when getField v = VNull -> current
                                             | Added v -> let newValue = getField v
                                                          if current = VNull || value.LessThan(newValue, current) = VBool true
                                                            then newValue
@@ -148,6 +153,7 @@ let makeAvg getField (uid, prio, parents, context) =
                  | Added (VWindow contents as window) ->
                      sum := List.fold (fun acc v -> value.Add(acc, getField v)) (VInt 0) (List.filter (fun v -> v <> VNull) contents)
                      count := VInt (contents.Length)
+                 | Added v when getField v = VNull -> ()  
                  | Added v -> let v' = getField v
                               sum := value.Add(!sum, v')
                               count := value.Add(!count, VInt 1)
@@ -174,28 +180,41 @@ let makeAnyAll isAny pred (uid, prio, parents, context) =
                             | _ -> None
                let env = getOperEnvValues op
 
-               let result = VBool (match inputs with
-                                   | (winChanges::rest) when List.exists (function | [] -> false | _ -> true) rest ||
-                                                             List.exists (function | Expired _ -> true | _ -> false) winChanges ->
-                                       match window with
-                                       | Some window' ->
-                                           // The predicate changed or there was an expiration: must re-evaluate the entire window
-                                           (if isAny then List.exists else List.forall)
-                                             (fun v -> eval (env.Add("$v", v)) expr = VBool true)
-                                             (List.filter (fun v -> v <> VNull) window')
-                                       | None -> failwithf ".any?: The predicate changed but I can't re-evaluate past values!"
-                                   | winChanges::_ ->
-                                       // If this is .any?() and the value is already true or is .all?() and
-                                       // the value is already false, nothing to do.
-                                       if op.Value = VBool isAny
-                                         then isAny
-                                         else (if isAny then List.exists else List.forall)
-                                                (function
-                                                   | Added v -> eval (env.Add("$v", v)) expr = VBool true
-                                                   | other -> failwithf "Can't happen! .any? received %A" other)
-                                                winChanges
-                                   | _ -> failwithf "Can't happen: %A" inputs)
-               setValueAndGetChanges op result                                                                          
+               try
+                 let result = match inputs with
+                               | (winChanges::rest) when List.exists (function | [] -> false | _ -> true) rest ||
+                                                         List.exists (function | Expired _ -> true | _ -> false) winChanges ->
+                                   match window with
+                                   | Some window' ->
+                                       // The predicate changed or there was an expiration: must re-evaluate the entire window
+                                       VBool ((if isAny then List.exists else List.forall)
+                                                (fun v -> eval (env.Add("$v", v)) expr = VBool true)
+                                                (List.filter (fun v -> v <> VNull) window'))
+                                   | None -> failwithf ".any?: The predicate changed but I can't re-evaluate past values!"
+                               | winChanges::_ ->
+                                   // If this is .any?() and the value is already true or is .all?() and
+                                   // the value is already false, nothing to do.
+                                   if op.Value = VBool isAny
+                                     then VBool isAny
+                                     else let results = List.map (function
+                                                                    | Added v -> try
+                                                                                   // An exception may occur if, for example, a field
+                                                                                   // of the event is null.
+                                                                                   Some (eval (env.Add("$v", v)) expr = VBool true)
+                                                                                 with err -> None
+                                                                    | other -> failwithf "Can't happen! .any? received %A" other)
+                                                                 winChanges
+                                          let validResults = List.filter Option.isSome results
+                                          match validResults with
+                                          | [] -> op.Value
+                                          | _ -> let fn = if isAny then List.exists else List.forall
+                                                 VBool (fn (function
+                                                          | Some b -> b
+                                                          | None -> failwithf "Can't happen")
+                                                       (List.filter Option.isSome results))
+                               | _ -> failwithf "Can't happen: %A" inputs
+                 setValueAndGetChanges op result
+               with ex -> Nothing                                                                          
 
   Operator.Build(uid, prio, eval, parents, context)  
 
