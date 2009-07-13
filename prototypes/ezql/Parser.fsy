@@ -9,7 +9,7 @@ open Ast
 %token <int> INTEGER_LITERAL
 %token <bool> BOOLEAN_LITERAL
 %token <string> STRING_LITERAL
-%token LET IN WITH IF THEN ELSE FUN DEFINE
+%token LET IN WITH IF THEN ELSE FUN DEFINE FOR GROUP BY
 %token LPAREN RPAREN LBRACKET RBRACKET LBRACE RBRACE ASSIGN
 %token DOT COLON SEMICOLON ARROW PLUS MINUS TIMES DIV MOD COMMA
 %token SEMICOLON2 UNDERSCORE
@@ -136,6 +136,7 @@ Expr:
   | MATCH Expr WITH MatchCases END                        { Match ($2, $4) }
   | LET ID OptType ASSIGN Expr IN Expr                    { Let (Identifier $2, $3, $5, $7) }
   | Record                                                { $1 }
+  | Comprehension                                         { $1 }
   | ID                                                    { Id (Identifier $1) }
   | Symbol                                                { SymbolExpr $1 }
   | INTEGER_LITERAL                                       { Integer $1 }
@@ -237,3 +238,20 @@ TimeUnit: ID                                              { match $1 with
                                                             | "sec" | "secs" -> Sec
                                                             | "min" | "mins" -> Min
                                                             | _ -> failwithf "Invalid time with: " $1 }
+
+Comprehension:
+  | DictionaryComprehension                               { $1 }
+  | StreamComprehension                                   { $1 }
+
+StreamComprehension:
+  | LBRACKET Expr FOR ID IN Expr RBRACKET                 { MethodCall ($6, Identifier "select", [Lambda ([Param (Identifier $4, None)], $2)]) }
+  | LBRACKET Expr FOR ID IN Expr IF Expr RBRACKET         { MethodCall (MethodCall ($6, Identifier "where", [Lambda ([Param (Identifier $4, None)], $8)]),
+                                                                        Identifier "select",
+                                                                        [Lambda ([Param (Identifier $4, None)], $2)]) }
+
+DictionaryComprehension:
+  | LBRACE Expr FOR ID IN Expr RBRACE                     { MethodCall ($6, Identifier "select", [Lambda ([Param (Identifier $4, None)], $2)]) }
+  | LBRACE Expr FOR ID IN Expr IF Expr RBRACE             { MethodCall (MethodCall ($6, Identifier "where", [Lambda ([Param (Identifier $4, None)], $8)]),
+                                                                        Identifier "select",
+                                                                        [Lambda ([Param (Identifier $4, None)], $2)]) }
+  | LBRACE Expr FOR ID IN Expr GROUP BY Expr RBRACE       { MethodCall ($6, Identifier "groupby", [$9; Lambda ([Param (Identifier $4, None)], $2)]) }

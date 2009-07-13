@@ -16,7 +16,7 @@ let makeStream (uid, prio, parents, context) =
                match inputs with
                | [[Added (VRecord _ as ev)] as changes] ->
                    op.Value <- ev
-                   Some (op.Children, changes)
+                   SpreadChildren changes
                | _ -> failwith "stream: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -25,7 +25,7 @@ let makeStream (uid, prio, parents, context) =
 let makeSimpleWindow (uid, prio, parents, context) =
   let eval = fun (op, inputs) ->
                match inputs with
-               | changes::_ -> Some (op.Children, changes)
+               | changes::_ -> SpreadChildren changes
                | _ -> failwith "Simple window: Invalid arguments!"
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -44,9 +44,9 @@ let makeWindow duration (uid, prio, parents, context) =
                                  contents := (!contents).Tail
                  | _ -> failwithf "Invalid changes to window: %A" parentChanges
                op.Value <- VWindow !contents
-               Some (op.Children, parentChanges)
+               SpreadChildren parentChanges
 
-  Operator.Build(uid, prio, eval, parents, context, contents = VWindow !contents)
+  Operator.Build(uid, prio, eval, parents, context)
 
 
 (* Where: propagates events that pass a given predicate *)
@@ -58,62 +58,75 @@ let makeWhere predicate (uid, prio, parents:Operator list, context) =
     match eval env' expr with
     | VBool bool -> bool
     | _ -> failwithf "where's predicate should return a boolean"
-  
-  let eval = fun (op, inputs) ->
-               let env = getOperEnvValues op
-               let output = [ for change in List.hd inputs do
-                                match change with
-                                | Added ev -> if applyPredicate op ev
-                                                then op.Value <- ev
-                                                     yield Added ev
-                                | Expired ev -> if applyPredicate op ev then yield Expired ev
-                                | _ -> failwithf "where received an unexpected change: %A" change ]
-                                
-               match output with
-               | [] -> None
-               | _ -> Some (op.Children, output)
 
-  let initialValue =
-    match parents.[0].Value with
-    | VRecord fields as ev when Map.tryFind (VString "timestamp") fields = Some (VInt (Scheduler.now())) -> ev
-    | _ -> VNull
 
-  Operator.Build(uid, prio, eval, parents, context, contents = initialValue)
+  let rec opTop = Operator.Build(uid, prio,
+                    (fun (op, inputs) -> 
+                       match List.hd inputs with
+                       | [] -> Nothing
+                       | ev -> Delay (List<_>([opBottom, 0, id]), ev)),
+                    parents, context)
 
+  and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
+                   (fun (op, inputs) ->
+                      let output = [ for change in List.hd inputs do
+                                       match change with
+                                       | Added ev -> if applyPredicate opTop ev
+                                                       then op.Value <- ev
+                                                            yield Added ev
+                                       | Expired ev -> if applyPredicate opTop ev then yield Expired ev
+                                       | _ -> failwithf "where received an unexpected change: %A" change ]
+                                      
+                      match output with
+                      | [] -> Nothing
+                      | _ -> SpreadChildren output),
+                   [opTop], context) 
+                              
+  { opTop with
+        Children = opBottom.Children;
+        Contents = opBottom.Contents;
+        AllChanges = opBottom.AllChanges }  
+        
 
 (* Select: projects an event *)
 let makeSelect handler (uid, prio, parents:Operator list, context) =
   let expr = FuncCall (handler, [Id (Identifier "ev")])
-  let project op ev =
+  let project env ev =
     let timestamp = eventTimestamp ev
-    let env = getOperEnvValues op
     let env' = Map.add "ev" ev env
     let result = eval env' expr
     match result with
     | VRecord fields -> VRecord (Map.add (VString "timestamp") timestamp fields)
     | _ -> failwithf "select should return a record"
+ 
+  let rec opTop = Operator.Build(uid, prio,
+                    (fun (op, inputs) -> 
+                       match List.hd inputs with
+                       | [] -> ()
+                       | ev -> Scheduler.scheduleOffset 0 (List.of_seq [opBottom, 0, id], ev)
+                       Nothing),
+                    parents, context)
+
+  and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
+                   (fun (op, inputs) ->
+                      let env = getOperEnvValues opTop
+                      let output = [ for change in List.hd inputs ->
+                                        match change with
+                                        | Added ev -> let ev' = project env ev
+                                                      op.Value <- ev'
+                                                      Added ev'
+                                        | Expired ev -> Expired (project env ev)
+                                        | _ -> failwithf "select received an unexpected change: %A" change ]
+                      match output with
+                      | [] -> Nothing
+                      | _ -> SpreadChildren output),
+                   [opTop], context) 
+                              
+  { opTop with
+        Children = opBottom.Children;
+        Contents = opBottom.Contents;
+        AllChanges = opBottom.AllChanges }  
   
-  let eval = fun (op, inputs) ->
-               let env = getOperEnvValues op
-               let output = [ for change in List.hd inputs ->
-                                match change with
-                                | Added ev -> let ev' = project op ev
-                                              op.Value <- ev'
-                                              Added ev'
-                                | Expired ev -> Expired (project op ev)
-                                | _ -> failwithf "select received an unexpected change: %A" change ]
-                                
-               match output with
-               | [] -> None
-               | _ -> Some (op.Children, output)
-
-  let initialValue =
-    match parents.[0].Value with
-    | VRecord fields as ev when Map.tryFind (VString "timestamp") fields = Some (VInt (Scheduler.now())) -> ev
-    | _ -> VNull
-
-  Operator.Build(uid, prio, eval, parents, context, contents = initialValue)
-
 
 (* When is composed of two operators: the first receives inputs and postpones their
    evaluation, which will be done by the second operator, in a second eval stage. *)
@@ -125,7 +138,7 @@ let makeWhen eventHandler (uid, prio, parents, context) =
                        match List.hd inputs with
                        | [] -> ()
                        | ev -> Scheduler.scheduleOffset 0 (List.of_seq [opBottom, 0, id], ev)
-                       None),
+                       Nothing),
                     parents, context)
  
                   
@@ -145,6 +158,7 @@ let makeWhen eventHandler (uid, prio, parents, context) =
         Contents = opBottom.Contents;
         AllChanges = opBottom.AllChanges }
 
+
 (* A timed window for dynamic values *)
 let makeDynValWindow duration (uid, prio, parents, context) =
   let contents = ref [VNull]
@@ -162,7 +176,7 @@ let makeDynValWindow duration (uid, prio, parents, context) =
                                 contents := (!contents).Tail
                  | _ -> failwithf "Invalid changes to window: %A" parentChanges
                op.Value <- VWindow !contents
-               Some (op.Children, parentChanges)
+               SpreadChildren parentChanges
 
   Operator.Build(uid, prio, eval, parents, context, contents = VWindow !contents)
 
@@ -198,7 +212,7 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
                                           | _ -> [])
                           |> List.concat
                       op.Value <- VRecord !result
-                      Some (op.Children, recordChanges)),
+                      SpreadChildren recordChanges),
                    parents, context)
 
   for field, op in fields do
@@ -213,7 +227,7 @@ let makeToStream (uid, prio, parents, context) =
                let value = op.Parents.[0].Value
                let ev = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.now ()); VString "value", value])
                op.Value <- ev
-               Some (op.Children, [Added ev])
+               SpreadChildren [Added ev]
 
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -249,11 +263,11 @@ let makeRefProjector field (uid, prio, (parents:Operator list), context) =
                                             | _ -> failwithf "The referenced object is not an object!"
                            
                            match op.Value = refObject, objChanges with
-                           | true, [] -> None
-                           | true, _ -> Some (op.Children, objChanges)
+                           | true, [] -> Nothing
+                           | true, _ -> SpreadChildren objChanges
                            | false, [] -> setValueAndGetChanges op fieldValue
                            | false, _ -> setValueAndGetChanges op fieldValue
-                      else None),
+                      else Nothing),
                  parents, context)
 
  
@@ -289,13 +303,13 @@ let makeIndexer index (uid, prio, parents, context) =
                                                    change
                    match indexChanges with
                    | Some changes -> op.Value <- dict.[key]
-                                     Some (op.Children, changes)
-                   | None -> None
+                                     SpreadChildren changes
+                   | None -> Nothing
                | _ -> // The index changed: return [Added <new value>]
                       if Map.contains key dict
                         then op.Value <- dict.[key]
-                             Some (op.Children, [Added op.Value])
-                        else None         
+                             SpreadChildren [Added op.Value]
+                        else Nothing         
             
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -328,14 +342,14 @@ let makeProjector field (uid, prio, parents, context) =
                let newValue = record.[fieldv]
                match fieldChanges with
                | Some changes -> op.Value <- newValue
-                                 Some (op.Children, changes)
-               | None -> None
+                                 SpreadChildren changes
+               | None -> Nothing
 
   Operator.Build(uid, prio, eval, parents, context)
   
 
 let makeClosure lambda closureBuilder itself (uid, prio, parents, context) =
-  let eval = fun (op:Operator, inputs) -> None
+  let eval = fun (op:Operator, inputs) -> Nothing
 
   Operator.Build(uid, prio, eval, parents, context, contents = VClosureSpecial (uid, lambda, closureBuilder, context, itself))
 
@@ -380,15 +394,15 @@ let makeFuncCall (uid, prio, parents, context) =
                            subnet
                            
                // Output just the closure change: the parameters' changes are not needed
-               Some (List<_> ((resultOp, 0, id)::argsToEval), List.hd inputs)
+               SpreadTo (List<_> ((resultOp, 0, id)::argsToEval), List.hd inputs)
            | VClosure _ as closure ->
                currNetwork := None
                // Evaluate the expression directly.
                let env = getOperEnvValues op
                let param's = [ for parent in parents.Tail -> Id (Identifier parent.Uid) ]
                let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), param's))
-               Some (List<_> ([resultOp, 0, id]), [Added result])
-           | VNull -> None
+               SpreadTo (List<_> ([resultOp, 0, id]), [Added result])
+           | VNull -> Nothing
            | other -> failwithf "Expecting a VClosure[Special], but the parent's value is %A" other),
       parents, context)
 
@@ -417,7 +431,7 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                    | _::listenerInputs ->
                        let parentIdx = List.tryFindIndex (fun input -> input <> []) listenerInputs
                        match parentIdx with
-                       | None -> None
+                       | None -> Nothing
                        | Some idx ->
                            let closure = 
                              match op.Parents.[idx + 1].Value with
@@ -444,11 +458,11 @@ let makeTicks (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
                match List.hd inputs with
                | [Expired (VInt n)] -> maxLimit := Some n // Used by the testing system to set a maximum limit.
-                                       None
+                                       Nothing
                | _ -> match !maxLimit with
-                      | Some max when timestamp () > max -> None
+                      | Some max when timestamp () > max -> Nothing
                       | _ -> Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])
-                             Some (op.Children, List.hd inputs)
+                             SpreadChildren (List.hd inputs)
 
   let op = Operator.Build(uid, prio, eval, parents, context)
   Scheduler.scheduleOffset 1 (List.of_seq [op, 0, id], [Added (nextEvent ())])

@@ -1,7 +1,7 @@
 ﻿open Test
 
 [<TestCase ("dynValWindows/create_window.ez")>]
-let test_windowsCreation (test:Test) =
+let test_windowsCreation2 (test:Test) =
 
   test.AssertThat (In "currTemp"
                     [Set "25" (At  2)

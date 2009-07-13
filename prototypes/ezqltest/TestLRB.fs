@@ -26,7 +26,13 @@ let test_lrb (test:Test) =
                       SetKey "20" "4" (At 8)]) // Segment 3 is co ngested with vehicles 10 and 20
 
 
-open Test
+  test.AssertThat (In "total2"
+                     [SetKey "10" "1" (At 1)
+                      SetKey "20" "2" (At 2)
+                      SetKey "30" "2" (At 4)
+                      SetKey "10" "2" (At 7)
+                      SetKey "20" "4" (At 8)]) 
+
 
 [<TestCase ("lrb/lrbFixed.ez")>]
 let test_lrbFixed (test:Test) =

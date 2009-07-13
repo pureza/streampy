@@ -63,8 +63,8 @@ let setValueAndGetChanges (op:Operator) v =
     then let changes = diffsBetween op.Value v
          assert (changes.Length > 0)
          op.Value <- v
-         Some (op.Children, changes)
-    else None
+         SpreadChildren changes
+    else Nothing
 
 
 let getOperEnv op = Map.of_list [ for p in op.Parents -> (p.Uid, p) ]

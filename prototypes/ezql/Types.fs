@@ -52,7 +52,7 @@ type Operator =
     Priority: Priority.priority
     AllChanges: changes list ref
     Contents: ref<value>
-    Eval: Operator * changes list -> (ChildData List * changes) option }
+    Eval: Operator * changes list -> SpreadType }
 
   member self.ArgCount with get() = self.Parents.Count
   member self.Value
@@ -87,6 +87,12 @@ type Operator =
   static member UidOf(op) = op.Uid
 
 and ChildData = Operator * int * link
+
+and SpreadType =
+  | SpreadTo of List<ChildData> * changes
+  | SpreadChildren of changes
+  | Delay of List<ChildData> * changes
+  | Nothing
 
 and context = Map<string, value>
 

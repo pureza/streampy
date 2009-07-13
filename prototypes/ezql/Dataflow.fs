@@ -869,14 +869,14 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
     for (op:Operator, (changes:changes)) in initialChanges do
       op.AllChanges := [changes]
     let stack = List.fold (fun stack (op, changes) -> mergeStack stack (toEvalStack op.Children changes)) [] initialChanges
-    retrySpread stack
+    retrySpread stack []
     
   // Spread all changes in the stack. If some step fails, try the remaining steps.
-  and retrySpread stack =
+  and retrySpread stack delayed =
     try
-      spread stack
+      spread stack delayed
     with
-      | SpreadException (_, rest, _) -> retrySpread rest     
+      | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
   
 
   // GroupBy's should be visited first because of belongsTo/hasMany association.

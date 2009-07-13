@@ -5,8 +5,7 @@ lastTemp = temp_readings.last(:temperature);;
 lastHum = hum_readings.last(:humidity);;
 
 // Current temperature per room
-tempsPerRoom = temp_readings
-                 .groupby(:room_id, fun g -> g.last(:temperature));;
+tempsPerRoom = { g.last(:temperature) for g in temp_readings group by :room_id };;
 
 
 // The group does not depend on g

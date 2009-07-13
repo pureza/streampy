@@ -35,7 +35,7 @@ let rec reSchedule sched =
                                                                                acc children))
                                                                  [] queue.Values.[0]
                                            queue.RemoveAt 0
-                                           spread stack
+                                           spread stack []
                                            reSchedule sched)
                                            
 let schedule time action =

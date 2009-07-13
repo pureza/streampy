@@ -26,7 +26,12 @@ entity Vehicle =
 
   // Whenever the toll is updated (even if it retains the same value
   // -- thus the .updates() instead of .changes()), sum it.
-  member self.totalToll = self.toll.updates().sum(:value);;
+  member self.totalToll = self.toll.updates().sum(:value)
+
+
+  member self.tollPerSegment = self.segment_id.changes()
+                                 .select (fun ev -> { value = ev.value, toll = self.toll })
+                                 .groupby (:value, fun g -> g.last(:toll));;
 
 
 // vehicles per segment
@@ -34,6 +39,8 @@ volume = Segment.all.select (fun s -> s.vehicleCount);;
 
 // totalToll per vehicle
 total = Vehicle.all.select (fun v -> v.totalToll);;
+
+total2 = Vehicle.all.select (fun v -> v.tollPerSegment.values().sum());;
 
 
 

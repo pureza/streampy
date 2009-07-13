@@ -77,7 +77,7 @@ let In entity (facts:(DateTime * fact) list) =
 
 let addSinkTo op action =
   let sink = Operator.Build("__sink" + op.Uid, (Priority.add op.Priority (Priority.of_list [0; 0; 0; 1])),
-                            (fun (op, changes) -> action(changes); None),
+                            (fun (op, changes) -> action(changes); Nothing),
                             [op], op.Context)
   // Force the sink to verify the last assert.                            
   Scheduler.scheduleOffset 1000000 (List.of_seq [sink, 0, id], [diff.Added VNull])

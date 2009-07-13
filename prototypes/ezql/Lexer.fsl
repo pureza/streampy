@@ -6,6 +6,7 @@ open Lexing
 
 let ids = Map.of_list ["let",        LET
                        "in",         IN
+                       "for",        FOR
                        "with",       WITH
                        "and",        AND
                        "or",         OR
@@ -14,6 +15,8 @@ let ids = Map.of_list ["let",        LET
                        "else",       ELSE
                        "fun",        FUN
                        "define",     DEFINE
+                       "group",      GROUP
+                       "by",         BY
                        "entity",     ENTITY
                        "createFrom", CREATE_FROM
                        "belongsTo",  BELONGS_TO

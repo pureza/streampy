@@ -21,15 +21,11 @@ Test.runTests [(Test.findTest "test_listenN")]
 Test.runTests [(Test.findTest "test_muggySimple")]
 Test.runTests [(Test.findTest "test_lrb")]
 Test.runTests [(Test.findTest "test_lrbFixed")]
+Test.runTests [(Test.findTest "test_windowsCreation")]
+Test.runTests [(Test.findTest "test_windowsCreation2")]
 *)
 
-//Test.runTests [(Test.findTest "test_entitiesMisc2")]
-
-
-
-
-
-
+//Test.runTests [(Test.findTest "test_lrbFixed")]
 
 Test.runTests (Test.findTests ())
     

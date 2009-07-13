@@ -17,7 +17,9 @@ let makeLast getField (uid, prio, parents, context) =
                                                      | Added ev -> Some ev
                                                      | _ -> None)
                                         (List.hd inputs)
-               Option.bind (fun ev -> setValueAndGetChanges op (getField ev)) added
+               match added with
+               | None -> Nothing
+               | Some ev -> setValueAndGetChanges op (getField ev)
  
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -39,7 +41,10 @@ let makePrev getField (uid, prio, parents, context) =
                                                                    if prev <> VNull then Some prev else None
                                                      | _ -> None)
                                         (List.hd inputs)
-               Option.bind (fun ev -> setValueAndGetChanges op (getField ev)) added
+
+               match added with
+               | None -> Nothing
+               | Some ev -> setValueAndGetChanges op (getField ev)
  
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -206,11 +211,11 @@ let makeHowLong (uid, prio, parents, context) =
                    setValueAndGetChanges op total
                | VBool true, false ->
                    prevValue := true
-                   None
+                   Nothing
                | VBool false, true ->
                    prevValue := false
                    let total = value.Add(op.Value, VInt 1)
                    setValueAndGetChanges op total
-               | _ -> None
+               | _ -> Nothing
  
   Operator.Build(uid, prio, eval, parents, context, contents = VInt 0)  

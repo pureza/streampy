@@ -34,9 +34,7 @@ someRecordPerRoom =
 
 
 // Where + select
-hotRoomsX2 = tempsPerRoom
-               .where(fun t -> lastTemp > 25)
-               .select (fun t -> t * 2);;
+hotRoomsX2 = { t * 2 for t in tempsPerRoom if lastTemp > 25 };;
 
 
 

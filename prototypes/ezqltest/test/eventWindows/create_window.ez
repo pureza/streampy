@@ -32,6 +32,8 @@ tempsPerRoom = temp_readings
                  .groupby(:room_id, fun g -> g[5 sec].last(:temperature));;
 
 
+temps_3secsX2 = [ { tempX2 = ev.temperature * 2 } for ev in temps_3secs ];;
+
 #! hum_readings
 Timestamp, room_id, humidity
 0,         1, 70

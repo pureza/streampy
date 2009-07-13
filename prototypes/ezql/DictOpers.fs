@@ -12,8 +12,8 @@ let subGroupResultOp key (subgroups:SubCircuitMap ref) = snd (!subgroups).[key]
 
 let spreadUnlessEmpty op changes =
   match changes with
-  | [] -> None
-  | _ -> Some (op.Children, changes)
+  | [] -> Nothing
+  | _ -> SpreadChildren changes
 
 
 (* Used by the dict.where() and dict.select() methods to give an operator to
@@ -21,7 +21,7 @@ let spreadUnlessEmpty op changes =
    The value of this operators is manually set by the methods that use it.
  *)
 let makeInitialOp (uid, prio, parents, context) =
-  let eval = fun (op, inputs) -> Some (op.Children, List.hd inputs)
+  let eval = fun (op, inputs) -> SpreadChildren (List.hd inputs)
 
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -88,7 +88,7 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
                             yield subGroupStartOp key subgroups, 0, link
                         | _ -> () ]
 
-       Some (List<_> ((dictOp, 0, id)::predsToEval), parentChanges')), parents, context)
+       SpreadTo (List<_> ((dictOp, 0, id)::predsToEval), parentChanges')), parents, context)
 
      
 let makeGroupby field groupBuilder (uid, prio, parents, context) =
@@ -140,9 +140,9 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                              | _ -> failwithf "Invalid arguments for groupby! %A" change ]
                        let childrenNoDup = children |> Set.of_list |> Set.to_list
                        match children with
-                       | [] -> None
+                       | [] -> Nothing
                        | _ -> let childrenData = List.map (fun (g, k) -> g, 0, filterKey k) childrenNoDup
-                              Some (List<_>((dictOp, 0, collectByKey)::childrenData), changes.Head)),
+                              SpreadTo (List<_>((dictOp, 0, collectByKey)::childrenData), changes.Head)),
                     parents, context)
 
     and dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
@@ -340,6 +340,6 @@ let makeValues (uid, prio, parents, context) =
                                 | _ -> failwithf "Can't happen... oh really: %A" change)
                            [] (List.hd allChanges)
                op.Value <- VWindow [ for pair in (!myDict) -> pair.Value ]
-               Some (op.Children, myChanges)
+               SpreadChildren myChanges
 
   Operator.Build(uid, prio, eval, parents, context, contents = VWindow [])

@@ -8,7 +8,7 @@ open Ast
 open Util
 open Types
 
-exception SpreadException of Operator * EvalStack * Exception
+exception SpreadException of Operator * EvalStack * EvalStack * Exception
 
 (*
  * Connect parent with child.
@@ -61,31 +61,36 @@ let toEvalStack children (changes:changes) : EvalStack =
 (*
  * This is where any change is propagated throughout the graph.
  *)
-let rec spread (stack:EvalStack) =
-    let rec fillLeftArgs (op:Operator) inputs idx : changes list =
-        match (List.sortBy fst inputs) with
-        | (next, changes)::xs -> // If there were no changes for input idx, cons []
-                                 if idx < next
-                                   then []::(fillLeftArgs op inputs (idx + 1))
-                                   else changes::(fillLeftArgs op xs (idx + 1))
-        // If there are no more changes but there are still arguments to be filled...
-        | [] when idx < op.ArgCount -> [ for i in [1 .. (op.ArgCount - idx)] -> [] ]
-        | _ -> []
+let rec spread (stack:EvalStack) (delayed:EvalStack) =
+  let rec fillLeftArgs (op:Operator) inputs idx : changes list =
+      match (List.sortBy fst inputs) with
+      | (next, changes)::xs -> // If there were no changes for input idx, cons []
+                               if idx < next
+                                 then []::(fillLeftArgs op inputs (idx + 1))
+                                 else changes::(fillLeftArgs op xs (idx + 1))
+      // If there are no more changes but there are still arguments to be filled...
+      | [] when idx < op.ArgCount -> [ for i in [1 .. (op.ArgCount - idx)] -> [] ]
+      | _ -> []
 
-    match stack with
-    | [] -> ()
-    | (op, parentChanges)::xs ->
-        //printfn "*** Vou actualizar o %s" op.Uid
-        //printfn "    Changes = %A\n" parentChanges
-        let filledChanges = fillLeftArgs op parentChanges 0
-        try
-          match op.Eval (op, filledChanges) with
-          | Some (children, changes) ->
-              checkConsistency op changes
-              spread (mergeStack xs (toEvalStack children changes))
-          | _ -> spread xs
-        with
-          | SpreadException (_, _, _) as ex -> raise ex
-          | ex -> raise (SpreadException (op, xs, ex))
-
-
+  match stack with
+  | [] -> match delayed with
+          | [] -> ()
+          | _ -> spread delayed []
+  | (op, parentChanges)::xs ->
+      //printfn "*** Vou actualizar o %s" op.Uid
+      //printfn "    Changes = %A\n" parentChanges
+      let filledChanges = fillLeftArgs op parentChanges 0
+      try
+        match op.Eval (op, filledChanges) with
+        | SpreadChildren changes ->
+            checkConsistency op changes
+            spread (mergeStack xs (toEvalStack op.Children changes)) delayed
+        | SpreadTo (children, changes) ->
+            checkConsistency op changes
+            spread (mergeStack xs (toEvalStack children changes)) delayed
+        | Delay (children, changes) ->
+            spread xs (mergeStack delayed (toEvalStack children changes))
+        | Nothing -> spread xs delayed
+      with
+        | SpreadException _ as ex -> raise ex
+        | ex -> raise (SpreadException (op, xs, delayed, ex))
