@@ -132,23 +132,26 @@ and value =
     static member IntArithmOp(left, right, op) =
       match left, right with
         | VInt l, VInt r -> VInt (op l r)
+        | VNull, _ | _, VNull -> VNull
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
     static member IntCmpOp(left, right, op) =
       match left, right with
         | VInt l, VInt r -> VBool (op l r)
+        | VNull, _ | _, VNull -> VNull
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
     static member LogicalOp(left, right, op) =
       match left, right with
         | VBool l, VBool r -> VBool (op l r)
-        | VNull, VNull -> VBool (op false false)
-        | VNull, _ | _, VNull -> VBool (op false true)
+        | VNull, VNull -> VNull
+        | VNull, VBool b | VBool b, VNull -> VBool (op false b)
         | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
     static member Add(left, right) = 
       match left, right with
       | VInt l, VInt r -> VInt (l + r)
+      | VNull, _ | _, VNull -> VNull
       | VString l, _ -> VString (l + right.ToString())
       | _, VString r -> VString (left.ToString() + r)
       | _ -> failwithf "Invalid types in call to +: %A %A" left right

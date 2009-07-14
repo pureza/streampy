@@ -35,7 +35,6 @@ let test_windowsCreation (test:Test) =
                       Expired 7 "{ room_id = 3, temperature = 30 }" (At 10)]
 
   test.AssertThat (In "hotTemps_3secs" rewriteTests)
-  test.AssertThat (In "hotTemps_3secsb" rewriteTests)
   test.AssertThat (In "hotTemps_3secsc" rewriteTests)
                        
                        
@@ -47,18 +46,10 @@ let test_windowsCreation (test:Test) =
                      SetKey "1" "23" (At  9)])
 
   test.AssertThat (In "temps_3secsX2"
-                      [Added   2 "{ tempX2 =  50 }" (At  2)
-                       Added   4 "{ tempX2 =  90 }" (At  4)
-                       Added   5 "{ tempX2 =  50 }" (At  5)
-                       Expired 2 "{ tempX2 =  50 }" (At  5)
-                       Added   6 "{ tempX2 = 100 }" (At  6)
-                       Added   7 "{ tempX2 =  60 }" (At  7)
-                       Expired 4 "{ tempX2 =  90 }" (At  7)
-                       Expired 5 "{ tempX2 =  50 }" (At  8)
-                       Added   9 "{ tempX2 =  46 }" (At  9)
-                       Expired 6 "{ tempX2 = 100 }" (At  9)
-                       Expired 7 "{ tempX2 =  60 }" (At 10)
-                       Expired 9 "{ tempX2 =  46 }" (At 12)])                      
+                      [Set "90"   (At  4)
+                       Set "60"   (At  7)
+                       Set "null" (At 10)])                   
+
 
 
 [<TestCase ("eventWindows/groupby.ez")>]

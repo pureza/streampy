@@ -746,9 +746,11 @@ and renameNetwork renamer root graph =
  * Handles <stream|window>.select()
  *)
 and dataflowSelect env types graph target paramExps expr =
-  let inEvType = match target.Type with
-                 | TyStream evType | TyWindow (TyStream evType, _) -> evType
-                 | _ -> failwithf "stream.select can only be applied to streams and windows"
+  let inEvType, isWindow =
+    match target.Type with
+    | TyStream evType -> evType, false
+    | TyWindow (TyStream evType, _) -> evType, true
+    | _ -> failwithf "stream.select can only be applied to streams and windows"
                  
   let subExpr, env', types', arg =
     match paramExps with
@@ -764,7 +766,7 @@ and dataflowSelect env types graph target paramExps expr =
   // Depends on the parent and on the dependencies of the predicate.
   let opDeps = target::(Set.to_list deps)
   let n, g'' = createNode (nextSymbol "Select") (typeOf types expr) opDeps
-                          (makeSelect expr'') g'
+                          (makeSelect expr'' isWindow) g'
   Set.singleton n, g'', Id (Identifier n.Uid)
   
   
@@ -772,9 +774,11 @@ and dataflowSelect env types graph target paramExps expr =
  * Handles stream.where()
  *)
 and dataflowWhere env types graph target paramExps expr =
-  let evType = match target.Type with
-               | TyStream evType | TyWindow (TyStream evType, _) -> evType
-               | _ -> failwithf "stream.select can only be applied to streams and windows"
+  let evType, isWindow =
+    match target.Type with
+    | TyStream evType -> evType, false
+    | TyWindow (TyStream evType, _) -> evType, true
+    | _ -> failwithf "stream.select can only be applied to streams and windows"
 
   let subExpr, env', types', arg =
     match paramExps with
@@ -790,7 +794,7 @@ and dataflowWhere env types graph target paramExps expr =
   // Depends on the stream and on the dependencies of the predicate.
   let opDeps = target::(Set.to_list deps)
   let n, g'' = createNode (nextSymbol "Where") target.Type opDeps
-                          (makeWhere expr'') g'
+                          (makeWhere expr'' isWindow) g'
   Set.singleton n, g'', Id (Identifier n.Uid)
 
 and isEntityInit typ =

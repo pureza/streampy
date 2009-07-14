@@ -23,10 +23,18 @@ let makeStream (uid, prio, parents, context) =
 
 (* A simple window - does not schedule expiration of events. *)
 let makeSimpleWindow (uid, prio, parents, context) =
-  let eval = fun (op, inputs) ->
-               match inputs with
-               | changes::_ -> SpreadChildren changes
-               | _ -> failwith "Simple window: Invalid arguments!"
+  let contents = ref []
+
+  let eval = fun (op:Operator, inputs) ->
+               let parentChanges = List.hd inputs
+               for change in parentChanges do
+                 match change with
+                 | Added ev -> contents := (!contents) @ [ev]
+                 | Expired ev -> assert ((!contents).Head = ev)
+                                 contents := (!contents).Tail
+                 | _ -> failwithf "Invalid changes to window: %A" parentChanges
+               op.Value <- VWindow !contents
+               SpreadChildren parentChanges
 
   Operator.Build(uid, prio, eval, parents, context)
   
@@ -50,18 +58,27 @@ let makeWindow duration (uid, prio, parents, context) =
 
 
 (* Where: propagates events that pass a given predicate *)
-let makeWhere predicate (uid, prio, parents:Operator list, context) =
+let makeWhere predicate isWindow (uid, prio, parents:Operator list, context) =
+  let contents = ref []
+
+  let setOrAddValue (op:Operator) value =
+    if isWindow
+      then contents := (!contents) @ [value]
+           op.Value <- VWindow !contents
+      else op.Value <- value
+
+  let expireIfWindow (op:Operator) =
+    if isWindow
+      then contents := (!contents).Tail
+           op.Value <- VWindow !contents
+      
   let expr = FuncCall (predicate, [Id (Identifier "ev")])
   let applyPredicate op ev =
     let env = getOperEnvValues op
     let env' = Map.add "ev" ev env
-    try
-      // May fail on null pointer exception
-      match eval env' expr with
-      | VBool bool -> bool
-      | _ -> failwithf "where's predicate should return a boolean"
-    with err -> false
-
+    match eval env' expr with
+    | VBool bool -> bool
+    | _ -> failwithf "where's predicate should return a boolean"
 
   let rec opTop = Operator.Build(uid, prio,
                     (fun (op, inputs) -> 
@@ -74,10 +91,17 @@ let makeWhere predicate (uid, prio, parents:Operator list, context) =
                    (fun (op, inputs) ->
                       let output = [ for change in List.hd inputs do
                                        match change with
+                                       | Added (VWindow contents') -> 
+                                           assert isWindow
+                                           contents := List.filter (applyPredicate opTop) contents'
+                                           op.Value <- VWindow !contents
+                                           yield Added op.Value
                                        | Added ev -> if applyPredicate opTop ev
-                                                       then op.Value <- ev
+                                                       then setOrAddValue op ev
                                                             yield Added ev
-                                       | Expired ev -> if applyPredicate opTop ev then yield Expired ev
+                                       | Expired ev -> if applyPredicate opTop ev
+                                                         then expireIfWindow op
+                                                              yield Expired ev
                                        | _ -> failwithf "where received an unexpected change: %A" change ]
                                       
                       match output with
@@ -92,24 +116,34 @@ let makeWhere predicate (uid, prio, parents:Operator list, context) =
         
 
 (* Select: projects an event *)
-let makeSelect handler (uid, prio, parents:Operator list, context) =
+let makeSelect handler isWindow (uid, prio, parents:Operator list, context) =
+  let contents = ref []
+
+  let setOrAddValue (op:Operator) value =
+    if isWindow
+      then contents := (!contents) @ [value]
+           op.Value <- VWindow !contents
+      else op.Value <- value
+
+  let expireIfWindow (op:Operator) =
+    if isWindow
+      then contents := (!contents).Tail
+           op.Value <- VWindow !contents
+
   let expr = FuncCall (handler, [Id (Identifier "ev")])
   let project env ev =
     let timestamp = eventTimestamp ev
     let env' = Map.add "ev" ev env
-    try
-      let result = eval env' expr    
-      match result with
-      | VRecord fields -> Some (VRecord (Map.add (VString "timestamp") timestamp fields))
-      | _ -> failwithf "select should return a record"
-    with err -> None
+    let result = eval env' expr    
+    match result with
+    | VRecord fields -> Some (VRecord (Map.add (VString "timestamp") timestamp fields))
+    | _ -> failwithf "select should return a record"
  
   let rec opTop = Operator.Build(uid, prio,
                     (fun (op, inputs) -> 
                        match List.hd inputs with
-                       | [] -> ()
-                       | ev -> Scheduler.scheduleOffset 0 (List.of_seq [opBottom, 0, id], ev)
-                       Nothing),
+                       | [] -> Nothing
+                       | ev -> Delay (List<_>([opBottom, 0, id]), ev)),
                     parents, context)
 
   and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
@@ -117,12 +151,14 @@ let makeSelect handler (uid, prio, parents:Operator list, context) =
                       let env = getOperEnvValues opTop
                       let output = [ for change in List.hd inputs do
                                         match change with
+                                       // | Added (VWindow []) -> op.Value <- VWindow []
+                                       //                         yield Added op.Value
                                         | Added ev -> match project env ev with
-                                                      | Some ev' -> op.Value <- ev'
+                                                      | Some ev' -> setOrAddValue op ev'
                                                                     yield Added ev'
                                                       | None -> ()
                                         | Expired ev -> match project env ev with
-                                                        | Some ev' -> op.Value <- ev'
+                                                        | Some ev' -> expireIfWindow op
                                                                       yield Expired ev'
                                                         | None -> ()
                                         | _ -> failwithf "select received an unexpected change: %A" change ]
@@ -145,11 +181,9 @@ let makeWhen eventHandler (uid, prio, parents, context) =
   let rec opTop = Operator.Build(uid, prio,
                     (fun (op, inputs) -> 
                        match List.hd inputs with
-                       | [] -> ()
-                       | ev -> Scheduler.scheduleOffset 0 (List.of_seq [opBottom, 0, id], ev)
-                       Nothing),
+                       | [] -> Nothing
+                       | ev -> Delay (List<_>([opBottom, 0, id]), ev)),
                     parents, context)
- 
                   
   and opBottom = Operator.Build(uid + "_bottom", Priority.add prio (Priority.of_list [9]),
                    (fun (op, inputs) ->

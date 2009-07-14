@@ -166,11 +166,15 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                             (List.mapi (fun i chg ->
                                              match chg with
                                              | DictDiff (key, keyChanges) when not (Map.contains key !results) ->
-                                                 // If this happens, the groupby result must not depend on
-                                                 // the group's substream. Hence, it depends only on values
-                                                 // in the outer scope. Hence, every subgroup has the same value!
-                                                 results := (!results).Add(key, op.Parents.[i + 1].Value)
-                                                 [DictDiff (key, [Added (!results).[key]])]
+                                                 // This happens when:
+                                                 // 1. The result of the groupby does not depend on g
+                                                 // 2. The group has just been created
+                                                 // Simply assign the value of the parent and proceed.
+                                                 let value = op.Parents.[i + 1].Value
+                                                 if value <> VNull
+                                                   then results := (!results).Add(key, value)
+                                                        [DictDiff (key, [Added (!results).[key]])]
+                                                   else []
                                              | _ -> [])
                                         parentChanges |> List.concat) @ (List.concat groupChanges')
                           op.Value <- VDict !results

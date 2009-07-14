@@ -2,32 +2,128 @@
 
 open Test
 
+
 [<TestCase ("streams/where.ez")>]
 let test_streamsWhere (test:Test) =
-    let everything = [Added 0 "{ temperature = 30 }" (At  0)
-                      Added 3 "{ temperature = 15 }" (At  3)
-                      Added 4 "{ temperature = 50 }" (At  4)]
+  let everything = [Added 2 "{ room_id = 1, temperature = 25 }" (At  2)
+                    Added 4 "{ room_id = 3, temperature = 45 }" (At  4)
+                    Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
+                    Added 6 "{ room_id = 2, temperature = 50 }" (At  6)
+                    Added 7 "{ room_id = 3, temperature = 30 }" (At  7)
+                    Added 9 "{ room_id = 1, temperature = 23 }" (At  9)]
 
-    test.AssertThat (In "hot_readings"
-                      [Added 0 "{ temperature = 30 }" (At  0)
-                       Added 4 "{ temperature = 50 }" (At  4)]) 
+  test.AssertThat (In "hot_readings"
+                    [Added 4 "{ room_id = 3, temperature = 45 }" (At  4)
+                     Added 6 "{ room_id = 2, temperature = 50 }" (At  6)]) 
 
-    test.AssertThat (In "all_readings" everything) 
-    
-    test.AssertThat (In "all_readings2" everything) 
+  test.AssertThat (In "all_readings" everything) 
+  
+  test.AssertThat (In "all_readings2" everything) 
 
-    test.AssertThat (In "wet_readings"
-                      [Added 3 "{ temperature = 15 }" (At  3)
-                       Added 4 "{ temperature = 50 }" (At  4)]) 
+  test.AssertThat (In "wet_readings"
+                    [Added 2 "{ room_id = 1, temperature = 25 }" (At  2)
+                     Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
+                     Added 9 "{ room_id = 1, temperature = 23 }" (At  9)]) 
+                     
+  test.AssertThat (In "hot_wet_readings"
+                    [Added 2 "{ room_id = 1, temperature = 25 }" (At  2)
+                     Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
+                     Added 9 "{ room_id = 1, temperature = 23 }" (At  9)]) 
+
+  test.AssertThat (In "lastTemp"
+                    [Set "25" (At  2)
+                     Set "45" (At  4)
+                     Set "25" (At  5)
+                     Set "50" (At  6)
+                     Set "30" (At  7)
+                     Set "23" (At  9)])
+                     
+  test.AssertThat (In "hot_or_wet"
+                     [Added 2 "{ room_id = 3, temperature = null, humidity = 90 }" (At  2)
+                      Added 4 "{ room_id = 3, temperature = 45, humidity = null }" (At  4)
+                      Added 5 "{ room_id = 3, temperature = null, humidity = 91 }" (At  5)
+                      Added 6 "{ room_id = 2, temperature = 50, humidity = null }" (At  6)
+                      Added 8 "{ room_id = 3, temperature = null, humidity = 92 }" (At  8)]) 
+                     
+  test.AssertThat (In "minTempRoom1"
+                    [Set "25" (At  2)])
+
+  test.AssertThat (In "minTempRoom1b"
+                    [Set "25" (At  2)])                                         
+
+  test.AssertThat (In "eventsPerRoomc"
+                    [SetKey "1" "{ a = 25 }" (At  2)
+                     SetKey "3" "{ a = 45 }" (At  4)
+                     SetKey "2" "{ a = 50 }" (At  6)
+                     SetKey "3" "{ a = 30 }" (At  7)])      
+                    
+  test.AssertThat (In "temp_plus_hum"
+                    [Set " 70" (At 0)
+                     Set "150" (At 1)
+                     Set "175" (At 2)
+                     Set "246" (At 3)
+                     Set "291" (At 4)
+                     Set "316" (At 5)
+                     Set "366" (At 6)
+                     Set "396" (At 7)
+                     Set "488" (At 8)
+                     Set "511" (At 9)])
+                     
+  test.AssertThat (In "eventsPerRoomd"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At  7)])                  
+
+  test.AssertThat (In "where_with_listenN"
+                    [Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
+                     Added 6 "{ room_id = 2, temperature = 50 }" (At  6)
+                     Added 7 "{ room_id = 3, temperature = 30 }" (At  7)])
+
+
+  test.AssertThat (In "hotTemps_3secsb"
+                     [Added   4 "{ room_id = 3, temperature = 45 }" (At  4)
+                      Added   6 "{ room_id = 2, temperature = 50 }" (At  6)
+                      Added   7 "{ room_id = 3, temperature = 30 }" (At  7)
+                      Expired 4 "{ room_id = 3, temperature = 45 }" (At  7)
+                      Expired 6 "{ room_id = 2, temperature = 50 }" (At  9)
+                      Expired 7 "{ room_id = 3, temperature = 30 }" (At 10)])
+
+  test.AssertThat (In "temps_3secsX2b"
+                      [Set "90"   (At  4)
+                       Set "60"   (At  7)
+                       Set "null" (At 10)])    
+
+  test.AssertThat (In "minTempRoom1c"
+                      [Set "25"   (At  2)
+                       Set "null" (At  8)
+                       Set "23"   (At  9)
+                       Set "null" (At 12)])
+
+  test.AssertThat (In "minTempRoom1d"
+                      [Set "25"   (At  2)
+                       Set "null" (At  8)
+                       Set "23"   (At  9)
+                       Set "null" (At 12)])
                        
-    test.AssertThat (In "hot_wet_readings"
-                      [Added 3 "{ temperature = 15 }" (At  3)
-                       Added 4 "{ temperature = 50 }" (At  4)]) 
+  test.AssertThat (In "eventsPerRoomg"
+                    [SetKey "1" "{ a =   25 }" (At  2)
+                     SetKey "3" "{ a =   45 }" (At  4)
+                     SetKey "2" "{ a =   50 }" (At  6)
+                     SetKey "3" "{ a =   30 }" (At  7)
+                     SetKey "1" "{ a = null }" (At  8)
+                     SetKey "2" "{ a = null }" (At  9)
+                     SetKey "3" "{ a = null }" (At 10)])
+                       
+  test.AssertThat (In "eventsPerRoomh"
+                    [SetKey "1"   "25" (At  2)
+                     SetKey "3"   "45" (At  4)
+                     SetKey "2"   "50" (At  6)
+                     SetKey "3"   "30" (At  7)
+                     SetKey "1" "null" (At  8)
+                     SetKey "1" "null" (At  9)
+                     SetKey "1" "null" (At 10)])
 
-    test.AssertThat (In "lastTemp"
-                      [Set "30" (At  0)
-                       Set "15" (At  3)
-                       Set "50" (At  4)])
 
 [<TestCase ("streams/select.ez")>]
 let test_streamsSelect (test:Test) =
