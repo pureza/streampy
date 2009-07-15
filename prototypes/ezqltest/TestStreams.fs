@@ -1,7 +1,7 @@
 ﻿#light
 
+open Types
 open Test
-
 
 [<TestCase ("streams/where.ez")>]
 let test_streamsWhere (test:Test) =
@@ -96,15 +96,11 @@ let test_streamsWhere (test:Test) =
 
   test.AssertThat (In "minTempRoom1c"
                       [Set "25"   (At  2)
-                       Set "null" (At  8)
-                       Set "23"   (At  9)
-                       Set "null" (At 12)])
+                       Set "null" (At  8)])
 
   test.AssertThat (In "minTempRoom1d"
                       [Set "25"   (At  2)
-                       Set "null" (At  8)
-                       Set "23"   (At  9)
-                       Set "null" (At 12)])
+                       Set "null" (At  8)])
                        
   test.AssertThat (In "eventsPerRoomg"
                     [SetKey "1" "{ a =   25 }" (At  2)
@@ -127,115 +123,236 @@ let test_streamsWhere (test:Test) =
 
 [<TestCase ("streams/select.ez")>]
 let test_streamsSelect (test:Test) =
-    test.AssertThat (In "temp_readingsX2"
-                      [Added 0 "{ temperatureX2 =  60 }" (At  0)
-                       Added 3 "{ temperatureX2 =  30 }" (At  3)
-                       Added 4 "{ temperatureX2 = 100 }" (At  4)])
+  test.AssertThat (In "temp_readingsX2"
+                    [Added 2 "{ temperatureX2 =  50 }" (At  2)
+                     Added 4 "{ temperatureX2 =  90 }" (At  4)
+                     Added 5 "{ temperatureX2 =  50 }" (At  5)
+                     Added 6 "{ temperatureX2 = 100 }" (At  6)
+                     Added 7 "{ temperatureX2 =  60 }" (At  7)
+                     Added 9 "{ temperatureX2 =  46 }" (At  9)])
 
-    test.AssertThat (In "just10"
-                      [Added 0 "{ a = 10 }" (At  0)
-                       Added 3 "{ a = 10 }" (At  3)
-                       Added 4 "{ a = 10 }" (At  4)])
+  test.AssertThat (In "just10"
+                    [Added 2 "{ a = 10 }" (At  2)
+                     Added 4 "{ a = 10 }" (At  4)
+                     Added 5 "{ a = 10 }" (At  5)
+                     Added 6 "{ a = 10 }" (At  6)
+                     Added 7 "{ a = 10 }" (At  7)
+                     Added 9 "{ a = 10 }" (At  9)])
 
-    test.AssertThat (In "combination"
-                      [Added 0 "{ a =  60, b = 10, c = 40 }" (At  0)
-                       Added 3 "{ a =  30, b = 10, c = 60 }" (At  3)
-                       Added 4 "{ a = 100, b = 10, c = 60 }" (At  4)])
-                       
-    test.AssertThat (In "complex"
-                      [Added 4 "{ a = 100, b = 10, c = 60 }" (At  4)])
+  test.AssertThat (In "combination"
+                    [Added 2 "{ a =  50, b = 10, c = 90 }" (At  2)
+                     Added 4 "{ a =  90, b = 10, c = 81 }" (At  4)
+                     Added 5 "{ a =  50, b = 10, c = 91 }" (At  5)
+                     Added 6 "{ a = 100, b = 10, c = 72 }" (At  6)
+                     Added 7 "{ a =  60, b = 10, c = 82 }" (At  7)
+                     Added 9 "{ a =  46, b = 10, c = 92 }" (At  9)])
+                     
+  test.AssertThat (In "complex"
+                    [Added 4 "{ a =  90, b = 10, c = 81 }" (At  4)
+                     Added 7 "{ a =  60, b = 10, c = 82 }" (At  7)])
 
+  test.AssertThat (In "temp_readingsX4"
+                    [Added 2 "{ temperatureX4 = 100 }" (At  2)
+                     Added 4 "{ temperatureX4 = 180 }" (At  4)
+                     Added 5 "{ temperatureX4 = 100 }" (At  5)
+                     Added 6 "{ temperatureX4 = 200 }" (At  6)
+                     Added 7 "{ temperatureX4 = 120 }" (At  7)
+                     Added 9 "{ temperatureX4 =  92 }" (At  9)])
+
+  test.AssertThat (In "mergedTempX2"
+                    [Added 0 "{ tempX2 = null }" (At  0)
+                     Added 1 "{ tempX2 = null }" (At  1)
+                     Added 2 "{ tempX2 =   50 }" (At  2)
+                     Added 2 "{ tempX2 = null }" (At  2)
+                     Added 3 "{ tempX2 = null }" (At  3)
+                     Added 4 "{ tempX2 =   90 }" (At  4)
+                     Added 4 "{ tempX2 = null }" (At  4)
+                     Added 5 "{ tempX2 =   50 }" (At  5)
+                     Added 5 "{ tempX2 = null }" (At  5)
+                     Added 6 "{ tempX2 =  100 }" (At  6)
+                     Added 6 "{ tempX2 = null }" (At  6)
+                     Added 7 "{ tempX2 =   60 }" (At  7)
+                     Added 7 "{ tempX2 = null }" (At  7)
+                     Added 8 "{ tempX2 = null }" (At  8)
+                     Added 9 "{ tempX2 =   46 }" (At  9)])
+
+  test.AssertThat (In "minTempRoom1"
+                    [Set "50" (At  2)
+                     Set "46" (At  9)])
+
+  test.AssertThat (In "minTempRoom1b"
+                    [Set "50" (At  2)
+                     Set "46" (At  9)])
+
+
+  test.AssertThat (In "eventsPerRoomc"
+                    [SetKey "1" "{ a =  50 }" (At  2)
+                     SetKey "3" "{ a =  90 }" (At  4)
+                     SetKey "2" "{ a = 100 }" (At  6)
+                     SetKey "3" "{ a =  60 }" (At  7)
+                     SetKey "1" "{ a =  46 }" (At  9)])
+                                        
+  test.AssertThat (In "eventsPerRoomd"
+                    [SetKey "1" " 50" (At  2)
+                     SetKey "3" " 90" (At  4)
+                     SetKey "2" "100" (At  6)
+                     SetKey "3" " 60" (At  7)
+                     SetKey "1" " 46" (At  9)])  
+
+
+  test.AssertThat (In "tempsX8_3secs"
+                     [Added   2 "{ tempX2 =  50 }" (At  2)
+                      Added   4 "{ tempX2 =  90 }" (At  4)
+                      Added   5 "{ tempX2 =  50 }" (At  5)
+                      Expired 2 "{ tempX2 =  50 }" (At  5)
+                      Added   6 "{ tempX2 = 100 }" (At  6)
+                      Added   7 "{ tempX2 =  60 }" (At  7)
+                      Expired 4 "{ tempX2 =  90 }" (At  7)
+                      Expired 5 "{ tempX2 =  50 }" (At  8)
+                      Added   9 "{ tempX2 =  46 }" (At  9)
+                      Expired 6 "{ tempX2 = 100 }" (At  9)
+                      Expired 7 "{ tempX2 =  60 }" (At 10)
+                      Expired 9 "{ tempX2 =  46 }" (At 12)])
+                      
+  test.AssertThat (In "minTempRoom1c"
+                     [Set   "50" (At  2)
+                      Set "null" (At  8)
+                      Set   "46" (At  9)
+                      Set "null" (At 12)])
+
+  test.AssertThat (In "minTempRoom1d"
+                     [Set   "50" (At  2)
+                      Set "null" (At  8)
+                      Set   "46" (At  9)
+                      Set "null" (At 12)])
+
+  test.AssertThat (In "eventsPerRoomg"
+                    [SetKey "1" "{ a =   50 }" (At  2)
+                     SetKey "3" "{ a =   90 }" (At  4)
+                     SetKey "2" "{ a =  100 }" (At  6)
+                     SetKey "3" "{ a =   60 }" (At  7)
+                     SetKey "1" "{ a = null }" (At  8)
+                     SetKey "1" "{ a =   46 }" (At  9)
+                     SetKey "2" "{ a = null }" (At  9)
+                     SetKey "3" "{ a = null }" (At 10)
+                     SetKey "1" "{ a = null }" (At 12)])
+                                           
+  test.AssertThat (In "eventsPerRoomh"
+                    [SetKey "1" "  50" (At  2)
+                     SetKey "3" "  90" (At  4)
+                     SetKey "2" " 100" (At  6)
+                     SetKey "3" "  60" (At  7)
+                     SetKey "1" "null" (At  8)
+                     SetKey "1" "  46" (At  9)
+                     SetKey "2" "null" (At  9)
+                     SetKey "3" "null" (At 10)
+                     SetKey "1" "null" (At 12)])
+                            
+  test.AssertThat (In "select_with_listenN"
+                    [Added 2 "{ a = 175 +  50 }" (At  2)
+                     Added 4 "{ a = 291 +  90 }" (At  4)
+                     Added 5 "{ a = 316 +  50 }" (At  5)
+                     Added 6 "{ a = 366 + 100 }" (At  6)
+                     Added 7 "{ a = 396 +  60 }" (At  7)
+                     Added 9 "{ a = 511 +  46 }" (At  9)])
 
 
 [<TestCase ("streams/groupby.ez")>]
 let test_streamsGroupby (test:Test) =
 
-    test.AssertThat (In "tempsPerRoom"
-                      [SetKey "1" "25" (At  2)
-                       SetKey "3" "45" (At  4)
-                       SetKey "2" "50" (At  6)
-                       SetKey "3" "30" (At  7)
-                       SetKey "1" "23" (At  9)])
+  test.AssertThat (In "tempsPerRoom"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At  7)
+                     SetKey "1" "23" (At  9)])
 
-    test.AssertThat (In "lastTempAllRooms"
-                      [SetKey "1" "25" (At  2)
-                       SetKey "1" "45" (At  4)
-                       SetKey "3" "45" (At  4)
-                       SetKey "1" "25" (At  5)
-                       SetKey "3" "25" (At  5)
-                       SetKey "1" "50" (At  6)
-                       SetKey "2" "50" (At  6)
-                       SetKey "3" "50" (At  6)
-                       SetKey "1" "30" (At  7)
-                       SetKey "2" "30" (At  7)
-                       SetKey "3" "30" (At  7)
-                       SetKey "1" "23" (At  9)
-                       SetKey "2" "23" (At  9)
-                       SetKey "3" "23" (At  9)])
+  test.AssertThat (In "lastTempAllRooms"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "1" "45" (At  4)
+                     SetKey "3" "45" (At  4)
+                     SetKey "1" "25" (At  5)
+                     SetKey "3" "25" (At  5)
+                     SetKey "1" "50" (At  6)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "50" (At  6)
+                     SetKey "1" "30" (At  7)
+                     SetKey "2" "30" (At  7)
+                     SetKey "3" "30" (At  7)
+                     SetKey "1" "23" (At  9)
+                     SetKey "2" "23" (At  9)
+                     SetKey "3" "23" (At  9)])
 
-    test.AssertThat (In "allRooms20"
-                      [SetKey "1" "20" (At  2)
-                       SetKey "3" "20" (At  4)
-                       SetKey "2" "20" (At  6)])
+  test.AssertThat (In "allRooms20"
+                    [SetKey "1" "20" (At  2)
+                     SetKey "3" "20" (At  4)
+                     SetKey "2" "20" (At  6)])
 
-    test.AssertThat (In "tempsPerRoom2"
-                      [SetKey "1" "25" (At  2)
-                       SetKey "3" "45" (At  4)
-                       SetKey "2" "50" (At  6)
-                       SetKey "3" "30" (At  7)
-                       SetKey "1" "23" (At  9)]) 
-                       
-    test.AssertThat (In "lastHumPerRoom"
-                      [SetKey "1" "90" (At  2)
-                       SetKey "1" "71" (At  3)
-                       SetKey "1" "81" (At  4)
-                       SetKey "3" "81" (At  4)
-                       SetKey "1" "91" (At  5)
-                       SetKey "3" "91" (At  5)
-                       SetKey "1" "72" (At  6)
-                       SetKey "2" "72" (At  6)
-                       SetKey "3" "72" (At  6)
-                       SetKey "1" "82" (At  7)
-                       SetKey "2" "82" (At  7)
-                       SetKey "3" "82" (At  7)
-                       SetKey "1" "92" (At  8)
-                       SetKey "2" "92" (At  8)
-                       SetKey "3" "92" (At  8)])
-
-
-    test.AssertThat (In "lastHumLastTempPerRoom"
-                      [SetKey "1" "115" (At  2)
-                       SetKey "1" " 96" (At  3)
-                       SetKey "1" "106" (At  4)
-                       SetKey "3" "126" (At  4)
-                       SetKey "1" "116" (At  5)
-                       SetKey "3" "136" (At  5)
-                       SetKey "1" " 97" (At  6)
-                       SetKey "2" "122" (At  6)
-                       SetKey "3" "117" (At  6)
-                       SetKey "1" "107" (At  7)
-                       SetKey "2" "132" (At  7)
-                       SetKey "3" "112" (At  7)
-                       SetKey "1" "117" (At  8)
-                       SetKey "2" "142" (At  8)
-                       SetKey "3" "122" (At  8)
-                       SetKey "1" "115" (At  9)]) 
+  test.AssertThat (In "tempsPerRoom2"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At  7)
+                     SetKey "1" "23" (At  9)]) 
+                     
+  test.AssertThat (In "lastHumPerRoom"
+                    [SetKey "1" "90" (At  2)
+                     SetKey "1" "71" (At  3)
+                     SetKey "1" "81" (At  4)
+                     SetKey "3" "81" (At  4)
+                     SetKey "1" "91" (At  5)
+                     SetKey "3" "91" (At  5)
+                     SetKey "1" "72" (At  6)
+                     SetKey "2" "72" (At  6)
+                     SetKey "3" "72" (At  6)
+                     SetKey "1" "82" (At  7)
+                     SetKey "2" "82" (At  7)
+                     SetKey "3" "82" (At  7)
+                     SetKey "1" "92" (At  8)
+                     SetKey "2" "92" (At  8)
+                     SetKey "3" "92" (At  8)])
 
 
-    test.AssertThat (In "someRecordPerRoom"
-                      [SetKey "1" "{ a = 5, b = 25, c = 90, d = 115 }" (At  2)
-                       SetKey "1" "{ a = 5, b = 25, c = 71, d =  96 }" (At  3)
-                       SetKey "1" "{ a = 5, b = 25, c = 81, d = 106 }" (At  4)
-                       SetKey "3" "{ a = 5, b = 45, c = 81, d = 126 }" (At  4)
-                       SetKey "1" "{ a = 5, b = 25, c = 91, d = 116 }" (At  5)
-                       SetKey "3" "{ a = 5, b = 45, c = 91, d = 136 }" (At  5)
-                       SetKey "1" "{ a = 5, b = 25, c = 72, d =  97 }" (At  6)
-                       SetKey "3" "{ a = 5, b = 45, c = 72, d = 117 }" (At  6)
-                       SetKey "2" "{ a = 5, b = 50, c = 72, d = 122 }" (At  6)
-                       SetKey "1" "{ a = 5, b = 25, c = 82, d = 107 }" (At  7)
-                       SetKey "2" "{ a = 5, b = 50, c = 82, d = 132 }" (At  7)
-                       SetKey "3" "{ a = 5, b = 30, c = 82, d = 112 }" (At  7)
-                       SetKey "1" "{ a = 5, b = 25, c = 92, d = 117 }" (At  8)
-                       SetKey "2" "{ a = 5, b = 50, c = 92, d = 142 }" (At  8)
-                       SetKey "3" "{ a = 5, b = 30, c = 92, d = 122 }" (At  8)
-                       SetKey "1" "{ a = 5, b = 23, c = 92, d = 115 }" (At  9)])
+  test.AssertThat (In "lastHumLastTempPerRoom"
+                    [SetKey "1" "115" (At  2)
+                     SetKey "1" " 96" (At  3)
+                     SetKey "1" "106" (At  4)
+                     SetKey "3" "126" (At  4)
+                     SetKey "1" "116" (At  5)
+                     SetKey "3" "136" (At  5)
+                     SetKey "1" " 97" (At  6)
+                     SetKey "2" "122" (At  6)
+                     SetKey "3" "117" (At  6)
+                     SetKey "1" "107" (At  7)
+                     SetKey "2" "132" (At  7)
+                     SetKey "3" "112" (At  7)
+                     SetKey "1" "117" (At  8)
+                     SetKey "2" "142" (At  8)
+                     SetKey "3" "122" (At  8)
+                     SetKey "1" "115" (At  9)]) 
+
+
+  test.AssertThat (In "someRecordPerRoom"
+                    [SetKey "1" "{ a = 5, b = 25, c = 90, d = 115 }" (At  2)
+                     SetKey "1" "{ a = 5, b = 25, c = 71, d =  96 }" (At  3)
+                     SetKey "1" "{ a = 5, b = 25, c = 81, d = 106 }" (At  4)
+                     SetKey "3" "{ a = 5, b = 45, c = 81, d = 126 }" (At  4)
+                     SetKey "1" "{ a = 5, b = 25, c = 91, d = 116 }" (At  5)
+                     SetKey "3" "{ a = 5, b = 45, c = 91, d = 136 }" (At  5)
+                     SetKey "1" "{ a = 5, b = 25, c = 72, d =  97 }" (At  6)
+                     SetKey "3" "{ a = 5, b = 45, c = 72, d = 117 }" (At  6)
+                     SetKey "2" "{ a = 5, b = 50, c = 72, d = 122 }" (At  6)
+                     SetKey "1" "{ a = 5, b = 25, c = 82, d = 107 }" (At  7)
+                     SetKey "2" "{ a = 5, b = 50, c = 82, d = 132 }" (At  7)
+                     SetKey "3" "{ a = 5, b = 30, c = 82, d = 112 }" (At  7)
+                     SetKey "1" "{ a = 5, b = 25, c = 92, d = 117 }" (At  8)
+                     SetKey "2" "{ a = 5, b = 50, c = 92, d = 142 }" (At  8)
+                     SetKey "3" "{ a = 5, b = 30, c = 92, d = 122 }" (At  8)
+                     SetKey "1" "{ a = 5, b = 23, c = 92, d = 115 }" (At  9)])
+
+  test.AssertThat (In "a"
+                    [SetKeyRaw "1" (VDict (Map.of_list [VInt 25, VInt 1]))                  (At 2)
+                     SetKeyRaw "3" (VDict (Map.of_list [VInt 45, VInt 3]))                  (At 4)
+                     SetKeyRaw "2" (VDict (Map.of_list [VInt 50, VInt 2]))                  (At 6)
+                     SetKeyRaw "3" (VDict (Map.of_list [VInt 45, VInt 3; VInt 30, VInt 3])) (At 7)
+                     SetKeyRaw "1" (VDict (Map.of_list [VInt 25, VInt 1; VInt 23, VInt 1])) (At 9)])

@@ -2,8 +2,8 @@ temp_readings = stream (:temperature, :room_id);;
 
 temps_3secs = temp_readings[3 sec];;
 
-eventsPerRoomf = { { a = g } for g in temps_3secs group by :room_id };;
-eventsPerRoomh = { x.a.where(fun ev -> ev.temperature != 23).min(:temperature) for x in eventsPerRoomf };;
+eventsPerRoomf = { g for g in temps_3secs group by :room_id };;
+eventsPerRoomh = { x.where(fun ev -> ev.temperature != 23).min(:temperature) for x in eventsPerRoomf };;
 
 
 #! temp_readings

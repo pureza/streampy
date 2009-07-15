@@ -91,12 +91,12 @@ temps_3secsX2b = temps_3secs
 
 // The values of the dictionary are event windows.
 eventsPerRoome = { g for g in temps_3secs group by :room_id };;
-minTempRoom1c = eventsPerRoome[1].min(:temperature);;
+minTempRoom1c = eventsPerRoome[1].where (fun ev -> ev.temperature != 23).min(:temperature);;
 
 
 // The values of the dictionary are records with one field that is a window.
 eventsPerRoomf = { { a = g } for g in temps_3secs group by :room_id };;
-minTempRoom1d = eventsPerRoomf[1].a.min(:temperature);;
+minTempRoom1d = eventsPerRoomf[1].a.where (fun ev -> ev.temperature != 23).min(:temperature);;
 
 
 // g is a window

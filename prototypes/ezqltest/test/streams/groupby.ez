@@ -39,6 +39,13 @@ someRecordPerRoom =
     .groupby(:room_id, fun g -> { a = 5, b = g.last(:temperature),
                                   c = lastHum, d = g.last(:temperature) + lastHum });;
 
+// stream . groupby -> dictionary
+
+a = temp_readings
+      .groupby (:room_id, fun g -> g.groupby (:temperature, fun g -> g.last(:room_id)));;
+
+when (a.changes(), fun _ -> print (a));;
+
 
 #! hum_readings
 Timestamp, room_id, humidity

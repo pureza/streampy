@@ -58,9 +58,10 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
              keyOp.Value <- parentDict.[key]
             
              // Convert changes to new keys to the form DictDiff (key, [Added <value>])
-             yield! if created
-                      then [DictDiff (key, [Added keyOp.Value])]
-                      else [chg]
+             // FIXME: This doesn't work for windows! For them we must pass the events, not the VWindow.
+             yield! [chg]//if created
+                    //  then [DictDiff (key, [Added keyOp.Value])]
+                    //  else [chg]
          | Added (VDict dict) ->
              assert ((List.length changes) = 1)
              // This may happen during initialization. We to create the
@@ -157,7 +158,8 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                              let value = op.Parents.[i + 1].Value
                                              results := (!results).Add(key, value)
                                              // If the key was just added, return [Added <value>]. Otherwise just return the original change.
-                                             if added then [DictDiff (key, [Added value])] else chg
+                                             //if added then [DictDiff (key, [Added value])] else chg
+                                             chg
                                          | [] -> []
                                          | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
                                       groupChanges

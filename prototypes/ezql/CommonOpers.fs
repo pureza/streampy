@@ -91,11 +91,11 @@ let makeWhere predicate isWindow (uid, prio, parents:Operator list, context) =
                    (fun (op, inputs) ->
                       let output = [ for change in List.hd inputs do
                                        match change with
-                                       | Added (VWindow contents') -> 
-                                           assert isWindow
-                                           contents := List.filter (applyPredicate opTop) contents'
-                                           op.Value <- VWindow !contents
-                                           yield Added op.Value
+                                     //  | Added (VWindow contents') -> 
+                                     //      assert isWindow
+                                     //      contents := List.filter (applyPredicate opTop) contents'
+                                     //      op.Value <- VWindow !contents
+                                     //      yield Added op.Value
                                        | Added ev -> if applyPredicate opTop ev
                                                        then setOrAddValue op ev
                                                             yield Added ev

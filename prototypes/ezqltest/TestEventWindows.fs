@@ -55,11 +55,15 @@ let test_windowsCreation (test:Test) =
 [<TestCase ("eventWindows/groupby.ez")>]
 let test_windowGroupby (test:Test) =
   test.AssertThat (In "tempsPerRoom"
-                    [SetKey "1" "25" (At  2)
-                     SetKey "3" "45" (At  4)
-                     SetKey "2" "50" (At  6)
-                     SetKey "3" "30" (At  7)
-                     SetKey "1" "23" (At  9)])
+                    [SetKey "1"   "25" (At  2)
+                     SetKey "3"   "45" (At  4)
+                     SetKey "1" "null" (At  5)
+                     SetKey "2"   "50" (At  6)
+                     SetKey "3"   "30" (At  7)
+                     SetKey "1"   "23" (At  9)
+                     SetKey "2" "null" (At  9)
+                     SetKey "3" "null" (At 10)
+                     SetKey "1" "null" (At 12)])
                      
   test.AssertThat (In "allRooms20"
                       [SetKey "1" "20" (At  2)
