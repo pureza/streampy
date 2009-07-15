@@ -351,8 +351,114 @@ let test_streamsGroupby (test:Test) =
                      SetKey "1" "{ a = 5, b = 23, c = 92, d = 115 }" (At  9)])
 
   test.AssertThat (In "a"
-                    [SetKeyRaw "1" (VDict (Map.of_list [VInt 25, VInt 1]))                  (At 2)
-                     SetKeyRaw "3" (VDict (Map.of_list [VInt 45, VInt 3]))                  (At 4)
-                     SetKeyRaw "2" (VDict (Map.of_list [VInt 50, VInt 2]))                  (At 6)
-                     SetKeyRaw "3" (VDict (Map.of_list [VInt 45, VInt 3; VInt 30, VInt 3])) (At 7)
-                     SetKeyRaw "1" (VDict (Map.of_list [VInt 25, VInt 1; VInt 23, VInt 1])) (At 9)])
+                    [SetKeyRaw "1" (VRecord (Map.of_list [VString "a", (VDict (Map.of_list [VInt 25, VInt 1]))]))                  (At 2)
+                     SetKeyRaw "3" (VRecord (Map.of_list [VString "a", (VDict (Map.of_list [VInt 45, VInt 3]))]))                  (At 4)
+                     SetKeyRaw "2" (VRecord (Map.of_list [VString "a", (VDict (Map.of_list [VInt 50, VInt 2]))]))                  (At 6)
+                     SetKeyRaw "3" (VRecord (Map.of_list [VString "a", (VDict (Map.of_list [VInt 45, VInt 3; VInt 30, VInt 3]))])) (At 7)
+                     SetKeyRaw "1" (VRecord (Map.of_list [VString "a", (VDict (Map.of_list [VInt 25, VInt 1; VInt 23, VInt 1]))])) (At 9)])
+
+
+  test.AssertThat (In "tempsPerRoom3"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At  7)
+                     SetKey "1" "23" (At  9)])
+                     
+  test.AssertThat (In "evenOrOdd"
+                    [SetKey "1" "-25" (At  2)
+                     SetKey "3" "-45" (At  4)
+                     SetKey "2" " 50" (At  6)
+                     SetKey "3" " 30" (At  7)
+                     SetKey "1" "-23" (At  9)])                     
+
+  test.AssertThat (In "tempsPerRoom3"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At  7)
+                     SetKey "1" "23" (At  9)])                     
+
+  test.AssertThat (In "b"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "1" "45" (At  4)
+                     SetKey "3" "45" (At  4)
+                     SetKey "1" "25" (At  5)
+                     SetKey "3" "25" (At  5)
+                     SetKey "1" "50" (At  6)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "50" (At  6)
+                     SetKey "1" "30" (At  7)
+                     SetKey "2" "30" (At  7)
+                     SetKey "3" "30" (At  7)
+                     SetKey "1" "23" (At  9)
+                     SetKey "2" "23" (At  9)
+                     SetKey "3" "23" (At  9)]) 
+
+  test.AssertThat (In "c"
+                    [SetKey "1"   "25" (At  2)
+                     SetKey "3"   "25" (At  4)
+                     SetKey "2"   "25" (At  6)
+                     SetKey "1"   "30" (At  8)
+                     SetKey "2"   "30" (At  8)
+                     SetKey "3"   "30" (At  8)
+                     SetKey "1"   "23" (At  9)
+                     SetKey "2"   "23" (At  9)
+                     SetKey "3"   "23" (At  9)
+                     SetKey "1" "null" (At 12)
+                     SetKey "2" "null" (At 12)
+                     SetKey "3" "null" (At 12)])
+
+  test.AssertThat (In "d"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "3" "45" (At  4)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "30" (At 10)
+                     SetKey "1" "23" (At 12)])
+
+  test.AssertThat (In "e"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "1" "45" (At  4)
+                     SetKey "3" "45" (At  4)
+                     SetKey "1" "50" (At  6)
+                     SetKey "2" "50" (At  6)
+                     SetKey "3" "50" (At  6)
+                     SetKey "1" "30" (At 10)
+                     SetKey "2" "30" (At 10)
+                     SetKey "3" "30" (At 10)
+                     SetKey "1" "23" (At 12)
+                     SetKey "2" "23" (At 12)
+                     SetKey "3" "23" (At 12)])
+
+  test.AssertThat (In "Room_all"
+                    [SetKey "1" "{ temp = null, hum = 70 }" (At  0)
+                     SetKey "2" "{ temp = null, hum = 80 }" (At  1)
+                     SetKey "1" "{ temp =   25, hum = 70 }" (At  2)
+                     SetKey "3" "{ temp = null, hum = 90 }" (At  2)
+                     SetKey "1" "{ temp =   25, hum = 71 }" (At  3)
+                     SetKey "2" "{ temp = null, hum = 81 }" (At  4)
+                     SetKey "3" "{ temp =   45, hum = 90 }" (At  4)
+                     SetKey "3" "{ temp =   45, hum = 91 }" (At  5)
+                     SetKey "1" "{ temp =   25, hum = 72 }" (At  6)
+                     SetKey "2" "{ temp =   50, hum = 81 }" (At  6)
+                     SetKey "2" "{ temp =   50, hum = 82 }" (At  7)
+                     SetKey "3" "{ temp =   30, hum = 91 }" (At  7)
+                     SetKey "3" "{ temp =   30, hum = 92 }" (At  8)
+                     SetKey "1" "{ temp =   23, hum = 72 }" (At  9)])              
+
+  test.AssertThat (In "f"
+                    [Set "1" (At 2)
+                     Set "2" (At 9)])
+                     
+  test.AssertThat (In "g"
+                    [SetKey "1" "25" (At  2)
+                     SetKey "1" "45" (At  4)
+                     SetKey "3" "45" (At  4)
+                     SetKey "1" "25" (At  5)
+                     SetKey "3" "25" (At  5)
+                     SetKey "1" "50" (At  6)
+                     SetKey "3" "50" (At  6)
+                     SetKey "1" "30" (At  7)
+                     SetKey "3" "60" (At  7)
+                     SetKey "1" "46" (At  9)
+                     SetKey "3" "46" (At  9)])                   

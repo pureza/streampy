@@ -88,7 +88,7 @@ let test_entitiesMisc3 (test:Test) =
                       SetKey "3" "1" (At  9)])
 
 
-[<TestCase ("entities/misc2.ez", 1000)>]
+[<TestCase ("entities/misc2.ez")>]
 let test_entitiesMisc2 (test:Test) = ()
 
                                                                                              

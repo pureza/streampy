@@ -59,9 +59,9 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
             
              // Convert changes to new keys to the form DictDiff (key, [Added <value>])
              // FIXME: This doesn't work for windows! For them we must pass the events, not the VWindow.
-             yield! [chg]//if created
-                    //  then [DictDiff (key, [Added keyOp.Value])]
-                    //  else [chg]
+             yield! if created
+                      then [DictDiff (key, [Added keyOp.Value])]
+                      else [chg]
          | Added (VDict dict) ->
              assert ((List.length changes) = 1)
              // This may happen during initialization. We to create the
@@ -119,7 +119,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
     let rec buildSubGroup key env =
       let initials, final = groupBuilder prio env
       let initial = List.hd initials
-      substreams := (!substreams).Add(key, initial)
+      substreams := (!substreams).Add(key, (initial, final))
       connect groupOp initial id
       // Connects the resulting node to the dictionary operator.
       // The diff is converted into a DictDiff before being passed to the child.
@@ -137,7 +137,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                  if not (Map.contains key !substreams)
                                    then buildSubGroup key env
 
-                                 (!substreams).[key], key
+                                 fst (!substreams).[key], key
                              | _ -> failwithf "Invalid arguments for groupby! %A" change ]
                        let childrenNoDup = children |> Set.of_list |> Set.to_list
                        match children with
@@ -158,8 +158,8 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                              let value = op.Parents.[i + 1].Value
                                              results := (!results).Add(key, value)
                                              // If the key was just added, return [Added <value>]. Otherwise just return the original change.
-                                             //if added then [DictDiff (key, [Added value])] else chg
-                                             chg
+                                             if added then [DictDiff (key, [Added value])] else chg
+                                             //chg
                                          | [] -> []
                                          | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
                                       groupChanges
@@ -172,7 +172,8 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                                  // 1. The result of the groupby does not depend on g
                                                  // 2. The group has just been created
                                                  // Simply assign the value of the parent and proceed.
-                                                 let value = op.Parents.[i + 1].Value
+                                                 let parent = snd (!substreams).[key]
+                                                 let value = parent.Value
                                                  if value <> VNull
                                                    then results := (!results).Add(key, value)
                                                         [DictDiff (key, [Added (!results).[key]])]

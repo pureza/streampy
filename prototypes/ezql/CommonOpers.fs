@@ -91,11 +91,11 @@ let makeWhere predicate isWindow (uid, prio, parents:Operator list, context) =
                    (fun (op, inputs) ->
                       let output = [ for change in List.hd inputs do
                                        match change with
-                                     //  | Added (VWindow contents') -> 
-                                     //      assert isWindow
-                                     //      contents := List.filter (applyPredicate opTop) contents'
-                                     //      op.Value <- VWindow !contents
-                                     //      yield Added op.Value
+                                       | Added (VWindow contents') -> 
+                                           assert isWindow
+                                           contents := List.filter (applyPredicate opTop) contents'
+                                           op.Value <- VWindow !contents
+                                           yield Added op.Value
                                        | Added ev -> if applyPredicate opTop ev
                                                        then setOrAddValue op ev
                                                             yield Added ev
@@ -136,7 +136,7 @@ let makeSelect handler isWindow (uid, prio, parents:Operator list, context) =
     let env' = Map.add "ev" ev env
     let result = eval env' expr    
     match result with
-    | VRecord fields -> Some (VRecord (Map.add (VString "timestamp") timestamp fields))
+    | VRecord fields -> VRecord (Map.add (VString "timestamp") timestamp fields)
     | _ -> failwithf "select should return a record"
  
   let rec opTop = Operator.Build(uid, prio,
@@ -151,16 +151,17 @@ let makeSelect handler isWindow (uid, prio, parents:Operator list, context) =
                       let env = getOperEnvValues opTop
                       let output = [ for change in List.hd inputs do
                                         match change with
-                                       // | Added (VWindow []) -> op.Value <- VWindow []
-                                       //                         yield Added op.Value
-                                        | Added ev -> match project env ev with
-                                                      | Some ev' -> setOrAddValue op ev'
-                                                                    yield Added ev'
-                                                      | None -> ()
-                                        | Expired ev -> match project env ev with
-                                                        | Some ev' -> expireIfWindow op
-                                                                      yield Expired ev'
-                                                        | None -> ()
+                                        | Added (VWindow contents') -> 
+                                           assert isWindow
+                                           contents := List.map (project env) contents'
+                                           op.Value <- VWindow !contents
+                                           yield Added op.Value
+                                        | Added ev -> let ev' = project env ev
+                                                      setOrAddValue op ev'
+                                                      yield Added ev'
+                                        | Expired ev -> let ev' = project env ev
+                                                        expireIfWindow op
+                                                        yield Expired ev'
                                         | _ -> failwithf "select received an unexpected change: %A" change ]
                       match output with
                       | [] -> Nothing

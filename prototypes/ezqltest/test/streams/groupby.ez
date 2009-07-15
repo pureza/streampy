@@ -39,12 +39,74 @@ someRecordPerRoom =
     .groupby(:room_id, fun g -> { a = 5, b = g.last(:temperature),
                                   c = lastHum, d = g.last(:temperature) + lastHum });;
 
-// stream . groupby -> dictionary
+
+// stream . groupby -> dictionary of dictionary
 
 a = temp_readings
-      .groupby (:room_id, fun g -> g.groupby (:temperature, fun g -> g.last(:room_id)));;
+      .groupby (:room_id, fun g -> { a = g.groupby (:temperature, fun g -> g.last(:room_id)) });;
 
-when (a.changes(), fun _ -> print (a));;
+
+
+
+// stream . groupby -> dictionary of closures
+tempsPerRoom3 = temp_readings
+                  .groupby (:room_id, fun g -> fun (x:int) -> g.last(:temperature) + x)
+                  .select (fun f -> f (0));;
+
+enum EvenOdd =
+  | Even of int
+  | Odd of int;;
+
+
+// stream . groupby -> dictionary of variants
+evenOrOdd = temp_readings
+              .groupby (:room_id, fun g -> let curr = g.last(:temperature) in
+                                           if curr % 2 == 0 then Even(curr) else Odd(curr))
+              .select (fun e -> match e with
+                                  | Even (v) -> v
+                                  | Odd (v) -> 0 - v
+                                end);;
+
+
+// stream . groupby -> dictionary of streams
+// (global streams, local ones are already being tested)
+
+b = { temp_readings for g in temp_readings group by :room_id }
+      .select (fun s -> s.last(:temperature));;
+
+// stream . groupby -> dictionary of event windows
+// (global windows, local ones are already being tested)
+
+c = { temp_readings[3 sec] for g in temp_readings group by :room_id }
+      .select (fun s -> s.min(:temperature));;
+
+// stream . groupby -> dictionary of dyn val windows
+
+d = { g.last(:temperature)[3 sec] for g in temp_readings group by :room_id }
+      .select (fun s -> s.max());;
+
+
+// stream . groupby -> dictionary of dyn val windows (global windows)
+
+e = { temp_readings.last(:temperature)[3 sec] for g in temp_readings group by :room_id }
+      .select (fun s -> s.max());;
+
+// Merge both streams
+merged = merge (temp_readings, hum_readings, :room_id);;
+
+Room_all = merged
+             .groupby (:room_id, fun g -> { temp = g.last(:temperature), hum = g.last(:humidity) });;
+
+
+// see if a projector handles a stream correctly
+f = a[1].a.values().count();;
+
+
+// the second groupby is called on an initial op
+g = temp_readings
+      .groupby (:room_id, fun g -> g)
+      .where (fun s -> s.last(:temperature) < 50)
+      .select (fun s -> s.groupby (:temperature, fun g -> temp_readings.last(:temperature)).values().sum());;
 
 
 #! hum_readings
