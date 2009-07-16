@@ -1,5 +1,8 @@
 seg_speed_str = stream (:vehicle_id, :speed, :segment_id);;
 
+define not(v:bool) : bool =
+  if v then false else true;;
+
 entity Segment =
    createFrom(seg_speed_str, :segment_id)
    hasMany :vehicles
@@ -7,7 +10,7 @@ entity Segment =
     // A segment is congested if the speed average reported over the
     // last 5 minutes is less than 80
    member self.isCongested = let avg5mins = self.events[5 min].avg(:speed) in
-                             if avg5mins != null then avg5mins < 80 else false
+                             if not (avg5mins.null?) then avg5mins < 80 else false
 
    member self.vehicleCount = self.vehicles.values().count();;
 

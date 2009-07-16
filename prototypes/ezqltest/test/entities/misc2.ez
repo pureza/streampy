@@ -1,14 +1,12 @@
 temp_readings = stream (:room_id, :temperature);;
+hum_readings = stream (:room_id, :humidity);;
+entries = stream(:room_id, :product_id);;
 
 lastTemp = temp_readings.last(:temperature);;
 
-// Recursive function with global dependencies
-define fact(n:int) : int =
-  if n == 0
-    then lastTemp
-    else n + fact (n - 1);;
 
-e = fact(lastTemp);;
+// .any? on continuous value windows
+a = lastTemp[2 sec].any? (fun t -> t > lastTemp);;
 
 #! temp_readings
 Timestamp, room_id, temperature

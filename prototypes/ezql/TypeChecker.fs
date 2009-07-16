@@ -114,6 +114,7 @@ and typeOf env expr =
   | ArrayIndex (target, index) ->
       typeOfMethodCall env target "[]" [index]
   | FuncCall _ -> typeOfFuncCall env expr
+  | MemberAccess (_, Identifier "null?") -> TyBool
   | MemberAccess (target, Identifier name) ->
       let targetType = match typeOf env target with
                        | TyRef t -> t

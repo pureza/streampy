@@ -155,25 +155,25 @@ let test_aggregatesMax (test:Test) =
 [<TestCase ("aggregates/any.ez")>]
 let test_aggregatesAny (test:Test) =
   test.AssertThat (In "a"
-                    [Set "false" (At  2)
+                    [// Set "false" (At  2) -- .any?() starts at false by default
                      Set "true"  (At  5)
                      Set "false" (At  6)
                      Set "true"  (At  7)
                      Set "false" (At 11)])
 
   test.AssertThat (In "b"
-                     [Set "false" (At 2)
+                     [// Set "false" (At 2)
                       Set "true"  (At 6)])
                      
   test.AssertThat (In "c"
-                    [Set "false" (At 2)
+                    [// Set "false" (At 2)
                      Set "true"  (At 5)
                      Set "false" (At 6)
                      Set "true"  (At 7)
-                     Set "false" (At 8)])
+                     Set "false" (At 8)]) 
 
   test.AssertThat (In "d"
-                     [Set "false" (At 2)
+                     [// Set "false" (At 2)
                       Set "true"  (At 4)])
                    
   test.AssertThat (In "e"
@@ -189,12 +189,10 @@ let test_aggregatesAny (test:Test) =
 [<TestCase ("aggregates/all.ez")>]
 let test_aggregatesAll (test:Test) =
   test.AssertThat (In "a"
-                    [Set "true"  (At  2)
-                     Set "false" (At  4)
+                    [Set "false" (At  4)
                      Set "true"  (At  5)
                      Set "false" (At  6)
                      Set "true"  (At  8)])                     
 
   test.AssertThat (In "b"
-                    [Set "true" (At 2)
-                     Set "false" (At 9)])                     
+                    [Set "false" (At 9)])                     

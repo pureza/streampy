@@ -21,6 +21,10 @@ let rec eval (env:Map<string, value>) = function
       let fn = eval env expr
       let paramValues = List.map (eval env) paramExps
       apply fn paramValues
+  | MemberAccess (expr, Identifier "null?") ->
+      match eval env expr with
+      | VNull -> VBool true
+      | _ -> VBool false
   | MemberAccess (expr, Identifier name) ->
       let target = eval env expr
       match target with
@@ -58,8 +62,9 @@ let rec eval (env:Map<string, value>) = function
       eval (env.Add(name, eval env binder)) body
   | If (cond, thn, els) ->
       match eval env cond with
+      | VNull -> VNull
       | VBool true -> eval env thn
-      | _ -> eval env els
+      | other -> eval env els
    | Match (expr, cases) ->
        match eval env expr with
        | VVariant (label, meta) ->

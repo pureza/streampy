@@ -166,8 +166,16 @@ and value =
     static member LessThanOrEqual(left, right) = value.IntCmpOp(left, right, (<=))
     static member LessThan(left, right) = value.IntCmpOp(left, right, (<))
 
-    static member Equals(left, right) = VBool (left = right)
-    static member Differ(left, right) = VBool (left <> right)
+    static member Equals(left, right) =
+      match left, right with
+      | VNull, _ | _, VNull -> VNull
+      | _ -> VBool (left = right)
+
+    static member Differ(left, right) =
+      match value.Equals(left, right) with
+      | VBool b -> VBool (not b)
+      | VNull -> VNull
+      | other -> failwithf "value.Equals returned %A" other
     
     static member And(left, right) = value.LogicalOp(left, right, (&&))
     static member Or(left, right) = value.LogicalOp(left, right, (||))

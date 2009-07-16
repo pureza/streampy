@@ -171,6 +171,11 @@ let makeAvg getField (uid, prio, parents, context) =
 
 (*
  * isAny: true to behave like .any?, false to emulate .all?
+ *
+ * .any?() is either true or false: it never is null.
+ * same with .all?()
+ *
+ * .any?() starts as false, .all?() starts as true.
  *) 
 let makeAnyAll isAny pred (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
@@ -180,43 +185,38 @@ let makeAnyAll isAny pred (uid, prio, parents, context) =
                             | _ -> None
                let env = getOperEnvValues op
 
-               try
-                 let result = match inputs with
-                               | (winChanges::rest) when List.exists (function | [] -> false | _ -> true) rest ||
-                                                         List.exists (function | Expired _ -> true | _ -> false) winChanges ->
-                                   match window with
-                                   | Some window' ->
-                                       // The predicate changed or there was an expiration: must re-evaluate the entire window
-                                       VBool ((if isAny then List.exists else List.forall)
-                                                (fun v -> eval (env.Add("$v", v)) expr = VBool true)
-                                                (List.filter (fun v -> v <> VNull) window'))
-                                   | None -> failwithf ".any?: The predicate changed but I can't re-evaluate past values!"
-                               | winChanges::_ ->
-                                   // If this is .any?() and the value is already true or is .all?() and
-                                   // the value is already false, nothing to do.
-                                   if op.Value = VBool isAny
-                                     then VBool isAny
-                                     else let results = List.map (function
-                                                                    | Added v -> try
-                                                                                   // An exception may occur if, for example, a field
-                                                                                   // of the event is null.
-                                                                                   Some (eval (env.Add("$v", v)) expr = VBool true)
-                                                                                 with err -> None
-                                                                    | other -> failwithf "Can't happen! .any? received %A" other)
-                                                                 winChanges
-                                          let validResults = List.filter Option.isSome results
-                                          match validResults with
-                                          | [] -> op.Value
-                                          | _ -> let fn = if isAny then List.exists else List.forall
-                                                 VBool (fn (function
-                                                          | Some b -> b
-                                                          | None -> failwithf "Can't happen")
-                                                       (List.filter Option.isSome results))
-                               | _ -> failwithf "Can't happen: %A" inputs
-                 setValueAndGetChanges op result
-               with ex -> Nothing                                                                          
+               let result = match inputs with
+                             | (winChanges::rest) when List.exists (function | [] -> false | _ -> true) rest ||
+                                                       List.exists (function | Expired _ -> true | _ -> false) winChanges ->
+                                 match window with
+                                 | Some window' ->
+                                     // The predicate changed or there was an expiration: must re-evaluate the entire window
+                                     VBool ((if isAny then List.exists else List.forall)
+                                              (fun v -> eval (env.Add("$v", v)) expr = VBool true)
+                                              (List.filter (fun v -> v <> VNull) window'))
+                                 | None -> failwithf ".any?: The predicate changed but I can't re-evaluate past values!"
+                             | winChanges::_ ->
+                                 // If this is .any?() and the value is already true or is .all?() and
+                                 // the value is already false, nothing to do.
+                                 if op.Value = VBool isAny
+                                   then VBool isAny
+                                   else let results = List.map (function
+                                                                  | Added v -> value.Equals(eval (env.Add("$v", v)) expr, VBool true)
+                                                                  | other -> failwithf "Can't happen! .any? received %A" other)
+                                                               winChanges
+                                        let results' = List.filter (fun v -> v <> VNull) results
+                                        match results' with
+                                        | [] -> op.Value
+                                        | _ -> let fn = if isAny then List.exists else List.forall
+                                               VBool (fn (function
+                                                            | VBool b -> b
+                                                            | _ -> failwithf "Can't happen")
+                                                     results')
+                             | _ -> printfn "vens para aqui?"
+                                    failwithf "Can't happen: %A" inputs
+               setValueAndGetChanges op result                                                                       
 
-  Operator.Build(uid, prio, eval, parents, context)  
+  Operator.Build(uid, prio, eval, parents, context, contents = VBool (not isAny))  
 
 
 (* howLong: for how long was a given condition true *)
