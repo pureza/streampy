@@ -53,6 +53,9 @@ let rec types (env:TypeContext) = function
       if typeOf env'' body = retType'
         then env.Add(name, fnType)
         else failwithf "The function body doesn't return %A" retType
+  | StreamDef (Identifier name, fields) ->
+      let fields' = List.map (fun (Identifier f, t) -> (f, t)) fields |> Map.of_list
+      env.Add(name, TyStream (TyRecord fields'))
   | Entity (Identifier ename, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with
       | TyStream (TyRecord fields) as streamType ->

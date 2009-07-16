@@ -1,6 +1,7 @@
 ﻿#light
 
 open System.Collections.Generic
+open Extensions
 open Util
 open Types
 open Oper
@@ -226,12 +227,14 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                                                                  yield key, change
                                            // If we don't have the key, add it and yield an [Added ...] diff.
                                            | VBool true, false -> results := (!results).Add(key, parentDict.[key])
-                                                                  yield key, DictDiff (key, [Added parentDict.[key]])
+                                                                  yield key, AddedKey (key, v)
                                            // Remove the key if we contain it.
                                            | VBool false, true -> results := (!results).Remove(key)
-                                                                  yield key, RemovedKey key
+                                                                  yield key, RemovedKey (key, v)
+                                           // We don't have the key and we are not going to add it, but
+                                           // we need to transmit the changes anyway.
                                            | _ -> ()
-                                       | RemovedKey key -> // Remove the key if we contain it.
+                                       | RemovedKey (key, _) -> // Remove the key if we contain it.
                                            if Map.contains key (!results)
                                              then results := (!results).Remove(key)
                                                   yield key, change
@@ -251,7 +254,7 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                                           yield DictDiff (key, [Added (!results).[key]])
                                      else if Map.contains key !results
                                              then results := (!results).Remove(key)
-                                                  yield RemovedKey key
+                                                  yield RemovedKey (key, [])
                             | [DictDiff (key, _)] when (Set.contains key keys1') -> ()
                             | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
 
@@ -270,39 +273,62 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
 
 let makeDictSelect projectorBuilder (uid, prio, parents, context) =
     let projectors = ref Map.empty
-    let results = ref Map.empty
+    let visible = ref Map.empty
+    let hidden = ref Map.empty
 
     let dictOp = Operator.Build(uid + "_dict", Priority.add prio (Priority.of_list [9]),
                    (fun (op, changes) ->
-                      //printfn "Antes %s: Value = %O Changes = %A" op.Uid op.Value changes
-                      //printfn "Parent = %s" op.Parents.[1].Uid
                       // changes.Head contains the dictionary changes passed to the select
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, projChanges = changes.Head, changes.Tail
-                                                 
-                      let keys1, changes1 =
-                        List.unzip [ for chg in parentChanges do
-                                       match chg with
-                                       | DictDiff (key, _) when not (Map.contains key !results) ->
-                                           results := (!results).Add(key, (subGroupResultOp key projectors).Value)
-                                           yield key, DictDiff (key, [Added (!results).[key]])
-                                       | RemovedKey key -> results := (!results).Remove(key)
-                                                           yield key, chg
-                                       | _ -> () ]
-                      let keys1' = Set.of_list keys1
-                      let changes2 =
+
+                      // Get the projector changes for each key
+                      let projChangesPerKey =
                         [ for change in projChanges do
                             match change with
                             | [] -> ()
-                            | [DictDiff (key, innerChanges)] -> 
-                                if (not (Set.contains key keys1')) && (Map.contains key (!results))
-                                  then results := (!results).Add(key, (subGroupResultOp key projectors).Value)
-                                       yield DictDiff (key, innerChanges)
-                            | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
-                      //printfn "Depois %s: Value = %O" op.Uid op.Value
-                      op.Value <- VDict !results
-                      spreadUnlessEmpty op (changes1 @ changes2)),                      
-                   [], context, contents = VDict !results)
+                            | [DictDiff (key, innerChanges)] ->
+                                // If there was a change to key k, modify the visible or hidden maps accordingly.
+                                if (Map.contains key (!visible))
+                                  then visible := (!visible).Add(key, (subGroupResultOp key projectors).Value)
+                                  else assert (Map.contains key (!hidden))
+                                       hidden := (!hidden).Add(key, (subGroupResultOp key projectors).Value)
+                                yield key, innerChanges
+                            | _ -> failwithf "Invalid changes coming from the projector: %A" change ] |> Map.of_list
+
+                      // Now check changes coming from the parent dictionary
+                      let changesPerKey =
+                        [ for change in parentChanges do
+                            match change with
+                            | AddedKey (key, _) ->
+                                // If the key was just added to the parent and is visible, add it here.
+                                assert (not (Map.contains key !visible))
+                                hidden := (!hidden).Remove(key)
+                                visible := (!visible).Add(key, (subGroupResultOp key projectors).Value)
+                                
+                                // Transmit the projector changes. We don't transmit [Added <value>] because
+                                // changes are transmited even when the key is hidden, so children are
+                                // supposed to update the value even when it's hidden.
+                                let innerChanges = if Map.contains key projChangesPerKey then projChangesPerKey.[key] else []
+                                yield key, AddedKey (key, innerChanges)
+                            | DictDiff (key, _) -> () // Nothing to do because the desired changes have already been done above.
+                            | RemovedKey (key, _) ->
+                                // If the parent removed the key, move it to hidden
+                                // This may also happen if the key was added for the first time, but is hidden.
+                                assert (not (Map.contains key !hidden)) // hidden doesn't have the key
+                                visible := (!visible).Remove(key)
+                                hidden := (!hidden).Add(key, (subGroupResultOp key projectors).Value)
+
+                                let innerChanges = if Map.contains key projChangesPerKey then projChangesPerKey.[key] else []
+                                yield key, RemovedKey (key, innerChanges)
+                            | _ -> failwithf "Unexpected change in dict.select(): %A" change ] |> Map.of_list
+                            
+                      let allChanges = Map.merge (fun n o -> n) changesPerKey (Map.map (fun k v -> DictDiff (k, v)) projChangesPerKey)
+                                         |> Map.to_list |> List.map snd
+
+                      op.Value <- VDict !visible
+                      spreadUnlessEmpty op allChanges),
+                   [], context, contents = VDict !visible)
     
     let selectOp = makeHeadOp dictOp projectors projectorBuilder (uid, prio, parents, context)
     connect selectOp dictOp id
@@ -332,7 +358,7 @@ let makeValues (uid, prio, parents, context) =
                                                                     else [Added newV])
                                     myDict := (!myDict).Add(key, newV)
                                     myChanges'
-                                | RemovedKey key ->
+                                | RemovedKey (key, _) ->
                                     let myChanges' = myChanges @ [Expired (!myDict).[key]]
                                     myDict := Map.remove key (!myDict)
                                     myChanges'

@@ -136,9 +136,10 @@ let rec lookupExpr var (varExprs:ExprsContext) =
  * "entities" collects the names of declared entities.
  *)
 let rec transEntities (entities:Set<string>) (types:TypeContext) = function
-  | DefVariant _ as expr -> entities, expr
+  | DefVariant _ as def -> entities, def
   | Def (Identifier name, expr, None) -> entities, Def (Identifier name, transDictAll entities expr, None)
   | Expr expr -> entities, Expr (transDictAll entities expr)
+  | StreamDef _ as def -> entities, def
   | Entity (Identifier name, ((source, Symbol uniqueId), assocs, members)) as expr ->
       let streamFields = match typeOf types source with
                          | TyStream (TyRecord f) -> f
@@ -227,6 +228,7 @@ let rec transRecordWith (varExprs:Map<string, expr>) stmt =
       let expr' = replacer expr
       varExprs.Add(name, expr'), Def (Identifier name, expr', None)
   | Expr expr -> varExprs, Expr (replacer expr)
+  | StreamDef _ as def -> varExprs, def
   | _ -> failwithf "Won't happen because entity and function translations happens first."
 
 
@@ -365,6 +367,7 @@ let rec transFixedAccesses (varExprs:Map<string, expr>) (types:TypeContext) stmt
       let expr' = replacer types expr
       varExprs.Add(name, expr'), Def (Identifier name, expr', None)
   | Expr expr -> varExprs, Expr (replacer types expr)
+  | StreamDef _ as def -> varExprs, def
   | _ -> failwithf "Won't happen because everything else is translated first."
 
 

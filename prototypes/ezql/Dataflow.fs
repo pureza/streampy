@@ -153,6 +153,14 @@ and dataflow (env:NodeContext, types:TypeContext, (graph:DataflowGraph), roots) 
   | Expr expr ->
       let deps, g', expr' = dataflowE env types graph expr
       env, types, g', roots
+  | StreamDef (Identifier name, fields) as def -> 
+      let n, g' = createNode (nextSymbol "stream") types.[name] [] makeStream graph
+      let roots' = name::roots
+      n.Name <- name
+
+      let env' = env.Add(name, n).Add(n.Uid, n)
+      let types' = types.Add(n.Uid, n.Type)
+      env', types', g', roots'
   | _ -> failwithf "By now, rewrite should have eliminated all the other possibilities."
 
 

@@ -79,6 +79,7 @@
     <Compile Include="TestListenN.fs" />
     <Compile Include="TestLRB.fs" />
     <Compile Include="TestMuggy.fs" />
+    <Compile Include="TestStocks.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

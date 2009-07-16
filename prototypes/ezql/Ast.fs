@@ -4,6 +4,7 @@ type prog =
   | Def of id * expr * option<listener list>
   | Entity of id * (createFrom * association list * attribute list)
   | Function of id * param list * Type * expr
+  | StreamDef of id * (id * Type) list
 
 and expr =
   | Let of id * Type option * expr * expr

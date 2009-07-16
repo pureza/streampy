@@ -56,7 +56,7 @@ let SetKey keyExpr expr timestamp = SetKeyRaw keyExpr (tryEval expr) timestamp
 
 let DelKey keyExpr (timestamp:DateTime) =
   let key = tryEval keyExpr
-  (timestamp, (fact.Diff (RemovedKey key)))
+  (timestamp, (fact.Diff (RemovedKey (key, []))))
 
 
 let In entity (facts:(DateTime * fact) list) =

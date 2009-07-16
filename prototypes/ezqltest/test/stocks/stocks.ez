@@ -4,13 +4,10 @@ entity Company =
   createFrom (stocks, :symbol);;
 
 
-above1000 = Company.all.where (fun c -> c.value.count() > 1);;
+above1000 = Company.all.where (fun c -> c.value.count() > 50);;
 
 
 when (above1000.changes(), fun ev -> print (above1000.select (fun c -> c.value.count())));;
 
 #! stocks
-timestamp,Symbol,Value,Volume
-2012,DRCT,3044,100
-5917,DRCT,2508,1000
-
+# import "test/stocks/stocks.csv"

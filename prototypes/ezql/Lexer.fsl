@@ -17,6 +17,7 @@ let ids = Map.of_list ["let",        LET
                        "define",     DEFINE
                        "group",      GROUP
                        "by",         BY
+                       "stream",     STREAM
                        "entity",     ENTITY
                        "createFrom", CREATE_FROM
                        "belongsTo",  BELONGS_TO

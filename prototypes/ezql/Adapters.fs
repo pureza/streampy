@@ -5,18 +5,23 @@ open System.IO
 open Types
 open Scheduler
 open Extensions.DateTimeExtensions
+open System.Text.RegularExpressions
 
 type CSVAdapter(stream, reader:TextReader) =
     let tryParse value =
         match Int32.TryParse(value) with
-        | s, r when s -> VInt r
-        | _ -> failwith "Unrecognized type"
+        | true, r -> VInt r
+        | _ -> VString value
 
     let readColumns =
-        let line = (reader.ReadLine().Split([|'#'|])).[0] 
-        line.Split [|','|]
-          |> Array.map (fun s -> s.Trim().ToLower())
-          |> Array.to_list
+        let line = reader.ReadLine().Trim()
+        let m = Regex.Match(line, "#\s*import\s*\"(.*)\"")
+        if m.Success
+          then CSVAdapter (stream, new StreamReader (m.Groups.[1].Value)) |> ignore
+               []
+          else line.Split([|'#'|]).[0].Split [|','|]
+                 |> Array.map (fun s -> s.Trim().ToLower())
+                 |> Array.to_list
         
     let readLine (columns: string list) =
         let line = (reader.ReadLine().Split([|'#'|])).[0]

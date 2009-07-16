@@ -184,8 +184,9 @@ and diff =
     | Added of value
     | Expired of value
     | DictDiff of value * diff list
+    | AddedKey of value * diff list
+    | RemovedKey of value * diff list
     | RecordDiff of value * diff list
-    | RemovedKey of value
 
 and changes = diff list
 and link = changes -> changes
