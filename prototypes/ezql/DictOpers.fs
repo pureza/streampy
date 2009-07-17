@@ -41,29 +41,33 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
     // The diff is converted into a DictDiff before being passed to the child.
     connect final dictOp (fun changes -> [DictDiff (key, changes)])
   
+  let buildIfNew key op =
+    if (Map.contains key !subgroups)
+      then false
+      else let env = !op.Context
+           buildSubGroup key env op
+           true
+  
   (* Initialize the necessary subgroups and normalize changes *)  
   let rec initNewGroups op changes =
      let parentDict =
          match (parents.Head).Value with
          | VDict dict -> dict
          | _ -> failwithf "Can't happen"   
-     let env = !op.Context
+     
      [ for chg in changes do
          match chg with
-         | VisKeyDiff (key, _) | HidKeyDiff (key, _, _) ->
-             let created = if (Map.contains key !subgroups)
-                             then false
-                             else buildSubGroup key env op
-                                  true
-                            
-             //let keyOp = subGroupStartOp key subgroups
-             //keyOp.Value <- parentDict.[key]
-            
-             // Convert changes to new keys to the form DictDiff (key, [Added <value>])
-             // FIXME: This doesn't work for windows! For them we must pass the events, not the VWindow.
-             yield! [chg]//if created
-                    //  then [DictDiff (key, [Added keyOp.Value])]
-                    //  else [chg]
+         | VisKeyDiff (key, _) ->
+             if buildIfNew key op
+               then yield! [VisKeyDiff (key, [Added parentDict.[key]])]
+               else yield! [chg]
+         | HidKeyDiff (key, whenHidden, keyChanges) ->
+             if buildIfNew key op
+               then assert (match keyChanges with // Initial hidden entries must come with [Added <value>] and
+                            | [Added _] -> true   // whenHidden must be false
+                            | _ -> false)
+                    assert (not whenHidden)
+             yield! [chg]
          | Added (VDict dict) ->
              assert ((List.length changes) = 1)
              // This may happen during initialization. We to create the
