@@ -187,6 +187,8 @@ and diff =
     | AddedKey of value * diff list
     | RemovedKey of value * diff list
     | RecordDiff of value * diff list
+    | VisKeyDiff of value * diff list
+    | HidKeyDiff of value * diff list
 
 and changes = diff list
 and link = changes -> changes

@@ -296,6 +296,91 @@ let makeDictSelect projectorBuilder (uid, prio, parents, context) =
                                 yield key, innerChanges
                             | _ -> failwithf "Invalid changes coming from the projector: %A" change ] |> Map.of_list
 
+(*
+when a HiddenKeyDiff arrives:
+ - Add the value to hidden if it's not there
+ - Remove it from visible if it is there
+ - Spread a HiddenKeyDiff with the projector changes (if these exist - otherwise use the empty list). If 
+the value was added then, instead of the empty list, use <Added value>.
+*)
+                      let changesMap1 =
+                        // Put the projector changes in a map of DictDiffs
+                        [ for changes in projChanges ->
+                            match changes with
+                            | [DictDiff (key, innerChanges) as change] -> (key, change)
+                            | _ -> failwithf "dict.select: Invalid changes coming from the projector: %A" change ] |> Map.of_list
+
+                      let changesMap2 =
+                         // Modify the DictDiffs from the map above to either VisKeyDiffs or HidKeyDiffs
+                         // There are two corner cases here:
+                         // - There was a parent change for a projector that didn't change:
+                         //     in this case, we check if the visibility status changed. If it did,
+                         //     we propagate it (with [] as inner changes). Otherwise, don't do anything.
+                         //     if the value was just added, propagate Added <value> as the inner change.
+                         // - There was a projector change and not a parent change:
+                         //     in this case, spread a change with the current visibility status.
+                         List.fold (fun acc change ->
+                                      let change' = match change with
+                                                    | VisKeyDiff (key, _) ->
+                                                        match Map.tryFind key acc with
+                                                        | Some (DictDiff (key, changes)) -> Some (key, VisKeyDiff (key, changes))
+                                                        | None -> let exists = Map.contains key !visible || Map.contains key !hidden
+                                                                  if exists
+                                                                    then if Map.contains key !hidden // Visibility changed
+                                                                           then Some (key, VisKeyDiff (key, []))
+                                                                           else None
+                                                                    else Some (key, VisKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))
+                                                    | HidKeyDiff (key, _) ->
+                                                        match Map.tryFind key acc with
+                                                        | Some (DictDiff (key, changes)) -> Some (key, HidKeyDiff (key, changes))
+                                                        | None -> let exists = Map.contains key !visible || Map.contains key !hidden
+                                                                  if exists
+                                                                    then if Map.contains key !visible // Visibility changed
+                                                                           then Some (key, HidKeyDiff (key, []))
+                                                                           else None
+                                                                    else Some (key, HidKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))
+                                                    | _ -> failwithf "dict.select: Invalid changes coming from the parent: %A" change
+                                      match change' with
+                                      | Some (key, chg) -> acc.Add(key, chg)
+                                      | None -> acc)
+                                   changesMap1 parentChanges
+                            
+                      // Convert remaining DictDiffs to either VisKeyDiff or HidKeyDiff             
+                      let changesMap3 = Map.map (fun k v ->
+                                                   match v with
+                                                   | DictDiff (key, innerChanges) ->
+                                                       assert (Map.contains key !visible || Map.contains key !hidden)
+                                                       if Map.contains key !visible
+                                                         then VisKeyDiff (key, innerChanges)
+                                                         else HidKeyDiff (key, innerChanges)
+                                                   | _ -> v)
+                                                changesMap2
+                                              
+(*
+                      let changesMap =
+                        let parentMap = [ for change in parentChanges ->
+                                            match change with
+                                            | VisKeyDiff (key, _) | HidKeyDiff (key, _) -> key, change
+                                            | _ -> failwithf "dict.select: Invalid changes coming from the parent: %A" change ]
+                                          |> Map.of_list
+                                          
+                        List.fold (fun acc changes ->
+                                     match changes with
+                                     | [DictDiff (key, innerChanges)] ->
+                                         let change' = ((match Map.tryFind key acc with
+                                                         | Some (VisKeyDiff _) -> VisKeyDiff
+                                                         | Some (HidKeyDiff _) -> HidKeyDiff
+                                                         | None -> if Map.contains key (!visible)
+                                                                     then VisKeyDiff
+                                                                     else HidKeyDiff
+                                                         | _ -> failwithf "Can't happen") (key, innerChanges))
+                                         acc.Add(key, change')
+                                     | _ -> failwithf "dict.select: Invalid changes coming from the projector: %A" change)
+                                  parentMap projChanges
+                                      *)    
+                      
+
+
                       // Now check changes coming from the parent dictionary
                       let changesPerKey =
                         [ for change in parentChanges do
