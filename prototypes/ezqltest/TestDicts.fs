@@ -23,8 +23,7 @@ let test_dictsWhere (test:Test) =
                        SetKey "2" "50" (At 6)
                        DelKey "3"      (At 7)])
 
-    test.AssertThat (In "hotRooms4"
-                      [])
+    test.AssertThat (In "hotRooms4" [])
 
     test.AssertThat (In "hoterThanLast"
                       [SetKey "3" "45" (At 5)
@@ -151,33 +150,33 @@ let test_dictsSelect (test:Test) =
                        DelKey "1"      (At 9)
                        DelKey "2"      (At 9)
                        DelKey "3"      (At 9)])
-
+                      
     test.AssertThat (In "nestedSelect"
                       [SetKey "1" "{ a = 3, b = 45 }" (At 4)
                        SetKey "3" "{ a = 3, b = 45 }" (At 4)
-                       DelKey "1"                       (At 5)
-                       DelKey "3"                       (At 5)
+                       DelKey "1"                     (At 5)
+                       DelKey "3"                     (At 5)
                        SetKey "1" "{ a = 3, b = 50 }" (At 6)
                        SetKey "2" "{ a = 3, b = 50 }" (At 6)
                        SetKey "3" "{ a = 3, b = 50 }" (At 6)
                        SetKey "1" "{ a = 3, b = 30 }" (At 7)
                        SetKey "2" "{ a = 3, b = 30 }" (At 7)
                        SetKey "3" "{ a = 3, b = 30 }" (At 7)
-                       DelKey "1"                       (At 9)
-                       DelKey "2"                       (At 9)
-                       DelKey "3"                       (At 9)])
+                       DelKey "1"                     (At 9)
+                       DelKey "2"                     (At 9)
+                       DelKey "3"                     (At 9)])
 
     test.AssertThat (In "nestedSelect2"
                       [SetKey "1" "{ a = { b = 3, c = 45 }, b = 45 }" (At 4)
                        SetKey "3" "{ a = { b = 3, c = 45 }, b = 45 }" (At 4)
-                       DelKey "1"                                         (At 5)
-                       DelKey "3"                                         (At 5)
+                       DelKey "1"                                     (At 5)
+                       DelKey "3"                                     (At 5)
                        SetKey "1" "{ a = { b = 3, c = 50 }, b = 50 }" (At 6)
                        SetKey "2" "{ a = { b = 3, c = 50 }, b = 50 }" (At 6)
                        SetKey "3" "{ a = { b = 3, c = 50 }, b = 50 }" (At 6)
                        SetKey "1" "{ a = { b = 3, c = 30 }, b = 30 }" (At 7)
                        SetKey "2" "{ a = { b = 3, c = 30 }, b = 30 }" (At 7)
                        SetKey "3" "{ a = { b = 3, c = 30 }, b = 30 }" (At 7)
-                       DelKey "1"                                         (At 9)
-                       DelKey "2"                                         (At 9)
-                       DelKey "3"                                         (At 9)])
+                       DelKey "1"                                     (At 9)
+                       DelKey "2"                                     (At 9)
+                       DelKey "3"                                     (At 9)])

@@ -184,11 +184,9 @@ and diff =
     | Added of value
     | Expired of value
     | DictDiff of value * diff list
-    | AddedKey of value * diff list
-    | RemovedKey of value * diff list
     | RecordDiff of value * diff list
     | VisKeyDiff of value * diff list
-    | HidKeyDiff of value * diff list
+    | HidKeyDiff of value * bool * diff list // bool true = was hidden just now
 
 and changes = diff list
 and link = changes -> changes
@@ -205,7 +203,7 @@ and NetworkBuilder = Priority.priority -> Map<uid, Operator> -> Operator list * 
 let rec mergeChanges (old:changes) (neu:changes) =
   match neu with
   | x::xs -> match x with
-             | DictDiff (key, changes) | RecordDiff (key, changes) ->
+             | VisKeyDiff (key, _) | HidKeyDiff (key, _, _) | RecordDiff (key, _) ->
                  let old' = mergeKeyChanges old x
                  mergeChanges old' xs
              | _ -> mergeChanges (old @ neu) xs
@@ -214,8 +212,10 @@ let rec mergeChanges (old:changes) (neu:changes) =
 and mergeKeyChanges old toMerge =
   match old with
   | x::xs -> match x, toMerge with
-             | DictDiff (key, changes), DictDiff (key', changes') when key = key' ->
-                 (DictDiff (key, changes @ changes'))::xs
+             | VisKeyDiff (key, changes), VisKeyDiff (key', changes') when key = key' ->
+                 (VisKeyDiff (key, changes @ changes'))::xs
+             | HidKeyDiff (key, whenHidden, changes), HidKeyDiff (key', whenHidden', changes') when key = key' && whenHidden = whenHidden' ->
+                 (HidKeyDiff (key, whenHidden, changes @ changes'))::xs
              | RecordDiff (key, changes), RecordDiff (key', changes') when key = key' ->
                  (RecordDiff (key, changes @ changes'))::xs
              | _ -> x::(mergeKeyChanges xs toMerge)

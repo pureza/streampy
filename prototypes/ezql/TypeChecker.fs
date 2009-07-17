@@ -54,7 +54,7 @@ let rec types (env:TypeContext) = function
         then env.Add(name, fnType)
         else failwithf "The function body doesn't return %A" retType
   | StreamDef (Identifier name, fields) ->
-      let fields' = List.map (fun (Identifier f, t) -> (f, t)) fields |> Map.of_list
+      let fields' = List.map (fun (Identifier f, t) -> (f, t)) fields |> Map.of_list |> Map.add "timestamp" TyInt
       env.Add(name, TyStream (TyRecord fields'))
   | Entity (Identifier ename, ((source, Symbol uniqueId), assocs, members)) ->
       match typeOf env source with

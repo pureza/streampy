@@ -52,8 +52,8 @@ let checkConsistency op changes =
   | _ -> let rebuilt = rebuildValue !op.AllChanges
          if op.Value <> rebuilt
            then printfn "Operator %O doesn't meet the 'all changes must be seen' invariant.\n Value is %O\n Rebuilt value gives %O\n Changes propagated: %A\n"
-                        op op.Value rebuilt !op.AllChanges 
-*)                        
+                        op op.Value rebuilt !op.AllChanges *)
+                      
 
 let toEvalStack children (changes:changes) : EvalStack =
   [ for child, idx, link in children -> (child, [(idx, (link changes))]) ]

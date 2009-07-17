@@ -24,7 +24,7 @@ let rec diffsBetween old neu =
       let oKeys = Set.of_list (Map.to_list ov |> List.map fst)
       let nKeys = Set.of_list (Map.to_list nv |> List.map fst)
       let removedKeys = oKeys - nKeys
-      let removedChanges = List.map (fun k -> RemovedKey (k, [])) (Set.to_list removedKeys)
+      let removedChanges = List.map (fun k -> HidKeyDiff (k, true, [])) (Set.to_list removedKeys)
       
       let addedKeys = nKeys - oKeys
       let addedChanges = List.map (fun k -> DictDiff (k, [Added nv.[k]])) (Set.to_list addedKeys)
@@ -109,7 +109,7 @@ and incorporateChange change value =
        match value with
        | VRecord record -> VRecord (Map.add field (incorporateChanges changes record.[field]) record)
        | _ -> failwithf "%A is not a record!" value
-   | DictDiff (key, changes) ->
+   | VisKeyDiff (key, changes) ->
        match value with
        | VDict dict ->
            let v' = if dict.ContainsKey(key)
@@ -117,10 +117,11 @@ and incorporateChange change value =
                       else incorporateChanges changes VNull
            VDict (Map.add key v' dict)
        | _ -> failwithf "%A is not a dictionary!" value
-   | RemovedKey (key, _) ->
+   | HidKeyDiff (key, true, _) ->
        match value with
        | VDict dict -> VDict (Map.remove key dict)
        | _ -> failwithf "%A is not a dictionary!" value
+   | HidKeyDiff _ -> value
        
 let rebuildValue changes = List.fold (fun value changes -> incorporateChanges changes value) VNull changes
 

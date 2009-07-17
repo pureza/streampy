@@ -18,11 +18,12 @@ let spreadUnlessEmpty op changes =
 
 
 (* Used by the dict.where() and dict.select() methods to give an operator to
-   the parameter of the predicate or projector.
-   The value of this operators is manually set by the methods that use it.
- *)
+   the parameter of the predicate or projector. *)
 let makeInitialOp (uid, prio, parents, context) =
-  let eval = fun (op, inputs) -> SpreadChildren (List.hd inputs)
+  let eval = fun (op:Operator, inputs) ->
+     let changes = List.hd inputs
+     op.Value <- incorporateChanges changes op.Value
+     SpreadChildren changes
 
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -49,26 +50,26 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
      let env = !op.Context
      [ for chg in changes do
          match chg with
-         | DictDiff (key, _) ->
+         | VisKeyDiff (key, _) | HidKeyDiff (key, _, _) ->
              let created = if (Map.contains key !subgroups)
                              then false
                              else buildSubGroup key env op
                                   true
                             
-             let keyOp = subGroupStartOp key subgroups
-             keyOp.Value <- parentDict.[key]
+             //let keyOp = subGroupStartOp key subgroups
+             //keyOp.Value <- parentDict.[key]
             
              // Convert changes to new keys to the form DictDiff (key, [Added <value>])
              // FIXME: This doesn't work for windows! For them we must pass the events, not the VWindow.
-             yield! if created
-                      then [DictDiff (key, [Added keyOp.Value])]
-                      else [chg]
+             yield! [chg]//if created
+                    //  then [DictDiff (key, [Added keyOp.Value])]
+                    //  else [chg]
          | Added (VDict dict) ->
              assert ((List.length changes) = 1)
              // This may happen during initialization. We to create the
              // appropriate DictDiffs from the initial dictionary and recurse
              yield! initNewGroups op (Seq.fold (fun acc (x:KeyValuePair<value, value>) ->
-                                                 (DictDiff (x.Key, [Added x.Value]))::acc)
+                                                 (VisKeyDiff (x.Key, [Added x.Value]))::acc)
                                                [] dict)
          | _ -> yield! [chg] ]
 
@@ -79,12 +80,12 @@ let makeHeadOp dictOp (subgroups:SubCircuitMap ref) groupBuilder (uid, prio, (pa
        let predsToEval =
          [ for chg in parentChanges' do
                         match chg with
-                        | DictDiff (key, diff) ->
+                        | VisKeyDiff (key, _) | HidKeyDiff (key, _, _) ->
                             // The link between this operator and the group's circuit ignores everything
                             // that is not related to that group.
                             let link = (fun changes -> [ for diff in changes do
                                                            match diff with
-                                                           | DictDiff (key', v) when key = key' -> yield! v
+                                                           | (VisKeyDiff (key', v) | HidKeyDiff (key', _, v)) when key = key' -> yield! v
                                                            | _ -> () ])
                                                            
                             yield subGroupStartOp key subgroups, 0, link
@@ -159,7 +160,8 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                              let value = op.Parents.[i + 1].Value
                                              results := (!results).Add(key, value)
                                              // If the key was just added, return [Added <value>]. Otherwise just return the original change.
-                                             if added then [DictDiff (key, [Added value])] else chg
+                                             if added then [VisKeyDiff (key, [Added value])]
+                                                      else [VisKeyDiff (key, keyChanges)]
                                              //chg
                                          | [] -> []
                                          | _ -> failwithf "Dictionary expects all diffs to be of type DictDiff but received %A" chg)
@@ -177,7 +179,7 @@ let makeGroupby field groupBuilder (uid, prio, parents, context) =
                                                  let value = parent.Value
                                                  if value <> VNull
                                                    then results := (!results).Add(key, value)
-                                                        [DictDiff (key, [Added (!results).[key]])]
+                                                        [VisKeyDiff (key, [Added (!results).[key]])]
                                                    else []
                                              | _ -> [])
                                         parentChanges |> List.concat) @ (List.concat groupChanges')
@@ -211,55 +213,80 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                       // changes.Head contains the dictionary changes passed to the where
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, predChanges = changes.Head, changes.Tail
+                      
                       let whereOp = op.Parents.[0]
                       let parentDict = match whereOp.Parents.[0].Value with
                                        | VDict d -> d
                                        | _ -> failwith "The parent of this where is not a dictionary!"
 
-                      (* First, take care of the changes reported by the parent dictionary *)
-                      let keys1, changes1 =
-                        List.unzip [ for change in parentChanges do
-                                       match change with
-                                       | DictDiff (key, v) ->
-                                           match (subGroupResultOp key predicates).Value, Map.contains key !results with
-                                           // If we already have the key, modify it and yield the diff.
-                                           | VBool true, true -> results := (!results).Add(key, parentDict.[key])
-                                                                 yield key, change
-                                           // If we don't have the key, add it and yield an [Added ...] diff.
-                                           | VBool true, false -> results := (!results).Add(key, parentDict.[key])
-                                                                  yield key, AddedKey (key, v)
-                                           // Remove the key if we contain it.
-                                           | VBool false, true -> results := (!results).Remove(key)
-                                                                  yield key, RemovedKey (key, v)
-                                           // We don't have the key and we are not going to add it, but
-                                           // we need to transmit the changes anyway.
-                                           | _ -> ()
-                                       | RemovedKey (key, _) -> // Remove the key if we contain it.
-                                           if Map.contains key (!results)
-                                             then results := (!results).Remove(key)
-                                                  yield key, change
-                                             else ()
-                                       | Added (VDict dict) when dict.IsEmpty -> () // Received on parent initialization
-                                       | _ -> failwithf "Invalid change received in dict/where: %A" change ]
-                      let keys1' = Set.of_list keys1
-
-                      (* Now we still have to take care of predicate changes for the keys
-                         which have not been handled already *)
-                      let changes2 =
-                        [ for change in predChanges do
+                      // First, take care of the parent changes
+                      // These changes are always transmited forward, but the visibility status
+                      // may be modified by the predicates below
+                      let changesMap1 =
+                        // Put the parent changes in a map of diffs
+                        [ for change in parentChanges do
                             match change with
-                            | [] -> ()
-                            | [DictDiff (key, [(Added (VBool v))])] when not (Set.contains key keys1') ->
-                                if v then results := (!results).Add(key, parentDict.[key])
-                                          yield DictDiff (key, [Added (!results).[key]])
-                                     else if Map.contains key !results
-                                             then results := (!results).Remove(key)
-                                                  yield RemovedKey (key, [])
-                            | [DictDiff (key, _)] when (Set.contains key keys1') -> ()
-                            | _ -> failwithf "The predicate was supposed to return a boolean, but instead returned %A" change ]
+                            | VisKeyDiff (key, diff) ->
+                                // The key is visible on the parent. If the predicate is true,
+                                // pass the diff. Otherwise, pass a HidKeyDiff, only if the diff is not []
+                                if (subGroupResultOp key predicates).Value = VBool true
+                                  then yield (key, change)
+                                  else match diff with
+                                       | [] -> ()
+                                       | _ -> yield key, HidKeyDiff (key, Map.contains key !results, diff)
+                            | HidKeyDiff (key, true, []) ->
+                                // The parent is signaling that it is now hiding the given key.
+                                // If we were already hiding it, don't do anything. Otherwise, spread the change.
+                                if (Map.contains key !results)
+                                  then yield key, change
+                            | HidKeyDiff (key, _, diff) -> yield key, HidKeyDiff (key, Map.contains key !results, diff)
+                            | _ -> failwithf "dict.where: Invalid changes coming from the parent: %A" change ] |> Map.of_list
+
+                      // Handle changes to visibility status.
+                      let changesMap2 =
+                        List.fold (fun acc changes ->
+                                     match changes with
+                                     | [DictDiff (key, [Added (VBool true)])] ->
+                                         let change' = match Map.tryFind key acc with
+                                                       | Some (VisKeyDiff _ as change) -> None // Visible in the parent, visible here
+                                                       | Some (HidKeyDiff _ as change) -> Some change // Invisible in the parent, invisible here
+                                                       | Some _ -> failwithf "dict.where: can't happen"
+                                                       | None -> // The value itself didn't change, only the predicate did.
+                                                                 // If it is visible in the parent, make it visible. Otherwise, don't do anything.
+                                                                 if Map.contains key parentDict
+                                                                   then Some (VisKeyDiff (key, []))
+                                                                   else None
+                                         match change' with
+                                         | Some chg -> acc.Add(key, chg)
+                                         | None -> acc
+                                     | [DictDiff (key, [Added (VBool false)])] ->
+                                         let change' = match Map.tryFind key acc with
+                                                       | Some (HidKeyDiff _ as change) -> None // Invisible in the parent, invisible here
+                                                       | Some (VisKeyDiff (key, innerChanges)) -> Some (HidKeyDiff (key, true, innerChanges)) // Was visible but now is hidden
+                                                       | Some _ -> failwithf "dict.where: can't happen"
+                                                       | None -> // The value itself didn't change, only the predicate did.
+                                                                 // If we are already hiding the entry, don't do anything. Otherwise, make it invisible.
+                                                                 if Map.contains key !results
+                                                                   then Some (HidKeyDiff (key, true, []))
+                                                                   else None
+                                         match change' with
+                                         | Some chg -> acc.Add(key, chg)
+                                         | None -> acc
+                                     | [] -> acc                                            
+                                     | _ -> failwithf "dict.where: invalid changes received from the predicates: %A" changes)
+                                   changesMap1 predChanges
+                      
+                      // Apply the changes
+                      for pair in changesMap2 do
+                        match pair.Value with
+                        | VisKeyDiff (key, _) -> results := (!results).Add(key, parentDict.[key])
+                        | HidKeyDiff (key, _, _) -> results := (!results).Remove(key)
+                        | _ -> failwithf "Won't happen at this point."
+                        
+                      let allChanges = changesMap2 |> Map.to_list |> List.map snd
 
                       op.Value <- VDict !results
-                      spreadUnlessEmpty op (changes1 @ changes2)),
+                      spreadUnlessEmpty op allChanges),
                    [], context, contents = VDict !results)
      
     let whereOp = makeHeadOp dictOp predicates predicateBuilder (uid, prio, parents, context)
@@ -282,33 +309,13 @@ let makeDictSelect projectorBuilder (uid, prio, parents, context) =
                       // changes.Tail contains the changes in the inner predicates
                       let parentChanges, projChanges = changes.Head, changes.Tail
 
-                      // Get the projector changes for each key
-                      let projChangesPerKey =
-                        [ for change in projChanges do
-                            match change with
-                            | [] -> ()
-                            | [DictDiff (key, innerChanges)] ->
-                                // If there was a change to key k, modify the visible or hidden maps accordingly.
-                                if (Map.contains key (!visible))
-                                  then visible := (!visible).Add(key, (subGroupResultOp key projectors).Value)
-                                  else assert (Map.contains key (!hidden))
-                                       hidden := (!hidden).Add(key, (subGroupResultOp key projectors).Value)
-                                yield key, innerChanges
-                            | _ -> failwithf "Invalid changes coming from the projector: %A" change ] |> Map.of_list
-
-(*
-when a HiddenKeyDiff arrives:
- - Add the value to hidden if it's not there
- - Remove it from visible if it is there
- - Spread a HiddenKeyDiff with the projector changes (if these exist - otherwise use the empty list). If 
-the value was added then, instead of the empty list, use <Added value>.
-*)
                       let changesMap1 =
                         // Put the projector changes in a map of DictDiffs
-                        [ for changes in projChanges ->
+                        [ for changes in projChanges do
                             match changes with
-                            | [DictDiff (key, innerChanges) as change] -> (key, change)
-                            | _ -> failwithf "dict.select: Invalid changes coming from the projector: %A" change ] |> Map.of_list
+                            | [DictDiff (key, innerChanges) as change] -> yield (key, change)
+                            | [] -> ()
+                            | _ -> failwithf "dict.select: Invalid changes coming from the projector: %A" changes ] |> Map.of_list
 
                       let changesMap2 =
                          // Modify the DictDiffs from the map above to either VisKeyDiffs or HidKeyDiffs
@@ -324,21 +331,25 @@ the value was added then, instead of the empty list, use <Added value>.
                                                     | VisKeyDiff (key, _) ->
                                                         match Map.tryFind key acc with
                                                         | Some (DictDiff (key, changes)) -> Some (key, VisKeyDiff (key, changes))
+                                                        | Some _ -> failwithf "dict.select: can't happen"
                                                         | None -> let exists = Map.contains key !visible || Map.contains key !hidden
                                                                   if exists
                                                                     then if Map.contains key !hidden // Visibility changed
                                                                            then Some (key, VisKeyDiff (key, []))
-                                                                           else None
-                                                                    else Some (key, VisKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))
-                                                    | HidKeyDiff (key, _) ->
+                                                                           else None // Was visible, stays visible, the projector didn't change: nothing to do
+                                                                    else // This may happen when the key is created for the first time.
+                                                                         Some (key, VisKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))
+                                                    | HidKeyDiff (key, whenHidden, _) ->
                                                         match Map.tryFind key acc with
-                                                        | Some (DictDiff (key, changes)) -> Some (key, HidKeyDiff (key, changes))
+                                                        | Some (DictDiff (key, changes)) -> Some (key, HidKeyDiff (key, whenHidden, changes))
+                                                        | Some _ -> failwithf "dict.select: can't happen"
                                                         | None -> let exists = Map.contains key !visible || Map.contains key !hidden
                                                                   if exists
                                                                     then if Map.contains key !visible // Visibility changed
-                                                                           then Some (key, HidKeyDiff (key, []))
-                                                                           else None
-                                                                    else Some (key, HidKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))
+                                                                           then assert whenHidden
+                                                                                Some (key, HidKeyDiff (key, whenHidden, []))
+                                                                           else None // Was hidden, stays hidden, the projector didn't change: nothing to do
+                                                                    else Some (key, HidKeyDiff (key, whenHidden, [Added (subGroupResultOp key projectors).Value]))
                                                     | _ -> failwithf "dict.select: Invalid changes coming from the parent: %A" change
                                       match change' with
                                       | Some (key, chg) -> acc.Add(key, chg)
@@ -352,64 +363,22 @@ the value was added then, instead of the empty list, use <Added value>.
                                                        assert (Map.contains key !visible || Map.contains key !hidden)
                                                        if Map.contains key !visible
                                                          then VisKeyDiff (key, innerChanges)
-                                                         else HidKeyDiff (key, innerChanges)
+                                                         else HidKeyDiff (key, false, innerChanges)
                                                    | _ -> v)
                                                 changesMap2
-                                              
-(*
-                      let changesMap =
-                        let parentMap = [ for change in parentChanges ->
-                                            match change with
-                                            | VisKeyDiff (key, _) | HidKeyDiff (key, _) -> key, change
-                                            | _ -> failwithf "dict.select: Invalid changes coming from the parent: %A" change ]
-                                          |> Map.of_list
-                                          
-                        List.fold (fun acc changes ->
-                                     match changes with
-                                     | [DictDiff (key, innerChanges)] ->
-                                         let change' = ((match Map.tryFind key acc with
-                                                         | Some (VisKeyDiff _) -> VisKeyDiff
-                                                         | Some (HidKeyDiff _) -> HidKeyDiff
-                                                         | None -> if Map.contains key (!visible)
-                                                                     then VisKeyDiff
-                                                                     else HidKeyDiff
-                                                         | _ -> failwithf "Can't happen") (key, innerChanges))
-                                         acc.Add(key, change')
-                                     | _ -> failwithf "dict.select: Invalid changes coming from the projector: %A" change)
-                                  parentMap projChanges
-                                      *)    
                       
-
-
-                      // Now check changes coming from the parent dictionary
-                      let changesPerKey =
-                        [ for change in parentChanges do
-                            match change with
-                            | AddedKey (key, _) ->
-                                // If the key was just added to the parent and is visible, add it here.
-                                assert (not (Map.contains key !visible))
-                                hidden := (!hidden).Remove(key)
-                                visible := (!visible).Add(key, (subGroupResultOp key projectors).Value)
-                                
-                                // Transmit the projector changes. We don't transmit [Added <value>] because
-                                // changes are transmited even when the key is hidden, so children are
-                                // supposed to update the value even when it's hidden.
-                                let innerChanges = if Map.contains key projChangesPerKey then projChangesPerKey.[key] else []
-                                yield key, AddedKey (key, innerChanges)
-                            | DictDiff (key, _) -> () // Nothing to do because the desired changes have already been done above.
-                            | RemovedKey (key, _) ->
-                                // If the parent removed the key, move it to hidden
-                                // This may also happen if the key was added for the first time, but is hidden.
-                                assert (not (Map.contains key !hidden)) // hidden doesn't have the key
-                                visible := (!visible).Remove(key)
-                                hidden := (!hidden).Add(key, (subGroupResultOp key projectors).Value)
-
-                                let innerChanges = if Map.contains key projChangesPerKey then projChangesPerKey.[key] else []
-                                yield key, RemovedKey (key, innerChanges)
-                            | _ -> failwithf "Unexpected change in dict.select(): %A" change ] |> Map.of_list
-                            
-                      let allChanges = Map.merge (fun n o -> n) changesPerKey (Map.map (fun k v -> DictDiff (k, v)) projChangesPerKey)
-                                         |> Map.to_list |> List.map snd
+                      // Now, apply the changes map
+                      for pair in changesMap3 do
+                        match pair.Value with
+                        | VisKeyDiff (key, _) ->
+                            hidden := (!hidden).Remove(key)
+                            visible := (!visible).Add(key, (subGroupResultOp key projectors).Value)
+                        | HidKeyDiff (key, _, _) ->
+                            visible := (!visible).Remove(key)
+                            hidden := (!hidden).Add(key, (subGroupResultOp key projectors).Value)
+                        | _ -> failwithf "Won't happen at this point."
+                        
+                      let allChanges = changesMap3 |> Map.to_list |> List.map snd
 
                       op.Value <- VDict !visible
                       spreadUnlessEmpty op allChanges),
@@ -436,17 +405,18 @@ let makeValues (uid, prio, parents, context) =
                let myChanges =
                  List.fold (fun myChanges change ->
                                 match change with
-                                | DictDiff (key, _) ->
+                                | VisKeyDiff (key, _) ->
                                     let newV = parentDict.[key]
-                                    let myChanges' = myChanges @ (if Map.contains key (!myDict)
+                                    let myChanges' = myChanges @ (if Map.contains key !myDict
                                                                     then [Expired (!myDict).[key]; Added newV]
                                                                     else [Added newV])
                                     myDict := (!myDict).Add(key, newV)
                                     myChanges'
-                                | RemovedKey (key, _) ->
+                                | HidKeyDiff (key, true, _) ->
                                     let myChanges' = myChanges @ [Expired (!myDict).[key]]
                                     myDict := Map.remove key (!myDict)
                                     myChanges'
+                                | HidKeyDiff (key, false, _) -> myChanges
                                 | Added (VDict dict) ->
                                     // Expire the current dictionary
                                     let myChanges' = myChanges @ [ for pair in !myDict ->
@@ -457,6 +427,7 @@ let makeValues (uid, prio, parents, context) =
                                                      Added pair.Value ]
                                 | _ -> failwithf "Can't happen... oh really: %A" change)
                            [] (List.hd allChanges)
+
                op.Value <- VWindow [ for pair in (!myDict) -> pair.Value ]
                SpreadChildren myChanges
 

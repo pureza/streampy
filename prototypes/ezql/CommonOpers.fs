@@ -273,10 +273,20 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
 (* Converts a dynamic value into a stream of changes to the value *)
 let makeToStream (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
-               let value = op.Parents.[0].Value
-               let ev = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.now ()); VString "value", value])
-               op.Value <- ev
-               SpreadChildren [Added ev]
+               // Ignore all HidKeyDiffs for keys that were already hidden before
+               let any = List.exists (fun changes ->
+                                        List.exists (function
+                                                       | HidKeyDiff (_, false, _) -> false
+                                                       | _ -> true) 
+                                                    changes)
+                                     inputs
+                                     
+               if any
+                 then let value = op.Parents.[0].Value
+                      let ev = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.now ()); VString "value", value])
+                      op.Value <- ev
+                      SpreadChildren [Added ev]
+                 else Nothing
 
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -304,7 +314,7 @@ let makeRefProjector field (uid, prio, (parents:Operator list), context) =
                                           | _ -> failwithf "ref value is not a VRef?!"
                            let objChanges = [ for change in inputs.[1] do
                                                 match change with
-                                                | DictDiff (key, keyChanges) -> yield! if key = ref.Value then keyChanges else []
+                                                | VisKeyDiff (key, keyChanges) -> yield! if key = ref.Value then keyChanges else []
                                                 | _ -> failwithf "Unexpected change in refProjector: %A" change ]
                            let refObject = entityDict.[refValue]
                            let fieldValue = match refObject with
@@ -344,16 +354,21 @@ let makeIndexer index (uid, prio, parents, context) =
                           | _ -> failwithf "The parent of the indexer is not a dictionary?!"
                
                match inputs with
-               | [x::xs as change; []] ->
-                   // The dictionary changed: filter only the changes to our key.
-                   let indexChanges = List.tryPick (function
-                                                      | DictDiff (key', chg) when key = key' -> Some chg
-                                                      | _ -> None)
-                                                   change
-                   match indexChanges with
-                   | Some changes -> op.Value <- dict.[key]
-                                     SpreadChildren changes
-                   | None -> Nothing
+               | [x::xs as changes; []] ->
+                   let keyChanges =
+                     [ for change in changes do
+                         match change with
+                         | VisKeyDiff (key', chg) when key = key' ->
+                             if op.Value = VNull
+                               then yield! [Added dict.[key]]
+                               else yield! chg
+                         | HidKeyDiff (key', true, chg) when key = key' -> yield! [Added VNull]
+                         | _ -> () ]
+                   
+                   match keyChanges with
+                   | [] -> Nothing
+                   | _ -> op.Value <- dict.[key]
+                          SpreadChildren keyChanges
                | _ -> // The index changed: return [Added <new value>]
                       if Map.contains key dict
                         then op.Value <- dict.[key]

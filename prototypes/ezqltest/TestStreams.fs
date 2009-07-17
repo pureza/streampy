@@ -449,7 +449,7 @@ let test_streamsGroupby (test:Test) =
   test.AssertThat (In "f"
                     [Set "1" (At 2)
                      Set "2" (At 9)])
-                     
+                    
   test.AssertThat (In "g"
                     [SetKey "1" "25" (At  2)
                      SetKey "1" "45" (At  4)
@@ -461,4 +461,4 @@ let test_streamsGroupby (test:Test) =
                      SetKey "1" "30" (At  7)
                      SetKey "3" "60" (At  7)
                      SetKey "1" "46" (At  9)
-                     SetKey "3" "46" (At  9)])                   
+                     SetKey "3" "46" (At  9)])

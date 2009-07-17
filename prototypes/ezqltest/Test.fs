@@ -28,6 +28,12 @@ let tryEval expr =
   with
     | e -> failwithf "Error parsing '%s'" expr
 
+let matchFact (fact:diff) (ocurred:diff) =
+  match fact, ocurred with
+  | HidKeyDiff (key, true, _), HidKeyDiff (key', true, _) when key = key' -> true
+  | _ when fact = ocurred -> true
+  | _ -> false
+
 let AddedOrExpired factMaker eventTimestamp expr factTimestamp =
   let value = tryEval expr
   match value with
@@ -56,7 +62,7 @@ let SetKey keyExpr expr timestamp = SetKeyRaw keyExpr (tryEval expr) timestamp
 
 let DelKey keyExpr (timestamp:DateTime) =
   let key = tryEval keyExpr
-  (timestamp, (fact.Diff (RemovedKey (key, []))))
+  (timestamp, (fact.Diff (HidKeyDiff (key, true, []))))
 
 
 let In entity (facts:(DateTime * fact) list) =
@@ -103,7 +109,6 @@ type Test =
         addSinkTo oper
           (function
             | changes::_ ->
-                //printfn "changes = %A" changes
                 let now = Engine.now()
                 
                 // We only assert changes for timestamp n after n
@@ -111,15 +116,20 @@ type Test =
                 | Some (time, prevChanges, _) when time = now -> delayed := Some (time, mergeChanges prevChanges changes, oper.Value)
                 | None -> delayed := Some (now, changes, oper.Value)
                 | Some (pTime, pChanges, value) ->
+                    // Ignore HidKeyDiffs
+                    let pChanges' = List.filter (fun diff -> match diff with
+                                                             | HidKeyDiff (_, false, _) -> false
+                                                             | _ -> true)
+                                                pChanges
                     let facts = Map.tryFind pTime (!timeToFact)
                     match facts with
                     | Some facts' ->
-                        if facts'.Length <> pChanges.Length
+                        if not (facts'.Length >= pChanges'.Length && facts'.Length <= pChanges.Length)
                           then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
-                                         entity pTime.TotalSeconds pChanges facts'
+                                         entity pTime.TotalSeconds pChanges' facts'
                         for fact' in facts' do
                           match fact' with
-                          | Diff fact'' -> if not (List.contains fact'' pChanges)
+                          | Diff fact'' -> if not (List.exists (matchFact fact'') pChanges)
                                              then failwithf "In %s, at %A: the diffs differ!\n\t Happened: %A\n\t Expected: %A\n"
                                                             entity pTime.TotalSeconds pChanges facts'
                           | ValueAtKey (k, v) ->
@@ -131,11 +141,12 @@ type Test =
                                                                    entity pTime.TotalSeconds k dict.[k] v
                                     else failwithf "In %s, at %A: couldn't find the key %A in the dictionary!\n"
                                                    entity pTime.TotalSeconds k
-                              | _ -> failwithf "The entity '%s' is not a dictionary!" entity
+                              | _ -> failwithf "The entity '%s' is not a dictionary! Is is %A" entity value
                           | Value v -> printfn "ola"
                         timeToFact := Map.remove pTime !timeToFact
-                    | _ -> failwithf "  In %s, at %A: unpredicted event happened:\n\t %A\n"
-                                     entity pTime.TotalSeconds pChanges
+                    | _ -> if (not pChanges'.IsEmpty)
+                             then failwithf "  In %s, at %A: unpredicted event happened:\n\t %A\n"
+                                            entity pTime.TotalSeconds pChanges'
                     delayed := Some (now, changes, oper.Value)
             | [] -> failwithf "  In %s, at %A: entity is spreading empty changes." entity (Engine.now().TotalSeconds)) |> ignore
     | _ -> failwithf "\n\n\nAssertThat: Couldn't find symbol '%s'\n\n\n" entity
