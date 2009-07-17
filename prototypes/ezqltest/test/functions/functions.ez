@@ -1,4 +1,4 @@
-temp_readings = stream (:room_id, :temperature);;
+temp_readings = stream (room_id:int, temperature:int);;
 
 lastTemp = temp_readings.last(:temperature);;
 

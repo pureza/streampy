@@ -1,4 +1,4 @@
-seg_speed_str = stream (:vehicle_id, :speed, :segment_id);;
+seg_speed_str = stream (vehicle_id:int, speed:int, segment_id:int);;
 
 define not(v:bool) : bool =
   if v then false else true;;

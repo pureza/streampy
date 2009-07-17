@@ -1,5 +1,5 @@
-temp_readings = stream (:room_id, :temperature);;
-hum_readings = stream (:room_id, :humidity);;
+temp_readings = stream (room_id:int, temperature:int);;
+hum_readings = stream (room_id:int, humidity:int);;
 
 // A simple window
 temps_3secs = temp_readings[3 sec];;

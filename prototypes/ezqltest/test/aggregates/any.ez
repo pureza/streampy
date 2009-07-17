@@ -1,6 +1,6 @@
-temp_readings = stream (:room_id, :temperature);;
-hum_readings = stream (:room_id, :humidity);;
-entries = stream(:room_id, :product_id);;
+temp_readings = stream (room_id:int, temperature:int);;
+hum_readings = stream (room_id:int, humidity:int);;
+entries = stream (room_id:int, product_id:int);;
 
 lastTemp = temp_readings.last(:temperature);;
 

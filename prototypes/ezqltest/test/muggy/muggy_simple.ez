@@ -1,5 +1,5 @@
-temp_readings = stream (:room_id, :temperature);;
-entries = stream(:room_id, :product_id);;
+temp_readings = stream (room_id:int, temperature:int);;
+entries = stream (room_id:int, product_id:int);;
 
 
 entity Room =

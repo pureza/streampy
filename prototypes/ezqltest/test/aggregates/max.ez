@@ -1,4 +1,4 @@
-temp_readings = stream (:room_id, :temperature);;
+temp_readings = stream (room_id:int, temperature:int);;
 
 // The dictionary value is a window that does not depend on g
 a = temp_readings.groupby(:room_id, fun g -> temp_readings[2 sec])
