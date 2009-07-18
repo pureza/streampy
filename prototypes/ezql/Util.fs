@@ -110,6 +110,7 @@ and incorporateChange change value =
        | VRecord record -> VRecord (Map.add field (incorporateChanges changes record.[field]) record)
        | _ -> failwithf "%A is not a record!" value
    | VisKeyDiff (key, changes) ->
+       assert (changes <> [])
        match value with
        | VDict dict ->
            let v' = if dict.ContainsKey(key)

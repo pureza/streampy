@@ -79,9 +79,12 @@ let rec spread (stack:EvalStack) (delayed:EvalStack) =
   | (op, parentChanges)::xs ->
       //printfn "*** Vou actualizar o %s" op.Uid
       //printfn "    Changes = %A\n" parentChanges
+      //printfn "    Value before = %A\n" op.Value
       let filledChanges = fillLeftArgs op parentChanges 0
       try
-        match op.Eval (op, filledChanges) with
+        let toSpread = op.Eval (op, filledChanges)
+        //printfn "    Value after = %A\n" op.Value
+        match toSpread with
         | SpreadChildren changes ->
             checkConsistency op changes
             spread (mergeStack xs (toEvalStack op.Children changes)) delayed

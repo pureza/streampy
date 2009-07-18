@@ -124,9 +124,9 @@ type Test =
                     let facts = Map.tryFind pTime (!timeToFact)
                     match facts with
                     | Some facts' ->
-                        if not (facts'.Length >= pChanges'.Length && facts'.Length <= pChanges.Length)
-                          then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
-                                         entity pTime.TotalSeconds pChanges' facts'
+                        //if not (facts'.Length >= pChanges'.Length && facts'.Length <= pChanges.Length)
+                        //  then failwithf "In %s, at %A: the number of predicted changes is different\n from the actual number of changes:\n - %A\n - %A\n"
+                        //                 entity pTime.TotalSeconds pChanges' facts'
                         for fact' in facts' do
                           match fact' with
                           | Diff fact'' -> if not (List.exists (matchFact fact'') pChanges)

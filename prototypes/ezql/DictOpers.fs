@@ -339,7 +339,7 @@ let makeDictSelect projectorBuilder (uid, prio, parents, context) =
                                                         | None -> let exists = Map.contains key !visible || Map.contains key !hidden
                                                                   if exists
                                                                     then if Map.contains key !hidden // Visibility changed
-                                                                           then Some (key, VisKeyDiff (key, []))
+                                                                           then Some (key, VisKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))
                                                                            else None // Was visible, stays visible, the projector didn't change: nothing to do
                                                                     else // This may happen when the key is created for the first time.
                                                                          Some (key, VisKeyDiff (key, [Added (subGroupResultOp key projectors).Value]))

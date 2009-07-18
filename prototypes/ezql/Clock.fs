@@ -23,6 +23,7 @@ type VirtualClock() =
         | Some (time, action) -> 
             nextEvent <- None
             now <- time
+            //printfn "%d" now.Second
             action()
         | None -> failwithf "nextEvent was None"
         
