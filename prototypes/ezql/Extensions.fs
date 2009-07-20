@@ -47,22 +47,13 @@ module List =
     
     let (first, n11, n12), (ahead, n21, n22) = helper list1 list2 0 0
     if first.Length >= ahead.Length then (first, n11, n12) else (ahead, n21, n22)
-        
 
-  
-  (*
-  (defun lcs-list (list-1 list-2 &key (test #'eql))
-  "Find the longest common subsequence of LIST-1 and LIST-2 using TEST."
-  (cond
-    ((null list-1) nil)
-    ((null list-2) nil)
-    ((funcall test (first list-1) (first list-2))
-       (cons (first list-1) (lcs-list (rest list-1) (rest list-2) :test test)))
-    (t (let ((lcs-1 (lcs-list list-1 (rest list-2) :test test))
-             (lcs-2 (lcs-list (rest list-1) list-2 :test test)))
-         (if (> (length lcs-1) (length lcs-2))
-           lcs-1
-           lcs-2))))) *)
+    
+  let rec remove elt list =
+    match list with
+    | x::xs when x = elt -> remove elt xs
+    | x::xs -> x::(remove elt xs)
+    | [] -> []
 
 
 module String =

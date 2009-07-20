@@ -12,7 +12,7 @@ and RemainingMap = Map<string, TypeContext -> TypeContext>
 
 let matchingEntity fields types =
   Map.tryPick (fun k v -> match v with
-                          | TyType (_, fields', _) when fields = fields' -> Some k
+                          | TyType (_, fields', _, _) when fields = fields' -> Some k
                           | _ -> None)
               types
 
@@ -60,16 +60,16 @@ let rec types (env:TypeContext) = function
       match typeOf env source with
       | TyStream (TyRecord fields) as streamType ->
           let autoGenFields = fields.Add("events", streamType)
-          let members1 =
-            List.fold (fun (acc:TypeContext) assoc -> 
+          let members1, belongsTo =
+            List.fold (fun (acc:TypeContext, belongsTo) assoc -> 
                          match assoc with
                          | BelongsTo (Symbol entity) ->
                              let entityName = String.capitalize entity
-                             acc.Add(entity, TyRef (TyAlias entityName))
+                             acc.Add(entity, TyRef (TyAlias entityName)), entityName::belongsTo
                          | HasMany (Symbol entity) ->
                              let entityName = String.capitalize entity |> String.singular
-                             acc.Add(entity, TyDict (TyRef (TyAlias entityName))))
-                      autoGenFields assocs
+                             acc.Add(entity, TyDict (TyRef (TyAlias entityName))), belongsTo)
+                      (autoGenFields, []) assocs
 
           let members2 = List.fold (fun (acc:TypeContext) (Member (Identifier self, Identifier name, expr, listenersOpt)) ->
                                       let selfType = TyRecord acc
@@ -78,14 +78,14 @@ let rec types (env:TypeContext) = function
                                       
                                       match listenersOpt with
                                       | Some listeners ->
-                                          let selfType' = TyType (ename, (acc.Add(name, fieldType)), uniqueId)
+                                          let selfType' = TyType (ename, (acc.Add(name, fieldType)), uniqueId, [])
                                           let env' = env.Add(self, selfType')
                                           checkListeners env' name fieldType listeners
                                       | None -> ()
                                       Map.add name fieldType acc)
                                    members1 members
                                    
-          let entityType = TyType (ename, members2, uniqueId)
+          let entityType = TyType (ename, members2, uniqueId, belongsTo)
           env.Add(ename, entityType).Add(sprintf "$%s_all" ename, TyDict entityType)
       | _ -> failwithf "The source of the entity '%s' is not a stream" ename
 
@@ -128,9 +128,9 @@ and typeOf env expr =
           match Map.tryFind name fields with
           | Some t -> t
           | None -> failwithf "The record doesn't have field '%s'" name
-      | TyAlias t | TyType (t, _, _) ->
+      | TyAlias t | TyType (t, _, _, _) ->
           let fields = match resolveAlias env targetType with
-                       | TyType (_, fields, _) -> fields
+                       | TyType (_, fields, _, _) -> fields
                        | _ -> failwithf "The entity is not a TyType?!"
           if name = "all"
             then TyDict targetType
@@ -139,7 +139,7 @@ and typeOf env expr =
                  | None -> failwithf "The entity doesn't have field '%s'" name
       | TyFixed (TyRef t, fixedExpr) ->
           let fields = match resolveAlias env t with
-                       | TyType (_, fields, _) -> fields
+                       | TyType (_, fields, _, _) -> fields
                        | _ -> failwithf "The entity is not a TyType?!"
           match Map.tryFind name fields with
           | Some t -> TyFixed (t, MemberAccess (fixedExpr, Identifier name))
@@ -234,9 +234,9 @@ and typeOfMethodCall env target name paramExps =
           match typ, paramExps with
           | TyRef typ', [SymbolExpr (Symbol field)] ->
               match resolveAlias env typ' with
-              | TyType (_, fields, _) when Map.contains field fields -> fields.[field]
+              | TyType (_, fields, _, _) when Map.contains field fields -> fields.[field]
               | _ -> failwithf "The alias does not refer to a TyType"
-          | (TyType (_, fields, _) | TyRecord fields | TyStream (TyRecord fields)), [SymbolExpr (Symbol field)]
+          | (TyType (_, fields, _, _) | TyRecord fields | TyStream (TyRecord fields)), [SymbolExpr (Symbol field)]
               when Map.contains field fields -> fields.[field]
           | _, [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps         
@@ -351,7 +351,7 @@ and typeOfFuncCall env expr =
       TyUnit
   | FuncCall (Id (Identifier "$ref"), [expr]) ->
       match typeOf env expr with
-      | TyType (name, _, _) -> TyRef (TyAlias name)
+      | TyType (name, _, _, _) -> TyRef (TyAlias name)
       | other -> TyRef other
   | FuncCall (Id (Identifier "listenN"), param's) ->
       match param's with

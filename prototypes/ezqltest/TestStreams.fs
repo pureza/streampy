@@ -5,30 +5,30 @@ open Test
 
 [<TestCase ("streams/where.ez")>]
 let test_streamsWhere (test:Test) =
-  let everything = [Added 2 "{ room_id = 1, temperature = 25 }" (At  2)
-                    Added 4 "{ room_id = 3, temperature = 45 }" (At  4)
-                    Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
-                    Added 6 "{ room_id = 2, temperature = 50 }" (At  6)
-                    Added 7 "{ room_id = 3, temperature = 30 }" (At  7)
-                    Added 9 "{ room_id = 1, temperature = 23 }" (At  9)]
+  let everything = [Added "{ room_id = 1, temperature = 25, timestamp = 2 }" (At  2)
+                    Added "{ room_id = 3, temperature = 45, timestamp = 4 }" (At  4)
+                    Added "{ room_id = 1, temperature = 25, timestamp = 5 }" (At  5)
+                    Added "{ room_id = 2, temperature = 50, timestamp = 6 }" (At  6)
+                    Added "{ room_id = 3, temperature = 30, timestamp = 7 }" (At  7)
+                    Added "{ room_id = 1, temperature = 23, timestamp = 9 }" (At  9)]
 
   test.AssertThat (In "hot_readings"
-                    [Added 4 "{ room_id = 3, temperature = 45 }" (At  4)
-                     Added 6 "{ room_id = 2, temperature = 50 }" (At  6)]) 
+                    [Added "{ room_id = 3, temperature = 45, timestamp = 4 }" (At  4)
+                     Added "{ room_id = 2, temperature = 50, timestamp = 6 }" (At  6)]) 
 
   test.AssertThat (In "all_readings" everything) 
   
   test.AssertThat (In "all_readings2" everything) 
 
   test.AssertThat (In "wet_readings"
-                    [Added 2 "{ room_id = 1, temperature = 25 }" (At  2)
-                     Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
-                     Added 9 "{ room_id = 1, temperature = 23 }" (At  9)]) 
+                    [Added "{ room_id = 1, temperature = 25, timestamp = 2 }" (At  2)
+                     Added "{ room_id = 1, temperature = 25, timestamp = 5 }" (At  5)
+                     Added "{ room_id = 1, temperature = 23, timestamp = 9 }" (At  9)]) 
                      
   test.AssertThat (In "hot_wet_readings"
-                    [Added 2 "{ room_id = 1, temperature = 25 }" (At  2)
-                     Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
-                     Added 9 "{ room_id = 1, temperature = 23 }" (At  9)]) 
+                    [Added "{ room_id = 1, temperature = 25, timestamp = 2 }" (At  2)
+                     Added "{ room_id = 1, temperature = 25, timestamp = 5 }" (At  5)
+                     Added "{ room_id = 1, temperature = 23, timestamp = 9 }" (At  9)]) 
 
   test.AssertThat (In "lastTemp"
                     [Set "25" (At  2)
@@ -39,11 +39,11 @@ let test_streamsWhere (test:Test) =
                      Set "23" (At  9)])
                      
   test.AssertThat (In "hot_or_wet"
-                     [Added 2 "{ room_id = 3, temperature = null, humidity = 90 }" (At  2)
-                      Added 4 "{ room_id = 3, temperature = 45, humidity = null }" (At  4)
-                      Added 5 "{ room_id = 3, temperature = null, humidity = 91 }" (At  5)
-                      Added 6 "{ room_id = 2, temperature = 50, humidity = null }" (At  6)
-                      Added 8 "{ room_id = 3, temperature = null, humidity = 92 }" (At  8)]) 
+                     [Added "{ room_id = 3, temperature = null, humidity = 90, timestamp = 2 }" (At  2)
+                      Added "{ room_id = 3, temperature = 45, humidity = null, timestamp = 4 }" (At  4)
+                      Added "{ room_id = 3, temperature = null, humidity = 91, timestamp = 5 }" (At  5)
+                      Added "{ room_id = 2, temperature = 50, humidity = null, timestamp = 6 }" (At  6)
+                      Added "{ room_id = 3, temperature = null, humidity = 92, timestamp = 8 }" (At  8)]) 
                      
   test.AssertThat (In "minTempRoom1"
                     [Set "25" (At  2)])
@@ -76,18 +76,18 @@ let test_streamsWhere (test:Test) =
                      SetKey "3" "30" (At  7)])                  
 
   test.AssertThat (In "where_with_listenN"
-                    [Added 5 "{ room_id = 1, temperature = 25 }" (At  5)
-                     Added 6 "{ room_id = 2, temperature = 50 }" (At  6)
-                     Added 7 "{ room_id = 3, temperature = 30 }" (At  7)])
+                    [Added "{ room_id = 1, temperature = 25, timestamp = 5 }" (At  5)
+                     Added "{ room_id = 2, temperature = 50, timestamp = 6 }" (At  6)
+                     Added "{ room_id = 3, temperature = 30, timestamp = 7 }" (At  7)])
 
 
   test.AssertThat (In "hotTemps_3secsb"
-                     [Added   4 "{ room_id = 3, temperature = 45 }" (At  4)
-                      Added   6 "{ room_id = 2, temperature = 50 }" (At  6)
-                      Added   7 "{ room_id = 3, temperature = 30 }" (At  7)
-                      Expired 4 "{ room_id = 3, temperature = 45 }" (At  7)
-                      Expired 6 "{ room_id = 2, temperature = 50 }" (At  9)
-                      Expired 7 "{ room_id = 3, temperature = 30 }" (At 10)])
+                     [Added   "{ room_id = 3, temperature = 45, timestamp = 4 }" (At  4)
+                      Added   "{ room_id = 2, temperature = 50, timestamp = 6 }" (At  6)
+                      Added   "{ room_id = 3, temperature = 30, timestamp = 7 }" (At  7)
+                      Expired "{ room_id = 3, temperature = 45, timestamp = 4 }" (At  7)
+                      Expired "{ room_id = 2, temperature = 50, timestamp = 6 }" (At  9)
+                      Expired "{ room_id = 3, temperature = 30, timestamp = 7 }" (At 10)])
 
   test.AssertThat (In "temps_3secsX2b"
                       [Set "90"   (At  4)
@@ -124,57 +124,57 @@ let test_streamsWhere (test:Test) =
 [<TestCase ("streams/select.ez")>]
 let test_streamsSelect (test:Test) =
   test.AssertThat (In "temp_readingsX2"
-                    [Added 2 "{ temperatureX2 =  50 }" (At  2)
-                     Added 4 "{ temperatureX2 =  90 }" (At  4)
-                     Added 5 "{ temperatureX2 =  50 }" (At  5)
-                     Added 6 "{ temperatureX2 = 100 }" (At  6)
-                     Added 7 "{ temperatureX2 =  60 }" (At  7)
-                     Added 9 "{ temperatureX2 =  46 }" (At  9)])
+                    [Added "{ temperatureX2 =  50, timestamp = 2 }" (At  2)
+                     Added "{ temperatureX2 =  90, timestamp = 4 }" (At  4)
+                     Added "{ temperatureX2 =  50, timestamp = 5 }" (At  5)
+                     Added "{ temperatureX2 = 100, timestamp = 6 }" (At  6)
+                     Added "{ temperatureX2 =  60, timestamp = 7 }" (At  7)
+                     Added "{ temperatureX2 =  46, timestamp = 9 }" (At  9)])
 
   test.AssertThat (In "just10"
-                    [Added 2 "{ a = 10 }" (At  2)
-                     Added 4 "{ a = 10 }" (At  4)
-                     Added 5 "{ a = 10 }" (At  5)
-                     Added 6 "{ a = 10 }" (At  6)
-                     Added 7 "{ a = 10 }" (At  7)
-                     Added 9 "{ a = 10 }" (At  9)])
+                    [Added "{ a = 10, timestamp = 2 }" (At  2)
+                     Added "{ a = 10, timestamp = 4 }" (At  4)
+                     Added "{ a = 10, timestamp = 5 }" (At  5)
+                     Added "{ a = 10, timestamp = 6 }" (At  6)
+                     Added "{ a = 10, timestamp = 7 }" (At  7)
+                     Added "{ a = 10, timestamp = 9 }" (At  9)])
 
   test.AssertThat (In "combination"
-                    [Added 2 "{ a =  50, b = 10, c = 90 }" (At  2)
-                     Added 4 "{ a =  90, b = 10, c = 81 }" (At  4)
-                     Added 5 "{ a =  50, b = 10, c = 91 }" (At  5)
-                     Added 6 "{ a = 100, b = 10, c = 72 }" (At  6)
-                     Added 7 "{ a =  60, b = 10, c = 82 }" (At  7)
-                     Added 9 "{ a =  46, b = 10, c = 92 }" (At  9)])
+                    [Added "{ a =  50, b = 10, c = 90, timestamp = 2 }" (At  2)
+                     Added "{ a =  90, b = 10, c = 81, timestamp = 4 }" (At  4)
+                     Added "{ a =  50, b = 10, c = 91, timestamp = 5 }" (At  5)
+                     Added "{ a = 100, b = 10, c = 72, timestamp = 6 }" (At  6)
+                     Added "{ a =  60, b = 10, c = 82, timestamp = 7 }" (At  7)
+                     Added "{ a =  46, b = 10, c = 92, timestamp = 9 }" (At  9)])
                      
   test.AssertThat (In "complex"
-                    [Added 4 "{ a =  90, b = 10, c = 81 }" (At  4)
-                     Added 7 "{ a =  60, b = 10, c = 82 }" (At  7)])
+                    [Added "{ a =  90, b = 10, c = 81, timestamp = 4 }" (At  4)
+                     Added "{ a =  60, b = 10, c = 82, timestamp = 7 }" (At  7)])
 
   test.AssertThat (In "temp_readingsX4"
-                    [Added 2 "{ temperatureX4 = 100 }" (At  2)
-                     Added 4 "{ temperatureX4 = 180 }" (At  4)
-                     Added 5 "{ temperatureX4 = 100 }" (At  5)
-                     Added 6 "{ temperatureX4 = 200 }" (At  6)
-                     Added 7 "{ temperatureX4 = 120 }" (At  7)
-                     Added 9 "{ temperatureX4 =  92 }" (At  9)])
+                    [Added "{ temperatureX4 = 100, timestamp = 2 }" (At  2)
+                     Added "{ temperatureX4 = 180, timestamp = 4 }" (At  4)
+                     Added "{ temperatureX4 = 100, timestamp = 5 }" (At  5)
+                     Added "{ temperatureX4 = 200, timestamp = 6 }" (At  6)
+                     Added "{ temperatureX4 = 120, timestamp = 7 }" (At  7)
+                     Added "{ temperatureX4 =  92, timestamp = 9 }" (At  9)])
 
   test.AssertThat (In "mergedTempX2"
-                    [Added 0 "{ tempX2 = null }" (At  0)
-                     Added 1 "{ tempX2 = null }" (At  1)
-                     Added 2 "{ tempX2 =   50 }" (At  2)
-                     Added 2 "{ tempX2 = null }" (At  2)
-                     Added 3 "{ tempX2 = null }" (At  3)
-                     Added 4 "{ tempX2 =   90 }" (At  4)
-                     Added 4 "{ tempX2 = null }" (At  4)
-                     Added 5 "{ tempX2 =   50 }" (At  5)
-                     Added 5 "{ tempX2 = null }" (At  5)
-                     Added 6 "{ tempX2 =  100 }" (At  6)
-                     Added 6 "{ tempX2 = null }" (At  6)
-                     Added 7 "{ tempX2 =   60 }" (At  7)
-                     Added 7 "{ tempX2 = null }" (At  7)
-                     Added 8 "{ tempX2 = null }" (At  8)
-                     Added 9 "{ tempX2 =   46 }" (At  9)])
+                    [Added "{ tempX2 = null, timestamp = 0 }" (At  0)
+                     Added "{ tempX2 = null, timestamp = 1 }" (At  1)
+                     Added "{ tempX2 =   50, timestamp = 2 }" (At  2)
+                     Added "{ tempX2 = null, timestamp = 2 }" (At  2)
+                     Added "{ tempX2 = null, timestamp = 3 }" (At  3)
+                     Added "{ tempX2 =   90, timestamp = 4 }" (At  4)
+                     Added "{ tempX2 = null, timestamp = 4 }" (At  4)
+                     Added "{ tempX2 =   50, timestamp = 5 }" (At  5)
+                     Added "{ tempX2 = null, timestamp = 5 }" (At  5)
+                     Added "{ tempX2 =  100, timestamp = 6 }" (At  6)
+                     Added "{ tempX2 = null, timestamp = 6 }" (At  6)
+                     Added "{ tempX2 =   60, timestamp = 7 }" (At  7)
+                     Added "{ tempX2 = null, timestamp = 7 }" (At  7)
+                     Added "{ tempX2 = null, timestamp = 8 }" (At  8)
+                     Added "{ tempX2 =   46, timestamp = 9 }" (At  9)])
 
   test.AssertThat (In "minTempRoom1"
                     [Set "50" (At  2)
@@ -201,18 +201,18 @@ let test_streamsSelect (test:Test) =
 
 
   test.AssertThat (In "tempsX8_3secs"
-                     [Added   2 "{ tempX2 =  50 }" (At  2)
-                      Added   4 "{ tempX2 =  90 }" (At  4)
-                      Added   5 "{ tempX2 =  50 }" (At  5)
-                      Expired 2 "{ tempX2 =  50 }" (At  5)
-                      Added   6 "{ tempX2 = 100 }" (At  6)
-                      Added   7 "{ tempX2 =  60 }" (At  7)
-                      Expired 4 "{ tempX2 =  90 }" (At  7)
-                      Expired 5 "{ tempX2 =  50 }" (At  8)
-                      Added   9 "{ tempX2 =  46 }" (At  9)
-                      Expired 6 "{ tempX2 = 100 }" (At  9)
-                      Expired 7 "{ tempX2 =  60 }" (At 10)
-                      Expired 9 "{ tempX2 =  46 }" (At 12)])
+                     [Added   "{ tempX2 =  50, timestamp = 2 }" (At  2)
+                      Added   "{ tempX2 =  90, timestamp = 4 }" (At  4)
+                      Added   "{ tempX2 =  50, timestamp = 5 }" (At  5)
+                      Expired "{ tempX2 =  50, timestamp = 2 }" (At  5)
+                      Added   "{ tempX2 = 100, timestamp = 6 }" (At  6)
+                      Added   "{ tempX2 =  60, timestamp = 7 }" (At  7)
+                      Expired "{ tempX2 =  90, timestamp = 4 }" (At  7)
+                      Expired "{ tempX2 =  50, timestamp = 5 }" (At  8)
+                      Added   "{ tempX2 =  46, timestamp = 9 }" (At  9)
+                      Expired "{ tempX2 = 100, timestamp = 6 }" (At  9)
+                      Expired "{ tempX2 =  60, timestamp = 7 }" (At 10)
+                      Expired "{ tempX2 =  46, timestamp = 9 }" (At 12)])
                       
   test.AssertThat (In "minTempRoom1c"
                      [Set   "50" (At  2)
@@ -249,12 +249,12 @@ let test_streamsSelect (test:Test) =
                      SetKey "1" "null" (At 12)])
                             
   test.AssertThat (In "select_with_listenN"
-                    [Added 2 "{ a = 175 +  50 }" (At  2)
-                     Added 4 "{ a = 291 +  90 }" (At  4)
-                     Added 5 "{ a = 316 +  50 }" (At  5)
-                     Added 6 "{ a = 366 + 100 }" (At  6)
-                     Added 7 "{ a = 396 +  60 }" (At  7)
-                     Added 9 "{ a = 511 +  46 }" (At  9)])
+                    [Added "{ a = 175 +  50, timestamp = 2 }" (At  2)
+                     Added "{ a = 291 +  90, timestamp = 4 }" (At  4)
+                     Added "{ a = 316 +  50, timestamp = 5 }" (At  5)
+                     Added "{ a = 366 + 100, timestamp = 6 }" (At  6)
+                     Added "{ a = 396 +  60, timestamp = 7 }" (At  7)
+                     Added "{ a = 511 +  46, timestamp = 9 }" (At  9)])
 
 
 [<TestCase ("streams/groupby.ez")>]

@@ -333,7 +333,7 @@ let rec transFixedAccesses (varExprs:Map<string, expr>) (types:TypeContext) stmt
             | TyRef (TyAlias entityType) as typ ->
                 let entityType', entityIdField =
                   match types.[entityType] with
-                  | TyType (name, _, id) -> name, id
+                  | TyType (name, _, id, _) -> name, id
                   | _ -> failwithf "The referenced entity is not a TyType? Can't happen."
                 let typeDict = entityDict entityType
                 let memberAccess = List.fold (fun acc attr -> MemberAccess (acc, Identifier attr)) (Id (Identifier "$o")) rest
@@ -350,7 +350,7 @@ let rec transFixedAccesses (varExprs:Map<string, expr>) (types:TypeContext) stmt
             | TyRef (TyAlias entityType) as typ ->
                 let entityType', entityIdField =
                   match types.[entityType] with
-                  | TyType (name, _, id) -> name, id
+                  | TyType (name, _, id, _) -> name, id
                   | _ -> failwithf "The referenced entity is not a TyType? Can't happen."
                 let typeDict = entityDict entityType
                 let memberAccess = List.fold (fun acc attr -> MemberAccess (acc, Identifier attr)) (Id (Identifier "$o")) rest

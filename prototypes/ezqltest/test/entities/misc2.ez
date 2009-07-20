@@ -1,10 +1,7 @@
 temp_readings = stream (room_id:int, temperature:int);;
+hum_readings = stream (room_id:int, humidity:int);;
 entries = stream (room_id:int, product_id:int);;
 
-
-entity Room =
-  createFrom(temp_readings, :room_id)
-  hasMany :products;;
 
 entity Product =
   createFrom (entries, :product_id)
@@ -12,20 +9,29 @@ entity Product =
 
 
 
-roomsPerProducts2 = Room.all
-                      .select (fun r -> r.products);;
+entity Room =
+  createFrom(temp_readings, :room_id);;
 
 
-when (roomsPerProducts2.changes(), fun _ -> print (roomsPerProducts2));;
+
+
+
 
 
 #! temp_readings
 Timestamp, room_id, temperature
 2,               1,      25
-3,               3,      45  # Out-of-order keys (1, 3, 2 instead of 1, 2, 3)
+6,               2,      50
 
 
 #! entries
 Timestamp, room_id, product_id
+3,               1,          1
 4,               1,          2
-9,               3,          2
+6,               2,          2
+
+
+
+#! hum_readings
+Timestamp, room_id, humidity
+1,         1, 72

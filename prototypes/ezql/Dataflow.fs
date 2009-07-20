@@ -201,7 +201,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)      
-      | TyType (_, fields, _) | TyRecord fields when isContinuous types target' ->
+      | TyType (_, fields, _, _) | TyRecord fields when isContinuous types target' ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
@@ -410,7 +410,7 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
           // Get the type of the referenced object and create a function that
           // will return its unique id
           let entity, refType = match typeOf types innerExpr with
-                                | TyType (name, _, id) -> name, id
+                                | TyType (name, _, id, _) -> name, id
                                 | _ -> failwithf "Only entities may be referenced"
           let getId = fun entity -> match entity with
                                     | VRecord m -> m.[VString refType]
@@ -501,18 +501,37 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
     let argType = types.[arg]
     
     // What to do when we find the "true nature" of the forward dependency
-    let action env types (graph:DataflowGraph) =
-      let deps, g', opResult, subExprBuilder =
+    let action theDep env types (graph:DataflowGraph) =
+      let deps, (g':DataflowGraph), opResult, subExprBuilder =
         match dataflowSubExpr env types graph with
         | deps, g', _, Some (opResult, subExprBuilder) -> deps, g', opResult, subExprBuilder
         | _ -> failwithf "dataflowSubExpr returned unexpected results."
 
       // Modify the node and add it to the graph
-      let (p, uid, info, s) = graph.[nodeUid]
+      let (p, uid, info, s) = g'.[nodeUid]
       let n = { info with MakeOper = opMaker subExprBuilder }
-     
-      let g'' = Graph.add (p, n.Uid, n, s) g'
-      g''
+      
+      let theDepUid = env.[theDep].Uid
+      
+      // Correct the order of dependencies between belongsTo/hasMany associations.
+      // The entity on the hasMany side should be an ancestor of the belongsTo.
+      match n.Type with
+      | TyDict (TyType (_, _, _, [])) ->
+          // n is on the hasMany side
+          Graph.add (p, n.Uid, n, s) g'
+      | TyDict (TyType (_, _, _, x::xs)) ->  
+          // n is on the belongsTo side
+          let g' = Graph.add (theDepUid::p, n.Uid, { n with ParentUids = n.ParentUids @ [theDepUid] }, s) graph
+         
+          // Now remove n from the hasMany ancestors, if it's there.
+          let (p, uid, info, s), g2 =
+            match Graph.extract theDepUid g' with
+            | Some (ctx), g'' -> ctx, g''
+            | _ -> failwithf "Can't happen because %A is supposed to be on the graph" theDepUid
+           
+          Graph.add (List.remove n.Uid p, uid, { info with ParentUids = List.remove n.Uid info.ParentUids }, s) g2
+      | _ -> failwithf "Won't happen because all forward dependencies are related to entities"
+                       
       
     // Remove a field from an entity dictionary declaration
     // Remember that these declarations have the following form:
@@ -534,7 +553,7 @@ and dataflowDictOps (env:NodeContext) (types:TypeContext) graph target paramExps
     retry (fun () -> dataflowE env types graph body)
           (fun err -> match err with
                       | IncompleteLet ((field, env, types, graph, letBody), causeId) ->
-                          theForwardDeps.Add(causeId, action)
+                          theForwardDeps.Add(causeId, action causeId)
                           
                           // Remove the missing field from the declaration and proceed
                           let letBody' = removeField field letBody

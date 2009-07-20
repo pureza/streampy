@@ -57,6 +57,54 @@ let test_dictsWhere (test:Test) =
                        DelKey "2"      (At 9)
                        DelKey "3"      (At 9)])
 
+    test.AssertThat (In "a"
+                      [SetKey "1" "25" (At 6)
+                       SetKey "2" "50" (At 6)
+                       SetKey "3" "45" (At 6)
+                       SetKey "2" "50" (At 6)
+                       DelKey "1"      (At 7)
+                       DelKey "2"      (At 7)
+                       DelKey "3"      (At 7)])
+
+    test.AssertThat (In "b"
+                      [SetKey "1" "25" (At 2)
+                       DelKey "1"      (At 4)
+                       SetKey "1" "25" (At 5)
+                       SetKey "3" "45" (At 5)
+                       DelKey "1"      (At 6)
+                       DelKey "3"      (At 6)])
+
+    test.AssertThat (In "c"
+                      [SetKey "1" "3" (At 9)])
+
+    test.AssertThat (In "d"
+                      [SetKey "1" "5" (At 9)
+                       SetKey "2" "5" (At 9)
+                       SetKey "3" "5" (At 9)])
+
+    test.AssertThat (In "e"
+                      [SetKey "1" "{ a = 4 }" (At 3)
+                       DelKey "1"             (At 4)
+                       SetKey "1" "{ a = 7 }" (At 6)
+                       SetKey "2" "{ a = 7 }" (At 6)
+                       SetKey "3" "{ a = 7 }" (At 6)
+                       DelKey "1"             (At 7)
+                       DelKey "2"             (At 7)
+                       DelKey "3"             (At 7)])
+
+    test.AssertThat (In "f"
+                      [Set "{ a = 4 }" (At 3)
+                       Set      "null" (At 4)
+                       Set "{ a = 7 }" (At 6) 
+                       Set      "null" (At 7)])
+
+    test.AssertThat (In "g"
+                      [Set    "4" (At 3)
+                       Set "null" (At 4)
+                       Set    "7" (At 6) 
+                       Set "null" (At 7)])
+                       
+
 [<TestCase ("dicts/select.ez")>]
 let test_dictsSelect (test:Test) =
     test.AssertThat (In "tempsPerRoomX2"

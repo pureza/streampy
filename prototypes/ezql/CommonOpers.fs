@@ -251,17 +251,23 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
 
   let recordOp = Operator.Build(uid, prio,
                    (fun (op, allChanges) ->
-                      let recordChanges =
-                        allChanges
-                          |> List.mapi (fun i changes ->
-                                          match changes with
-                                          | x::xs -> let field, parent = fields.[i]
-                                                     result := (!result).Add(VString field, parent.Value)
-                                                     [RecordDiff (VString field, changes)]
-                                          | _ -> [])
-                          |> List.concat
-                      op.Value <- VRecord !result
-                      SpreadChildren recordChanges),
+                      if op.Value = VNull
+                        then for field, parent in fields do
+                               result := (!result).Add(VString field, parent.Value)
+                             op.Value <- VRecord !result
+                             SpreadChildren [Added op.Value]
+                        else let recordChanges =
+                               allChanges
+                                 |> List.mapi (fun i changes ->
+                                                 match changes with
+                                                 | x::xs -> let field, parent = fields.[i]
+                                                            result := (!result).Add(VString field, incorporateChanges changes (!result).[VString field])
+                                                            //result := (!result).Add(VString field, parent.Value)
+                                                            [RecordDiff (VString field, changes)]
+                                                 | _ -> [])
+                                 |> List.concat
+                             op.Value <- VRecord !result
+                             SpreadChildren recordChanges),
                    parents, context)
 
   for field, op in fields do
@@ -367,13 +373,18 @@ let makeIndexer index (uid, prio, parents, context) =
                    
                    match keyChanges with
                    | [] -> Nothing
+                   | [Added VNull] -> op.Value <- VNull
+                                      SpreadChildren keyChanges
                    | _ -> op.Value <- dict.[key]
                           SpreadChildren keyChanges
                | _ -> // The index changed: return [Added <new value>]
                       if Map.contains key dict
                         then op.Value <- dict.[key]
                              SpreadChildren [Added op.Value]
-                        else Nothing         
+                        else if op.Value <> VNull
+                               then op.Value <- VNull
+                                    SpreadChildren [Added VNull]
+                               else Nothing         
             
 
   Operator.Build(uid, prio, eval, parents, context)
@@ -396,18 +407,16 @@ let makeProjector field (uid, prio, parents, context) =
                let fieldChanges =
                  match List.hd inputs with
                  | [Added (VRecord record)] -> Some [Added record.[fieldv]]
+                 | [Added VNull] -> Some [Added VNull]
                  | changes -> List.tryPick (function
                                               | RecordDiff (field', chg) when fieldv = field' -> Some chg
                                               | _ -> None)
                                            changes
-               let record = match op.Parents.[0].Value with
-                            | VRecord r -> r
-                            | _ -> failwithf "The parent of the projector is not a record?!"
-               let newValue = record.[fieldv]
+
                match fieldChanges with
-               | Some changes -> op.Value <- newValue
+               | Some changes -> op.Value <- incorporateChanges changes op.Value
                                  SpreadChildren changes
-               | None -> Nothing
+               | _ -> Nothing
 
   Operator.Build(uid, prio, eval, parents, context)
   

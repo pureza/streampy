@@ -34,25 +34,26 @@ let matchFact (fact:diff) (ocurred:diff) =
   | _ when fact = ocurred -> true
   | _ -> false
 
-let AddedOrExpired factMaker eventTimestamp expr factTimestamp =
+let AddedOrExpired factMaker expr factTimestamp =
   let value = tryEval expr
-  match value with
-  | VRecord fields -> 
-      let fields' = Map.fold_left (fun acc k v -> Map.add k v acc) Map.empty fields
-      let ev = VRecord (fields'.Add(VString "timestamp", VInt eventTimestamp))
-      (factTimestamp, factMaker ev)
-  | _ -> (factTimestamp, factMaker value)
+//  match value with
+//  | VRecord fields -> 
+      //let fields' = Map.fold_left (fun acc k v -> Map.add k v acc) Map.empty fields
+      //let ev = VRecord (fields'.Add(VString "timestamp", VInt eventTimestamp))
+//      (factTimestamp, factMaker ev)
+//  | _ -> (factTimestamp, factMaker value)
+  (factTimestamp, factMaker value)
 
-let Added evTime expr factTime = AddedOrExpired (fact.Diff << diff.Added) evTime expr factTime
-let Expired evTime expr factTime = AddedOrExpired (fact.Diff << diff.Expired) evTime expr factTime
+let Added expr factTime = AddedOrExpired (fact.Diff << diff.Added) expr factTime
+let Expired expr factTime = AddedOrExpired (fact.Diff << diff.Expired) expr factTime
 
 //let ExpiredAll (timestamp:DateTime) = (timestamp, fact.AllExpired)
 
 let Set expr (timestamp:DateTime) =
-    Added (timestamp.TotalSeconds) expr timestamp
+    Added expr timestamp
 
 let Del eventTimestamp expr (timestamp:DateTime) =
-    Expired eventTimestamp (sprintf "{ :value = %s }" expr) timestamp
+    Expired (sprintf "{ :value = %s }" expr) timestamp
 
 let SetKeyRaw keyExpr value timestamp =
   let key = tryEval keyExpr

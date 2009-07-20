@@ -2,6 +2,7 @@ temp_readings = stream (room_id:int, temperature:int);;
 hum_readings = stream (room_id:int, humidity:int);;
 entries = stream (room_id:int, product_id:int);;
 
+
 entity Product =
   createFrom (entries, :product_id)
   belongsTo :room;;
@@ -15,6 +16,8 @@ entity Room =
 
   // How many products are in each room; test aggregates on dictionaries.
   member self.prodCount = self.products.select(fun p -> p.product_id).values().count();;
+
+
 
 productIdsPerRoom = Room.all.select (fun r -> r.productIds);;
 

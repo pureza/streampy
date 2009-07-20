@@ -33,6 +33,39 @@ tempGTHalfHumidity = tempsPerRoom.where(fun t -> t * 2 > lastHum);;
 // Depends only on an external variable
 lastHoterThan25 = tempsPerRoom.where(fun t -> lastTemp > 25);;
 
+a = tempsPerRoom
+      .where (fun t -> lastTemp > 25)    // Everything starts at false
+      .where (fun t -> lastTemp >= 50);; // When (most) entries become true, they remain hidden here.
+
+
+b = tempsPerRoom
+      .where (fun t -> lastTemp == 25) // Starts at true
+      .where (fun t -> true);;         // Test the case when the entry is visible and is hidden by the parent.
+
+// Test if changes pass between hidden entries.
+c = temp_readings
+      .groupby (:room_id, fun g -> g)
+      .where (fun s -> s.last(:temperature) == 23)
+      .where (fun s -> true)
+      .select (fun s -> s.count(:temperature));;
+
+d = temp_readings.groupby(:room_id, fun g -> 5)
+      .where (fun t -> lastTemp == 23)
+      .where (fun t -> lastTemp <= 30)
+      .select (fun t -> t.avg());;
+
+e = tempsPerRoom
+      .where (fun t -> lastHum < 80)
+      .select (fun t -> { a = lastHum.count() });;
+
+
+// Test how the indexer reacts to entries being hidden
+f = e[e.values().count()];;
+
+// Test how the projector reacts to entries being hidden
+g = e[e.values().count()].a;;
+
+
 #! hum_readings
 Timestamp, room_id, humidity
 0,         1, 70

@@ -91,7 +91,7 @@ and Type =
   | TyString
   | TyNull
   | TySymbol
-  | TyType of string * Map<string, Type> * string (* name * fields * unique id field *)
+  | TyType of string * Map<string, Type> * string * string list (* name * fields * unique id field * belongsTo entities *)
   | TyArrow of Type * Type
   | TyAlias of string
   | TyRecord of Map<string, Type>

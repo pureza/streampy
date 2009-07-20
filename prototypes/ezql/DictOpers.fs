@@ -266,7 +266,8 @@ let makeDictWhere predicateBuilder (uid, prio, parents, context) =
                                      | [DictDiff (key, [Added (VBool false)])] ->
                                          let change' = match Map.tryFind key acc with
                                                        | Some (HidKeyDiff _ as change) -> None // Invisible in the parent, invisible here
-                                                       | Some (VisKeyDiff (key, innerChanges)) -> Some (HidKeyDiff (key, true, innerChanges)) // Was visible but now is hidden
+                                                       // This never happens because the code for changesMap1 already handles this case
+                                                       //| Some (VisKeyDiff (key, innerChanges)) -> printfn "ola"; Some (HidKeyDiff (key, true, innerChanges)) // Was visible but now is hidden
                                                        | Some _ -> failwithf "dict.where: can't happen"
                                                        | None -> // The value itself didn't change, only the predicate did.
                                                                  // If we are already hiding the entry, don't do anything. Otherwise, make it invisible.
@@ -352,6 +353,7 @@ let makeDictSelect projectorBuilder (uid, prio, parents, context) =
                                                                     then if Map.contains key !visible // Visibility changed
                                                                            then assert whenHidden
                                                                                 Some (key, HidKeyDiff (key, whenHidden, []))
+                                                                                // Can't happen: the entry is hidden, the projector didn't change but the parent did?
                                                                            else None // Was hidden, stays hidden, the projector didn't change: nothing to do
                                                                     else Some (key, HidKeyDiff (key, whenHidden, [Added (subGroupResultOp key projectors).Value]))
                                                     | _ -> failwithf "dict.select: Invalid changes coming from the parent: %A" change
