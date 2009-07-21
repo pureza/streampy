@@ -25,7 +25,7 @@ let rec visit expr visitor =
   | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)
   | RecordWith (source, newFields) -> RecordWith (visitor source, List.map (fun (n, e) -> (n, visitor e)) newFields)
   | Time (length, unit) -> Time (visitor length, unit)
-  | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ | Null -> expr
+  | Id _ | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Null -> expr
   
   
 let rec visitWithTypes (types:TypeContext) expr visitor =
@@ -83,7 +83,7 @@ let rec visitWithTypes (types:TypeContext) expr visitor =
   | Record fields -> Record (List.map (fun (n, e) -> (n, visitor types e)) fields)
   | RecordWith (source, newFields) -> RecordWith (visitor types source, List.map (fun (n, e) -> (n, visitor types e)) newFields)
   | Time (length, unit) -> Time (visitor types length, unit)
-  | Id _ | Integer _ | String _ | Bool _ | SymbolExpr _ | Null -> expr  
+  | Id _ | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Null -> expr  
 
 
 type ExprsContext = Map<string, expr>

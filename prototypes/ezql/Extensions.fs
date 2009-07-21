@@ -55,6 +55,12 @@ module List =
     | x::xs -> x::(remove elt xs)
     | [] -> []
 
+  let rec removeFirst elt list =
+    match list with
+    | x::xs when x = elt -> xs
+    | x::xs -> x::(remove elt xs)
+    | [] -> []    
+
 
 module String =
   open System.Text.RegularExpressions

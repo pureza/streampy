@@ -99,12 +99,14 @@ and context = Map<string, value>
 and value =
     | VBool of bool
     | VInt of int
+    | VFloat of single
     | VString of string
     | VRecord of Map<value, value>
     | VDict of Map<value, value>
     | VClosure of context * expr * string option // The name used by the closure to refer to itself (doesn't belong to the context)
     | VRef of value
     | VNull
+    | VUnit
     | VVariant of string * value list
     | VClosureSpecial of string * expr * NetworkBuilder * Map<string, Operator> ref * string option
     | VWindow of value list
@@ -113,6 +115,7 @@ and value =
       match self with
       | VBool b -> b.ToString()
       | VInt v -> v.ToString()
+      | VFloat f -> f.ToString()
       | VString s -> s
       | VRecord m -> (sprintf "{ %s }" (Map.fold_left (fun acc k v -> acc + (sprintf " :%O = %O," k v)) "" m))
       | VDict m -> 
@@ -128,18 +131,8 @@ and value =
       | VVariant (label, metadata) -> sprintf "%s (%s)" label (List.fold (fun acc x -> acc + x.ToString() + " ") "" metadata)
       | VWindow values -> sprintf "[%s]" (List.fold (fun acc v -> sprintf "%s %O" acc v) "" values)
       | VNull -> "(null)"
+      | VUnit -> "()"
 
-    static member IntArithmOp(left, right, op) =
-      match left, right with
-        | VInt l, VInt r -> VInt (op l r)
-        | VNull, _ | _, VNull -> VNull
-        | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
-
-    static member IntCmpOp(left, right, op) =
-      match left, right with
-        | VInt l, VInt r -> VBool (op l r)
-        | VNull, _ | _, VNull -> VNull
-        | _ -> failwithf "Invalid types in call to %A: %A %A" op left right
 
     static member LogicalOp(left, right, op) =
       match left, right with
@@ -154,21 +147,85 @@ and value =
       | VNull, _ | _, VNull -> VNull
       | VString l, _ -> VString (l + right.ToString())
       | _, VString r -> VString (left.ToString() + r)
+      | VFloat l, VInt r -> VFloat (l + (single r))
+      | VInt l, VFloat r -> VFloat ((single l) + r)
+      | VFloat l, VFloat r -> VFloat (l + r)
       | _ -> failwithf "Invalid types in call to +: %A %A" left right
+      
+    static member Subtract(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VInt (l - r)
+      | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VFloat (l - (single r))
+      | VInt l, VFloat r -> VFloat ((single l) - r)
+      | VFloat l, VFloat r -> VFloat (l - r)
+      | _ -> failwithf "Invalid types in call to -: %A %A" left right
+      
+    static member Multiply(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VInt (l * r)
+      | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VFloat (l * (single r))
+      | VInt l, VFloat r -> VFloat ((single l) * r)
+      | VFloat l, VFloat r -> VFloat (l * r)
+      | _ -> failwithf "Invalid types in call to *: %A %A" left right
+      
+    static member Div(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VInt (l / r)
+      | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VFloat (l / (single r))
+      | VInt l, VFloat r -> VFloat ((single l) / r)
+      | VFloat l, VFloat r -> VFloat (l / r)
+      | _ -> failwithf "Invalid types in call to /: %A %A" left right 
+      
+    static member Mod(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VInt (l % r)
+      | VNull, _ | _, VNull -> VNull
+      | _ -> failwithf "Invalid types in call to mod: %A %A" left right
 
-    static member Multiply(left, right) = value.IntArithmOp(left, right, (*))
-    static member Div(left, right) = value.IntArithmOp(left, right, (/))
-    static member Mod(left, right) = value.IntArithmOp(left, right, (%))
-    static member Subtract(left, right) = value.IntArithmOp(left, right, (-))
-
-    static member GreaterThanOrEqual(left, right) = value.IntCmpOp(left, right, (>=))
-    static member GreaterThan(left, right) = value.IntCmpOp(left, right, (>))
-    static member LessThanOrEqual(left, right) = value.IntCmpOp(left, right, (<=))
-    static member LessThan(left, right) = value.IntCmpOp(left, right, (<))
+    static member GreaterThanOrEqual(left, right) = 
+       match left, right with
+       | VInt l, VInt r -> VBool (l >= r)
+       | VNull, _ | _, VNull -> VNull
+       | VFloat l, VInt r -> VBool (l >= (single r))
+       | VInt l, VFloat r -> VBool ((single l) >= r)
+       | VFloat l, VFloat r -> VBool (l >= r)
+       | _ -> failwithf "Invalid types in call to >=: %A %A" left right
+      
+    static member GreaterThan(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VBool (l > r)
+      | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VBool (l > (single r))
+      | VInt l, VFloat r -> VBool ((single l) > r)
+      | VFloat l, VFloat r -> VBool (l > r)
+      | _ -> failwithf "Invalid types in call to >: %A %A" left right
+     
+    static member LessThanOrEqual(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VBool (l <= r)
+      | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VBool (l <= (single r))
+      | VInt l, VFloat r -> VBool ((single l) <= r)
+      | VFloat l, VFloat r -> VBool (l <= r)
+      | _ -> failwithf "Invalid types in call to <=: %A %A" left right
+     
+    static member LessThan(left, right) = 
+      match left, right with
+      | VInt l, VInt r -> VBool (l < r)
+      | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VBool (l < (single r))
+      | VInt l, VFloat r -> VBool ((single l) < r)
+      | VFloat l, VFloat r -> VBool (l < r)
+      | _ -> failwithf "Invalid types in call to <: %A %A" left right
 
     static member Equals(left, right) =
       match left, right with
       | VNull, _ | _, VNull -> VNull
+      | VFloat l, VInt r -> VBool (l = (single r))
+      | VInt l, VFloat r -> VBool ((single l) = r)
       | _ -> VBool (left = right)
 
     static member Differ(left, right) =

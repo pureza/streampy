@@ -21,6 +21,7 @@ and expr =
   | Record of (string * expr) list
   | RecordWith of expr * (string * expr) list
   | Integer of int
+  | Float of single
   | Bool of bool
   | String of string
   | Null
@@ -44,6 +45,7 @@ and expr =
     | Record _ -> "Record"
     | RecordWith _ -> "RecordWith"
     | Integer i -> i.ToString()
+    | Float f -> f.ToString()
     | Bool b -> b.ToString()
     | String s -> sprintf "\"%O\"" s
     | Null -> "null"
@@ -88,6 +90,7 @@ and Type =
   | TyUnit
   | TyBool
   | TyInt
+  | TyFloat
   | TyString
   | TyNull
   | TySymbol
@@ -108,6 +111,7 @@ and Type =
     | TyUnit -> "unit"
     | TyBool -> "bool"
     | TyInt -> "int"
+    | TyFloat -> "float"
     | TyString -> "string"
     | TyNull -> "null"
     | TySymbol -> "symbol"
@@ -177,12 +181,7 @@ let freeVars expr =
     | BinaryExpr (oper, expr1, expr2) as expr -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
     | Seq (expr1, expr2) -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
     | Id (Identifier name) -> if Set.contains name boundVars then Set.empty else Set.singleton name
-    | Time _ -> Set.empty
-    | Integer i -> Set.empty
-    | String s -> Set.empty
-    | Null -> Set.empty
-    | SymbolExpr _ -> Set.empty
-    | Bool b -> Set.empty
+    | Time _ | Integer _ | Float _ | String _ | Null | SymbolExpr _ | Bool _ -> Set.empty
     
   freeVars' Set.empty expr
   
@@ -209,4 +208,4 @@ let rec hasFixedSegment expr =
   | BinaryExpr (oper, expr1, expr2) as expr -> hasFixedSegment expr1 || hasFixedSegment expr2
   | Seq (expr1, expr2) -> hasFixedSegment expr1 || hasFixedSegment expr2
   | Id (Identifier name) -> false
-  | Time _ | Integer _ | String _ | Null | SymbolExpr _ | Bool _ -> false
+  | Time _ | Integer _ | Float _ | String _ | Null | SymbolExpr _ | Bool _ -> false

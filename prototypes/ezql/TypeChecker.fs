@@ -49,9 +49,10 @@ let rec types (env:TypeContext) = function
                          | _ -> failwithf "You must annotate all function arguments with their type!")
                       parameters (env, retType')
       // Add itself
-      let env'' = env'.Add(name, fnType)
+      let fnType' = if parameters.IsEmpty then TyArrow (TyUnit, fnType) else fnType
+      let env'' = env'.Add(name, fnType')
       if typeOf env'' body = retType'
-        then env.Add(name, fnType)
+        then env.Add(name, fnType')
         else failwithf "The function body doesn't return %A" retType
   | StreamDef (Identifier name, fields) ->
       let fields' = List.map (fun (Identifier f, t) -> (f, t)) fields |> Map.of_list |> Map.add "timestamp" TyInt
@@ -175,7 +176,7 @@ and typeOf env expr =
                                     env.Add(id, typ''), argTypes @ [typ'']
                      | None -> failwithf "I have no idea what's the type of argument %A" id)
                   (env, []) args
-      let funType = List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes (typeOf env' expr)
+      let funType = List.foldBack (fun arg acc -> TyArrow (arg, acc)) (if args.IsEmpty then [TyUnit] else argTypes) (typeOf env' expr)
       funType
   | If (cond, thn, els) ->
       let tyCond = typeOf env cond
@@ -208,6 +209,7 @@ and typeOf env expr =
       | _ -> raise (UnknownId name)
   | SymbolExpr _ -> TySymbol
   | Integer v -> TyInt
+  | Float f -> TyFloat
   | String s -> TyString
   | Bool b -> TyBool
   | Null -> TyNull
@@ -241,6 +243,7 @@ and typeOfMethodCall env target name paramExps =
           | _, [] -> TyInt
           | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps         
       | TyInt, [] -> TyInt
+      | TyFloat, [] -> TyFloat
       | TyBool, [] -> TyBool
       | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps                 
   | "any?" | "all?" ->                   
@@ -258,7 +261,6 @@ and typeOfMethodCall env target name paramExps =
           [Lambda ([Param (Identifier arg, _)], expr)] -> 
           if (typeOf (env.Add(arg, argType)) expr) <> TyBool
             then failwithf "The predicate of the where doesn't return a boolean!"
-       
       | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps      
       targetType
   | "groupby" ->
@@ -319,12 +321,26 @@ and typeOfMethodCall env target name paramExps =
                       | TyRecord projFields -> TyWindow (TyStream (TyRecord (projFields.Add("timestamp", TyInt))), windowType)
                       | _ -> failwithf "The projector of the select doesn't return a record!"
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "sortBy" ->
+                  match paramExps with
+                  | [SymbolExpr (Symbol field)] ->
+                      match evType with
+                      | TyRecord fields when Map.contains field fields -> targetType
+                      | _ -> failwithf "The type %A does not have field %A" evType field
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "[]" -> match paramExps with
                         | [expr] when typeOf env expr = TyInt -> evType
                         | _ -> failwithf "Invalid index in []"
               | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyWindow (valueType, windowType) ->
               match name with
+              | "sortBy" ->
+                  match paramExps with
+                  | [SymbolExpr (Symbol field)] ->
+                      match valueType with
+                      | TyRecord fields | TyType (_, fields, _, _) when Map.contains field fields -> targetType
+                      | _ -> failwithf "The type %A does not have field %A" valueType field
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "[]" -> match paramExps with
                         | [expr] when typeOf env expr = TyInt -> valueType
                         | _ -> failwithf "Invalid index in []"
@@ -335,12 +351,6 @@ and typeOfMethodCall env target name paramExps =
 
 and typeOfFuncCall env expr =
   match expr with
-  | FuncCall (Id (Identifier "stream"), fields) ->
-      let fields' = [ for f in fields ->
-                        match f with
-                        | SymbolExpr (Symbol name) -> (name, TyInt)
-                        | _ -> failwithf "Invalid arguments to 'stream': %A" f ]
-      TyStream (TyRecord (Map.of_list (("timestamp", TyInt)::fields')))
   | FuncCall (Id (Identifier "when"), [source; Lambda ([Param (Identifier ev, _)], handler)]) ->
       let evType = match typeOf env source with
                    | TyStream evType -> evType
@@ -390,25 +400,26 @@ and typeOfFuncCall env expr =
                                                         argType = paramType || argType.IsFixed ())
                                   param's argTypes
       if matching
-        then getReturnType param's.Length funType
+        then getReturnType (if param's.Length = 0 then 1 else param's.Length) funType // The if handles function calls with unit as the only argument.
         else failwithf "Parameters don't match argument types in function call"
   | _ -> failwithf "Not a FuncCall? %A" expr
          
 
 and typeOfOp = function
-  | Plus, TyInt, TyInt -> TyInt
-  | Minus, TyInt, TyInt -> TyInt
-  | Times, TyInt, TyInt -> TyInt
-  | Div, TyInt, TyInt -> TyInt
-  | Mod, TyInt, TyInt -> TyInt
-  | GreaterThan, TyInt, TyInt -> TyBool
-  | GreaterThanOrEqual, TyInt, TyInt -> TyBool
-  | Equal, a, b when a = b || a = TyNull || b = TyNull -> TyBool
-  | NotEqual, a, b when a = b || a = TyNull || b = TyNull -> TyBool
-  | LessThanOrEqual, TyInt, TyInt -> TyBool
-  | LessThan, TyInt, TyInt -> TyBool
   | Plus, _, TyString -> TyString
   | Plus, TyString, _ -> TyString
+  | (Plus | Minus | Times | Div | Mod), TyInt, TyInt -> TyInt
+  | (Plus | Minus | Times | Div | Mod), TyNull, _ 
+  | (Plus | Minus | Times | Div | Mod), _, TyNull -> TyNull
+  | (Plus | Minus | Times | Div), TyFloat, _
+  | (Plus | Minus | Times | Div), _, TyFloat -> TyFloat
+  | GreaterThan, (TyInt | TyFloat), (TyInt | TyFloat) -> TyBool
+  | GreaterThanOrEqual, (TyInt | TyFloat), (TyInt | TyFloat) -> TyBool
+  | Equal, a, b when a = b || a = TyNull || b = TyNull -> TyBool
+  | NotEqual, a, b when a = b || a = TyNull || b = TyNull -> TyBool
+  | (Equal | NotEqual), TyInt, TyFloat | (Equal | NotEqual), TyFloat, TyInt -> TyBool
+  | LessThanOrEqual, (TyInt | TyFloat), (TyInt | TyFloat) -> TyBool
+  | LessThan, (TyInt | TyFloat), (TyInt | TyFloat) -> TyBool
   | And, TyBool, TyBool -> TyBool
   | Or, TyBool, TyBool -> TyBool
   | x -> failwithf "typeOfOp: op not implemented %A" x
@@ -444,6 +455,7 @@ let rec isContinuous (env:TypeContext) expr =
     | Id (Identifier name) -> if Map.contains name env && (env.[name].IsUnknown()) then false else true
   | Time _ -> true
   | Integer i -> true
+  | Float f -> true
   | String s -> true
   | Null -> true
   | SymbolExpr _ -> true

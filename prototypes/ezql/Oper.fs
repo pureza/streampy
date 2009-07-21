@@ -86,10 +86,10 @@ let rec spread (stack:EvalStack) (delayed:EvalStack) =
         //printfn "    Value after = %A\n" op.Value
         match toSpread with
         | SpreadChildren changes ->
-            checkConsistency op changes
+            //checkConsistency op changes
             spread (mergeStack xs (toEvalStack op.Children changes)) delayed
         | SpreadTo (children, changes) ->
-            checkConsistency op changes
+            //checkConsistency op changes
             spread (mergeStack xs (toEvalStack children changes)) delayed
         | Delay (children, changes) ->
             spread xs (mergeStack delayed (toEvalStack children changes))

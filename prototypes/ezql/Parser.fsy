@@ -7,6 +7,7 @@ open Ast
 
 %token <string> ID
 %token <int> INTEGER_LITERAL
+%token <single> FLOAT_LITERAL
 %token <bool> BOOLEAN_LITERAL
 %token <string> STRING_LITERAL
 %token LET IN WITH IF THEN ELSE FUN DEFINE FOR GROUP BY
@@ -16,7 +17,7 @@ open Ast
 %token GT GTE EQ DIFF LTE LT AND OR TRUE FALSE
 %token PIPE ENUM OF MATCH END
 %token EOF
-%token INT BOOL STRING NULL
+%token INT FLOAT BOOL STRING NULL
 
 %token ENTITY CREATE_FROM BELONGS_TO HAS_MANY MEMBER
 
@@ -153,6 +154,7 @@ Expr:
   | ID                                                    { Id (Identifier $1) }
   | Symbol                                                { SymbolExpr $1 }
   | INTEGER_LITERAL                                       { Integer $1 }
+  | FLOAT_LITERAL                                         { Float $1 }
   | BOOLEAN_LITERAL                                       { Bool $1 }
   | STRING_LITERAL                                        { String $1 }
   | NULL                                                  { Null }
@@ -191,6 +193,7 @@ Symbol: COLON ID                                          { Symbol $2 }
 
 Type: 
   | INT                                                   { TyInt }
+  | FLOAT                                                 { TyFloat }
   | BOOL                                                  { TyBool }
   | STRING                                                { TyString }
   | Type ARROW Type                                       { TyArrow ($1, $3) }

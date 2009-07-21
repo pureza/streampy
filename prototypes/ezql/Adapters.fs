@@ -6,18 +6,22 @@ open Types
 open Scheduler
 open Extensions.DateTimeExtensions
 open System.Text.RegularExpressions
+open Ast
 
-type CSVAdapter(stream, reader:TextReader) =
-    let tryParse value =
-        match Int32.TryParse(value) with
-        | true, r -> VInt r
-        | _ -> VString value
+type CSVAdapter(stream, fields:Map<string, Type>, reader:TextReader) =
+    let tryParse column value =
+        let parser = match fields.[column] with
+                     | TyInt -> Int32.Parse >> VInt
+                     | TyFloat -> Single.Parse >> VFloat
+                     | TyBool -> Boolean.Parse >> VBool
+                     | _ -> id >> VString
+        parser value
 
     let readColumns =
         let line = reader.ReadLine().Trim()
         let m = Regex.Match(line, "#\s*import\s*\"(.*)\"")
         if m.Success
-          then CSVAdapter (stream, new StreamReader (m.Groups.[1].Value)) |> ignore
+          then CSVAdapter (stream, fields, new StreamReader (m.Groups.[1].Value)) |> ignore
                []
           else line.Split([|'#'|]).[0].Split [|','|]
                  |> Array.map (fun s -> s.Trim().ToLower())
@@ -28,7 +32,7 @@ type CSVAdapter(stream, reader:TextReader) =
         if line.Length = 0 
             then None
             else let values = Array.to_list (line.Split [|','|])
-                 let values' = List.map tryParse values
+                 let values' = List.map2 tryParse columns values
                  let fields = Map.of_list (List.zip (List.map VString columns) values')
                  Some (VRecord fields)
         
@@ -47,5 +51,5 @@ type CSVAdapter(stream, reader:TextReader) =
                Scheduler.schedule timestamp ([stream, 0, id], [Added ev'])
            | _ -> ()
         
-    static member FromString(stream, string) =
-        CSVAdapter (stream, new StringReader (string))
+    static member FromString(stream, fields, string) =
+        CSVAdapter (stream, fields, new StringReader (string))

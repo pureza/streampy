@@ -7,6 +7,7 @@ open Types
 open Eval
 open Extensions.DateTimeExtensions
 open Oper
+open Ast
 
 (* Test DSL *)
 
@@ -153,10 +154,14 @@ type Test =
     | _ -> failwithf "\n\n\nAssertThat: Couldn't find symbol '%s'\n\n\n" entity
 
 let init code inputs ticksUpTo =
-  let env = Engine.compile code
+  let env, types = Engine.compile code
   for inputStream, events in inputs do
+    let evFields = match types.[inputStream] with
+                   | TyStream (TyRecord fields) -> fields
+                   | _ -> failwithf "%s is not a stream?" inputStream
+                 
     match Map.tryFind inputStream env with
-    | Some op -> CSVAdapter.FromString(op, events) |> ignore
+    | Some op -> CSVAdapter.FromString(op, evFields, events) |> ignore
     | _ -> failwithf "Cannot find the input stream '%s'" inputStream
   
   // Tell "ticks" to stop at ticksUpTo

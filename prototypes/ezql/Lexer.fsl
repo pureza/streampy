@@ -24,6 +24,7 @@ let ids = Map.of_list ["let",        LET
                        "hasMany",    HAS_MANY
                        "member",     MEMBER
                        "int",        INT
+                       "float",      FLOAT
                        "bool",       BOOL
                        "string",     STRING
                        "enum",       ENUM
@@ -40,6 +41,7 @@ let num        = ['0'-'9']+
 let alpha      = ['a'-'z' 'A'-'Z']
 let identifier = alpha + (alpha | ['_'] | num)* + ('?')?
 let integer    = '-'? num
+let float      = '-'? num '.' num
 let boolean    = "true" | "false"
 let null       = "null"
 let whitespace = ' ' | '\t'
@@ -78,6 +80,7 @@ rule token = parse
     | null                  { NULL }
     | identifier			{ tokenize (lexeme lexbuf) }
     | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
+    | float                 { FLOAT_LITERAL (Single.Parse(lexeme lexbuf)) }
     | "//"  [^'\n''\r']*    { token lexbuf  }
     | "/*"                  { comment lexbuf; token lexbuf }
     | "\""                  { STRING_LITERAL (string lexbuf.StartPos "" lexbuf) }

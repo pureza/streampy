@@ -279,7 +279,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                         else Set.singleton info', graph, Id (Identifier info'.Uid)
                         
       | _ -> raise (UnknownId name)
-  | Integer _ | String _ | Bool _ | Null -> Set.empty, graph, expr
+  | Integer _ | Float _ | String _ | Bool _ | Null -> Set.empty, graph, expr
   | _ -> failwithf "Expression type not supported: %A" expr
 
 and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
@@ -318,6 +318,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
               | "where" -> dataflowWhere env types graph target paramExps expr
               | "select" -> dataflowSelect env types graph target paramExps expr
               | "groupby" -> dataflowGroupby env types graph target paramExps expr
+              | "sortBy" -> dataflowSortBy env types graph target paramExps expr
               | _ -> failwithf "Unkown method of type Window: %s" methName
           | TyDict valueType ->
               match methName with
@@ -334,14 +335,15 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                                                    [target] (makeValues) graph   
                             Set.singleton n, g', Id (Identifier n.Uid)       
               | _ -> failwithf "Unkown method: %s" methName
-          | TyInt -> match methName with
-                     | "[]" -> let duration = match paramExps with
-                                              | [Time (Integer v, unit) as t] -> toSeconds v unit
-                                              | _ -> failwith "Invalid duration"
-                               let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
-                                                      [target] (makeDynValWindow duration) graph
-                               Set.singleton n, g', Id (Identifier n.Uid)
-                     | _ -> failwithf "Unkown method: %s" methName
+          | TyInt | TyFloat ->
+              match methName with
+              | "[]" -> let duration = match paramExps with
+                                       | [Time (Integer v, unit) as t] -> toSeconds v unit
+                                       | _ -> failwith "Invalid duration"
+                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
+                                               [target] (makeDynValWindow duration) graph
+                        Set.singleton n, g', Id (Identifier n.Uid)
+              | _ -> failwithf "Unkown method: %s" methName
           | TyBool -> match methName with
                       | "[]" -> let duration = match paramExps with
                                                | [Time (Integer v, unit) as t] -> toSeconds v unit
@@ -378,9 +380,6 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
     Set.union deps2 deps1, g2, FuncCall (fnExpr', paramExps')
 
   match func with
-  | Id (Identifier "stream") ->
-      let n, g' = createNode (nextSymbol "stream") (typeOf Map.empty expr) [] makeStream graph
-      Set.singleton n, g', Id (Identifier n.Uid)
   | Id (Identifier "when") ->
       match paramExps with
       | [target; Lambda ([Param (Identifier arg, _)], body)] ->      
@@ -436,7 +435,6 @@ and dataflowFuncCall (env:NodeContext) (types:TypeContext) graph func paramExps 
                                     makeListenN g3
           Set.singleton node, g4, Id (Identifier node.Uid)
       | [] -> failwithf "No listeners to listenN"
-  | Id (Identifier "now") -> Set.empty, graph, expr
   | Id (Identifier "print") -> dataflowByEval ()
   | Id (Identifier "$makeEnum") -> dataflowByEval ()
   | Id (Identifier "merge") ->
@@ -699,9 +697,7 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
                  | [], _ when aggrName = "count" -> id
                  | [SymbolExpr (Symbol name)], TyStream _ -> getMaker name
                  | [SymbolExpr (Symbol name)], TyWindow _ -> getMaker name
-                 | [], TyInt -> id
-                 | [], TyBool -> id
-                 | [], TyWindow (TyInt, _) -> id
+                 | [], _ -> id
                  | _ -> failwithf "Invalid parameters to %s" aggrName
   let n, g' = createNode (nextSymbol aggrName) (typeOf types expr) [target]
                          (opMaker getField) graph
@@ -833,6 +829,20 @@ and extractRecord expr =
   match expr with
   | Let (_, _, _, body) -> extractRecord body
   | _ -> expr
+
+and dataflowSortBy env types graph target paramExprs expr =
+  let field = match paramExprs with
+              | [SymbolExpr (Symbol name)] -> name
+              | _ -> failwithf "dataflowSortBy: Can't happen"
+
+  let getField = function
+    | VRecord fields -> fields.[VString field]
+    | other -> failwithf "getMaker expects events but was called with a %A" other
+
+  let n, g' = createNode (nextSymbol "sortBy") (typeOf types expr) [target]
+                         (makeSortBy getField) graph
+  Set.singleton n, g', Id (Identifier n.Uid)
+
 
 (* Create the necessary nodes to evaluate an expression.
  *  - If the expression is a simple variable access, no new nodes are necessary;

@@ -28,7 +28,7 @@ let compile code =
     let ast = parse code
     let types = typeCheck ast
     let ast' = rewrite types ast
-    dataflowAnalysis types ast'
+    dataflowAnalysis types ast', types
 
 let mainLoop () =
     let virtualClock = Scheduler.clock () :?> VirtualClock

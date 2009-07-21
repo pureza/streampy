@@ -571,3 +571,28 @@ let makeMerge joinField allFields (uid, prio, parents, context) =
                SpreadChildren changes
 
   Operator.Build(uid, prio, eval, parents, context)
+
+
+(* sortBy *)
+let makeSortBy getField (uid, prio, parents, context) =
+  let contents = ref []
+  let eval = fun ((op:Operator), inputs) ->
+               let output = [ for change in List.hd inputs do
+                                match change with
+                                | Added (VWindow contents') -> 
+                                   contents := List.sortBy getField contents'
+                                   op.Value <- VWindow !contents
+                                   yield Added op.Value
+                                | Added ev -> contents := List.sortBy getField (ev::!contents)
+                                              op.Value <- VWindow !contents
+                                              yield Added ev
+                                | Expired ev -> contents := List.removeFirst ev !contents
+                                                op.Value <- VWindow !contents
+                                                yield Expired ev
+                                | _ -> failwithf "select received an unexpected change: %A" change ]
+               match output with
+               | [] -> Nothing
+               | _ -> SpreadChildren output
+ 
+  Operator.Build(uid, prio, eval, parents, context)
+  
