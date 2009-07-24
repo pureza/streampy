@@ -13,11 +13,16 @@ open Oper
 (* A stream: propagates received events *)
 let makeStream (uid, prio, parents, context) =
   let eval = fun ((op:Operator), inputs) ->
-               match inputs with
-               | [[Added (VRecord _ as ev)] as changes] ->
+               let change = List.tryFind (function
+                                            | Added (VRecord _) as change -> true
+                                            | _ -> false)
+                                         (List.hd inputs)
+                                      
+               match change with
+               | Some (Added (VRecord _ as ev) as change') ->
                    op.Value <- ev
-                   SpreadChildren changes
-               | _ -> failwith "stream: Invalid arguments!"
+                   SpreadChildren [change']
+               | _ -> Nothing
 
   Operator.Build(uid, prio, eval, parents, context)
 
@@ -78,7 +83,7 @@ let makeWhere predicate isWindow (uid, prio, parents:Operator list, context) =
     let env' = Map.add "ev" ev env
     match eval env' expr with
     | VBool bool -> bool
-    | _ -> failwithf "where's predicate should return a boolean"
+    | other -> failwithf "where's predicate should return a boolean but returned %A" other
 
   let rec opTop = Operator.Build(uid, prio,
                     (fun (op, inputs) -> 
@@ -270,8 +275,8 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
                              SpreadChildren recordChanges),
                    parents, context)
 
-  for field, op in fields do
-    result := (!result).Add(VString field, op.Value)
+//  for field, op in fields do
+//    result := (!result).Add(VString field, op.Value)
 
   recordOp
 

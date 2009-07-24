@@ -69,3 +69,6 @@ let test_windowGroupby (test:Test) =
                       [SetKey "1" "20" (At  2)
                        SetKey "3" "20" (At  4)
                        SetKey "2" "20" (At  6)])
+
+[<TestCase ("eventWindows/sortby.ez")>]
+let test_sortBy (test:Test) = ()

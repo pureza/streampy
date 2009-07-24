@@ -27,12 +27,13 @@ let rec eval (env:Map<string, value>) = function
   | MemberAccess (expr, Identifier name) ->
       let target = eval env expr
       match target with
+      | VNull -> VNull
       | VRecord r -> r.[VString name]
       | VInt i -> match name with
                   | "sec" -> target
                   | "min" -> VInt (i * 60)
                   | _ -> failwithf "eval: the type TyInt doesn't have field %s" name
-      | _ -> failwith "eval MemberAccess: Not an event!"
+      | other -> failwith "eval MemberAccess: Not an event: %A" other
   | ArrayIndex (target, index) ->
       let tv = eval env target
       let iv = eval env index

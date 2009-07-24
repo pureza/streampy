@@ -298,7 +298,7 @@ and typeOfMethodCall env target name paramExps =
                         | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "values" when paramExps = [] -> TyWindow (valueType, Unbounded)             
               | _ -> failwithf "The type %A does not have method %A!" targetType name
-          | TyInt ->
+          | TyInt | TyFloat ->
               match name with          
               | "[]" -> match paramExps with
                         | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
@@ -312,6 +312,12 @@ and typeOfMethodCall env target name paramExps =
               | "howLong" -> TyInt
               | _ -> failwithf "The type %A does not have method %A!" targetType name              
           | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
+          | TyWindow (TyStream evType, SortedWindow) ->
+              match name with
+              | "[]" -> match paramExps with
+                        | [expr] when typeOf env expr = TyInt -> evType
+                        | _ -> failwithf "Invalid index in []"
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyWindow (TyStream evType, windowType) ->
               match name with
               | "select" ->
@@ -325,7 +331,7 @@ and typeOfMethodCall env target name paramExps =
                   match paramExps with
                   | [SymbolExpr (Symbol field)] ->
                       match evType with
-                      | TyRecord fields when Map.contains field fields -> targetType
+                      | TyRecord fields when Map.contains field fields -> TyWindow (TyStream evType, SortedWindow)
                       | _ -> failwithf "The type %A does not have field %A" evType field
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "[]" -> match paramExps with
@@ -334,6 +340,10 @@ and typeOfMethodCall env target name paramExps =
               | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyWindow (valueType, windowType) ->
               match name with
+              | "sort" ->
+                  match paramExps with
+                  | [] -> targetType
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "sortBy" ->
                   match paramExps with
                   | [SymbolExpr (Symbol field)] ->
@@ -449,14 +459,16 @@ let rec isContinuous (env:TypeContext) expr =
   | Lambda (args, body) -> isContinuous env body
   | Let (Identifier name, optType, binder, body) -> isContinuous env binder && isContinuous env body
   | If (cond, thn, els) -> isContinuous env cond && isContinuous env thn && isContinuous env els
-  | Match (expr, cases) -> isContinuous env expr && List.forall (fun (MatchCase (label, meta, body)) -> isContinuous env body) cases
+  | Match (expr, cases) -> isContinuous env expr && List.forall (fun (MatchCase (Identifier label, meta, body)) -> isContinuous env body) cases
   | BinaryExpr (oper, expr1, expr2) as expr -> isContinuous env expr1 && isContinuous env expr2
   | Seq (expr1, expr2) -> isContinuous env expr1 && isContinuous env expr2
-    | Id (Identifier name) -> if Map.contains name env && (env.[name].IsUnknown()) then false else true
-  | Time _ -> true
-  | Integer i -> true
-  | Float f -> true
-  | String s -> true
-  | Null -> true
-  | SymbolExpr _ -> true
-  | Bool b -> true
+  | Id (Identifier name) -> if Map.contains name env && (env.[name].IsUnknown()) then false else true
+  | Time _ | Integer _ | Float _ | String _ | Null | SymbolExpr _ | Bool _ -> true
+
+
+let isContinuousType typ =
+  match typ with
+  | TyStream _ -> false
+  | TyWindow (TyStream _, _) -> false
+  | TyDict _ -> false
+  | _ -> true  

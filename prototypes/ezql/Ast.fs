@@ -68,7 +68,7 @@ and op =
   | Div
   | Mod
 
-and timeUnit = Min | Sec
+and timeUnit = Sec | Min | Hour | Day
 
 and id = Identifier of string
 
@@ -139,7 +139,8 @@ and Type =
 
 and WindowType =
   | TimedWindow of int
-  | Unbounded  
+  | Unbounded
+  | SortedWindow
 
 
 let freeVars expr =

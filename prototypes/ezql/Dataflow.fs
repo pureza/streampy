@@ -201,7 +201,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
           let projector, g3 = createNode (nextSymbol ".") (typeOf types expr) [ref; entityDict]
                                          (makeRefProjector name) g2
           Set.singleton projector, g3, Id (Identifier projector.Uid)      
-      | TyType (_, fields, _, _) | TyRecord fields when isContinuous types target' ->
+      | TyType (_, fields, _, _) | TyRecord fields when isContinuous types target' && not (isContinuousType (typeOf types expr)) ->
           let t, g2 = makeFinalNode env types g1 target' deps "target.xxx"
           let n, g3 = createNode (nextSymbol ("." + name)) fields.[name] [t]
                                  (makeProjector name) g2
@@ -256,7 +256,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
         List.fold (fun (deps, graph, cases) (MatchCase (Identifier label, meta, body)) ->
                      let env', types' = match meta with
                                         | Some (Identifier name) ->
-                                            let node = NodeInfo.AsUnknown(name, TyUnknown (metaTypeForLabel types label))
+                                            let node = NodeInfo.AsUnknown(name, metaTypeForLabel types label)
                                             env.Add(name, node), types.Add(name, node.Type)
                                         | _ -> env, types
                      let depsCase, g1, body' = dataflowE env' types' graph body
@@ -318,7 +318,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
               | "where" -> dataflowWhere env types graph target paramExps expr
               | "select" -> dataflowSelect env types graph target paramExps expr
               | "groupby" -> dataflowGroupby env types graph target paramExps expr
-              | "sortBy" -> dataflowSortBy env types graph target paramExps expr
+              | "sort" | "sortBy"-> dataflowSortBy env types graph target paramExps expr
               | _ -> failwithf "Unkown method of type Window: %s" methName
           | TyDict valueType ->
               match methName with
@@ -831,13 +831,13 @@ and extractRecord expr =
   | _ -> expr
 
 and dataflowSortBy env types graph target paramExprs expr =
-  let field = match paramExprs with
-              | [SymbolExpr (Symbol name)] -> name
-              | _ -> failwithf "dataflowSortBy: Can't happen"
-
   let getField = function
-    | VRecord fields -> fields.[VString field]
-    | other -> failwithf "getMaker expects events but was called with a %A" other
+    | VRecord fields ->
+        let field = match paramExprs with
+                    | [SymbolExpr (Symbol name)] -> name
+                    | _ -> failwithf "dataflowSortBy: Can't happen"
+        fields.[VString field]
+    | v -> v
 
   let n, g' = createNode (nextSymbol "sortBy") (typeOf types expr) [target]
                          (makeSortBy getField) graph

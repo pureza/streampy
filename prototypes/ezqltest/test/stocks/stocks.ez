@@ -32,6 +32,7 @@ gainers = Company.all.where (fun c -> c.gain != 0)
                      .select (fun c -> { symbol = c.symbol, gain = c.gain })
                      .values()
                      .sortBy(:gain);;
+                                           
 
 gainersState = Company.all.select (fun c -> if c.gain < -2 then Losing ()
                                               else if c.gain == 0 then NoGainNoPain ()
@@ -40,7 +41,10 @@ gainersState = Company.all.select (fun c -> if c.gain < -2 then Losing ()
 
 
 
-when (gainers.changes(), fun _ -> print (now + " " + gainersState));;
+timeLosing = gainersState.select (fun s -> (s == SmallGain ()).howLong());;
+
+
+when (gainers.changes(), fun _ -> print (now + " " + timeLosing));;
 
 
 when (day_change, fun _ -> print ("Day " + (now / 86400)));;

@@ -25,9 +25,14 @@ Test.runTests [(Test.findTest "test_windowsCreation")]
 Test.runTests [(Test.findTest "test_windowsCreation2")]
 *)
 
-//Test.runTests [(Test.findTest "test_entitiesMisc2")]
 
-Test.runTests [(Test.findTest "test_stocks")]
+//Test.runTests [(Test.findTest "test_sortBy")]
+
+//Test.runTests [(Test.findTest "test_macd")]
+
+Test.runTests [(Test.findTest "test_entitiesMisc2")]
+
+//Test.runTests [(Test.findTest "test_stocks")]
 //Test.runTests (Test.findTests ())
     
 Console.ReadLine() |> ignore

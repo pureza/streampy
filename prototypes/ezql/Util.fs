@@ -8,6 +8,8 @@ let toSeconds value unit =
   match unit with
   | Sec -> value
   | Min -> value * 60
+  | Hour -> value * 60 * 60
+  | Day -> value * 60 * 60 * 24
 
 
 let rec diffsBetween old neu =
