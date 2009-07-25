@@ -19,6 +19,11 @@ let rec visit expr visitor =
   | Lambda (ids, expr) -> Lambda (ids, visitor expr) 
   | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
   | Let (Identifier name, optType, binder, body) -> Let (Identifier name, optType, visitor binder, visitor body)
+  | LetListener (Identifier name, optType, binder, listeners, body) ->
+      let listeners' = List.map (fun (Listener (evOpt, stream, guardOpt, body)) ->
+                                       Listener (evOpt, visitor stream, Option.bind (visitor >> Some) guardOpt, visitor body))
+                                listeners
+      LetListener (Identifier name, optType, visitor binder, listeners', visitor body)
   | If (cond, thn, els) -> If (visitor cond, visitor thn, visitor els)
   | Match (expr, cases) -> Match (visitor expr, List.map (fun (MatchCase (label, meta, body)) -> MatchCase (label, meta, visitor body)) cases)
   | Seq (expr1, expr2) -> Seq (visitor expr1, visitor expr2)
@@ -36,12 +41,12 @@ let rec visitWithTypes (types:TypeContext) expr visitor =
                            [field; Lambda ([Param (Identifier arg, Some (typeOf types target))], body)]
                        | ("where" | "select"), [Lambda ([Param (Identifier arg, None)], body)] ->
                            match typeOf types target with
-                           | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType), _) | TyDict argType) ->
+                           | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType)) | TyDict argType) ->
                              [Lambda ([Param (Identifier arg, Some argType)], body)]
                            | _ -> failwithf "Can't happen"
                        | ("any?" | "all?"), [Lambda ([Param (Identifier arg, None)], body)] ->
                            match typeOf types target with
-                           | (TyStream v | TyWindow (TyStream v, _) | TyWindow (v, _)) -> [Lambda ([Param (Identifier arg, Some v)], body)]
+                           | (TyStream v | TyWindow (TyStream v) | TyWindow v) -> [Lambda ([Param (Identifier arg, Some v)], body)]
                            | _ -> failwithf "Can't happen"
                        | _ -> paramExps
                         
@@ -71,6 +76,14 @@ let rec visitWithTypes (types:TypeContext) expr visitor =
                        | Some typ -> typ
                        | None -> typeOf types binder
       Let (Identifier name, optType, visitor types binder, visitor (types.Add(name, binderType)) body)
+  | LetListener (Identifier name, optType, binder, listeners, body) ->
+      let binderType = match optType with
+                       | Some typ -> typ
+                       | None -> typeOf types binder
+      let listeners' = List.map (fun (Listener (evOpt, stream, guardOpt, body)) ->
+                                       Listener (evOpt, visitor types stream, Option.bind (visitor types >> Some) guardOpt, visitor types body))
+                                listeners                
+      LetListener (Identifier name, optType, visitor types binder, listeners', visitor (types.Add(name, binderType)) body)      
   | If (cond, thn, els) -> If (visitor types cond, visitor types thn, visitor types els)
   | Match (expr, cases) ->
       Match (visitor types expr, List.map (fun (MatchCase (Identifier label, meta, body)) ->
@@ -279,6 +292,7 @@ let rec transListeners types stmt =
     | Lambda (args, _) when List.exists (fun (Param (self', _)) -> self = self') args -> expr
     | _ -> visit expr (replacer self field)
 
+
   let transListener def defType replaceInBody (Listener (evOpt, stream, guardOpt, body)) =
     let body' = replaceInBody def body
     let body'' = match guardOpt with
@@ -290,10 +304,22 @@ let rec transListeners types stmt =
     FuncCall(Id (Identifier "when"),
       [stream; Lambda ([Param (Identifier ev, None)],
                  Lambda ([Param (Identifier def, Some defType)], body''))])
+
+  // Find all LetListener's and replace with appropriate calls to listenN
+  let rec replaceLetListeners types expr =
+    match expr with
+    | LetListener (Identifier name, optType, binder, listeners, body) ->
+        let defType = TyUnknown (typeOf types binder)
+        let whens = List.map (transListener name defType (fun _ -> id)) listeners
+        let binder' = FuncCall(Id (Identifier "listenN"), binder::whens)
+        Let (Identifier name, optType, binder', body)
+    | _ -> visitWithTypes types expr replaceLetListeners
+
   
   match stmt with
+  | Def (name, expr, None) -> Def (name, replaceLetListeners types expr, None)
   | Def (Identifier name, expr, Some listeners) ->
-      let defType = typeOf types expr
+      let defType = TyUnknown (typeOf types expr)
       let whens = List.map (transListener name defType (fun _ -> id)) listeners
       let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
       Def (Identifier name, expr', None)
@@ -304,7 +330,7 @@ let rec transListeners types stmt =
                      | None -> members @ [memb]
                      | Some listeners ->
                          let types' =  types.Add(self, types.[ename])
-                         let memberType = typeOf types' expr
+                         let memberType = TyUnknown (typeOf types' expr)
                          let whens = List.map (transListener name memberType (replacer (Identifier self))) listeners
                          let expr' = FuncCall(Id (Identifier "listenN"), expr::whens)
                          members @ [Member (Identifier self, Identifier name, expr', None)])
@@ -372,6 +398,7 @@ let rec transFixedAccesses (varExprs:Map<string, expr>) (types:TypeContext) stmt
 
 
 let rewrite types ast =
+
   let stmts1 =
     List.fold (fun stmts stmt ->
                  let stmt' = transFunctions types stmt
@@ -382,8 +409,8 @@ let rewrite types ast =
     List.fold (fun stmts stmt ->
                  let stmt' = transListeners types stmt
                  stmts @ [stmt'])
-              [] stmts1              
-
+              [] stmts1    
+              
   let _, stmts3 =
     List.fold (fun (entities, stmts) stmt ->
                  let entities, stmt' = transEntities entities types stmt

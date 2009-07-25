@@ -306,7 +306,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
               | "[]" -> let duration = match paramExps with
                                        | [Time (Integer v, unit) as t] -> toSeconds v unit
                                        | _ -> failwith "Invalid duration"
-                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration)) [target]
+                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow target.Type) [target]
                                                (makeWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
               | "where" -> dataflowWhere env types graph target paramExps expr
@@ -331,7 +331,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                     | _ -> failwith "Invalid parameter to dict/select"
                   let projType = typeOf (types.Add(arg, valueType)) body
                   dataflowDictOps env types graph target paramExps valueType makeInitialOp projType makeDictSelect (nextSymbol methName) expr
-              | "values" -> let n, g' = createNode (nextSymbol "values") (TyWindow (valueType, Unbounded))
+              | "values" -> let n, g' = createNode (nextSymbol "values") (TyWindow valueType)
                                                    [target] (makeValues) graph   
                             Set.singleton n, g', Id (Identifier n.Uid)       
               | _ -> failwithf "Unkown method: %s" methName
@@ -340,7 +340,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
               | "[]" -> let duration = match paramExps with
                                        | [Time (Integer v, unit) as t] -> toSeconds v unit
                                        | _ -> failwith "Invalid duration"
-                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
+                        let n, g' = createNode (nextSymbol "[x min]") (TyWindow target.Type)
                                                [target] (makeDynValWindow duration) graph
                         Set.singleton n, g', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method: %s" methName
@@ -348,7 +348,7 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
                       | "[]" -> let duration = match paramExps with
                                                | [Time (Integer v, unit) as t] -> toSeconds v unit
                                                | _ -> failwith "Invalid duration"
-                                let n, g' = createNode (nextSymbol "[x min]") (TyWindow (target.Type, TimedWindow duration))
+                                let n, g' = createNode (nextSymbol "[x min]") (TyWindow target.Type)
                                                        [target] (makeDynValWindow duration) graph
                                 Set.singleton n, g', Id (Identifier n.Uid)
                       | "howLong" -> let n, g' = createNode (nextSymbol "howLong") TyInt
@@ -477,7 +477,7 @@ and dataflowGroupby env types graph target paramExps =
   let argType = target.Type
   let argMaker = match argType with
                  | TyStream _ -> makeStream
-                 | TyWindow (TyStream _, TimedWindow _) -> makeSimpleWindow
+                 | TyWindow (TyStream _) -> makeSimpleWindow
                  | _ -> failwithf "GroupBy's argument must be a stream or an event window."
   let field, body, arg =
     match paramExps with
@@ -656,7 +656,9 @@ and dataflowClosure env types graph expr (itself:(string * Type) option) =
                                let node = { Uid = argUid; Type = t'; MakeOper = makeInitialOp; Name = arg; ParentUids = [] }
                                let env' = env.Add(arg, node).Add(argUid, node)
                                let types' = types.Add(arg, node.Type).Add(argUid, node.Type)
-                               let args' = args @ [Param ((Identifier argUid), Some t')]
+                               let args' = args @ match t' with
+                                                  | TyUnknown _ -> [Param ((Identifier arg), Some t')]
+                                                  | _ -> [Param ((Identifier argUid), Some t')]
                                env', types', Graph.add ([], argUid, node, []) graph, args', argUids @ [argUid]
                    | None -> failwithf "Function arguments must have type annotations.")
                 (env, types, graph, [], []) args
@@ -706,7 +708,7 @@ and dataflowAggregate env types graph target paramExprs opMaker aggrName expr =
 
 and dataflowAnyAll env types graph target paramExprs methName expr =
   let valueType = match target.Type with
-                  | TyWindow (TyStream v, _) | TyWindow (v, _) | TyStream v | v -> v
+                  | TyWindow (TyStream v) | TyWindow v | TyStream v | v -> v
                  
   let subExpr, env', types', arg =
     match paramExprs with
@@ -772,7 +774,7 @@ and dataflowSelect env types graph target paramExps expr =
   let inEvType, isWindow =
     match target.Type with
     | TyStream evType -> evType, false
-    | TyWindow (TyStream evType, _) -> evType, true
+    | TyWindow (TyStream evType) -> evType, true
     | _ -> failwithf "stream.select can only be applied to streams and windows"
                  
   let subExpr, env', types', arg =
@@ -800,7 +802,7 @@ and dataflowWhere env types graph target paramExps expr =
   let evType, isWindow =
     match target.Type with
     | TyStream evType -> evType, false
-    | TyWindow (TyStream evType, _) -> evType, true
+    | TyWindow (TyStream evType) -> evType, true
     | _ -> failwithf "stream.select can only be applied to streams and windows"
 
   let subExpr, env', types', arg =
@@ -930,10 +932,10 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
     
   // Spread all changes in the stack. If some step fails, try the remaining steps.
   and retrySpread stack delayed =
-    try
+    //try
       spread stack delayed
-    with
-      | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
+    //with
+    //  | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
   
 
   // GroupBy's should be visited first because of belongsTo/hasMany association.

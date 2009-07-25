@@ -168,6 +168,10 @@ and typeOf env expr =
       match optType with
       | None -> typeOf (env.Add(name, typeOf env binder)) body
       | Some typ -> typeOf (env.Add(name, typ)) body
+  | LetListener (Identifier name, optType, binder, listeners, body) ->
+      let typ = typeOf env binder
+      checkListeners env name typ listeners
+      typeOf (env.Add(name, typ)) body
   | Lambda (args, expr) ->
       let env', argTypes =
         List.fold (fun (env:TypeContext, argTypes) (Param (Identifier id, typ)) ->
@@ -204,6 +208,7 @@ and typeOf env expr =
   | Id (Identifier name) ->
       match Map.tryFind name env with
       | Some t -> match t with
+                  | TyUnknown t' -> t'
                   | TyAlias t' -> typeOf env (Id (Identifier t'))
                   | _ -> t
       | _ -> raise (UnknownId name)
@@ -232,7 +237,7 @@ and typeOfMethodCall env target name paramExps =
       match targetType, paramExps with
       | TyRecord fields, [SymbolExpr (Symbol field)] when Map.contains field fields -> fields.[field]
       | TyStream (TyRecord fields), [SymbolExpr (Symbol field)] when Map.contains field fields -> fields.[field]
-      | TyWindow (typ, _), _ ->
+      | TyWindow typ, _ ->
           match typ, paramExps with
           | TyRef typ', [SymbolExpr (Symbol field)] ->
               match resolveAlias env typ' with
@@ -249,15 +254,15 @@ and typeOfMethodCall env target name paramExps =
   | "any?" | "all?" ->                   
       match targetType, paramExps with
       | TyDict _, _ -> failwithf "The type %A does not have method %A!" targetType name
-      | (TyBool | TyWindow (TyBool, _)), [] -> TyBool
-      | (TyStream v | TyWindow (TyStream v, _) | TyWindow (v, _)), [Lambda ([Param (Identifier arg, _)], expr)] ->
+      | (TyBool | TyWindow TyBool), [] -> TyBool
+      | (TyStream v | TyWindow (TyStream v) | TyWindow v), [Lambda ([Param (Identifier arg, _)], expr)] ->
           if (typeOf (env.Add(arg, v)) expr) <> TyBool
             then failwithf "The predicate of %s doesn't return a boolean!" name
           TyBool
       | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
   | "where" ->
       match targetType, paramExps with
-      | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType), _) | TyDict argType),
+      | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType)) | TyDict argType),
           [Lambda ([Param (Identifier arg, _)], expr)] -> 
           if (typeOf (env.Add(arg, argType)) expr) <> TyBool
             then failwithf "The predicate of the where doesn't return a boolean!"
@@ -265,7 +270,7 @@ and typeOfMethodCall env target name paramExps =
       targetType
   | "groupby" ->
       match targetType, paramExps with
-      | (TyStream (TyRecord fields as evType) | TyWindow (TyStream (TyRecord fields as evType), _)),
+      | (TyStream (TyRecord fields as evType) | TyWindow (TyStream (TyRecord fields as evType))),
         [SymbolExpr (Symbol field); Lambda ([Param (Identifier g, _)], expr)] when Map.contains field fields ->
                                                                                 TyDict (typeOf (env.Add(g, targetType)) expr)
       | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
@@ -283,7 +288,7 @@ and typeOfMethodCall env target name paramExps =
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "[]" ->
                   match paramExps with
-                  | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                  | [Time (Integer length, unit)] -> TyWindow targetType
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyDict valueType ->
@@ -296,49 +301,43 @@ and typeOfMethodCall env target name paramExps =
               | "[]" -> match paramExps with
                         | [index] -> valueType
                         | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-              | "values" when paramExps = [] -> TyWindow (valueType, Unbounded)             
+              | "values" when paramExps = [] -> TyWindow valueType             
               | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyInt | TyFloat ->
               match name with          
               | "[]" -> match paramExps with
-                        | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                        | [Time (Integer length, unit)] -> TyWindow targetType
                         | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyBool ->
               match name with          
               | "[]" -> match paramExps with
-                        | [Time (Integer length, unit)] -> TyWindow (targetType, TimedWindow (toSeconds length unit))
+                        | [Time (Integer length, unit)] -> TyWindow targetType
                         | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "howLong" -> TyInt
               | _ -> failwithf "The type %A does not have method %A!" targetType name              
           | TyRecord _ -> typeOf env (FuncCall (MemberAccess (target, Identifier name), paramExps))
-          | TyWindow (TyStream evType, SortedWindow) ->
-              match name with
-              | "[]" -> match paramExps with
-                        | [expr] when typeOf env expr = TyInt -> evType
-                        | _ -> failwithf "Invalid index in []"
-              | _ -> failwithf "The type %A does not have method %A!" targetType name
-          | TyWindow (TyStream evType, windowType) ->
+          | TyWindow (TyStream evType) ->
               match name with
               | "select" ->
                   match paramExps with
                   | [Lambda ([Param (Identifier ev, _)], expr)] -> 
                       match typeOf (env.Add(ev, evType)) expr with
-                      | TyRecord projFields -> TyWindow (TyStream (TyRecord (projFields.Add("timestamp", TyInt))), windowType)
+                      | TyRecord projFields -> TyWindow (TyStream (TyRecord (projFields.Add("timestamp", TyInt))))
                       | _ -> failwithf "The projector of the select doesn't return a record!"
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "sortBy" ->
                   match paramExps with
                   | [SymbolExpr (Symbol field)] ->
                       match evType with
-                      | TyRecord fields when Map.contains field fields -> TyWindow (TyStream evType, SortedWindow)
+                      | TyRecord fields when Map.contains field fields -> TyWindow (TyStream evType)
                       | _ -> failwithf "The type %A does not have field %A" evType field
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "[]" -> match paramExps with
                         | [expr] when typeOf env expr = TyInt -> evType
                         | _ -> failwithf "Invalid index in []"
               | _ -> failwithf "The type %A does not have method %A!" targetType name
-          | TyWindow (valueType, windowType) ->
+          | TyWindow valueType ->
               match name with
               | "sort" ->
                   match paramExps with
@@ -380,7 +379,7 @@ and typeOfFuncCall env expr =
           let listenerType = typeOf env l1
           let allSame = List.forall (fun listener -> listenerType = typeOf env listener) ls
           if allSame
-            then if listenerType = TyArrow (initialType, initialType)
+            then if listenerType = TyArrow (TyUnknown initialType, initialType)
                    then initialType
                    else failwithf "listenN: The type of the listener is not compatible with the type of the initial value - %A vs %A" initialType listenerType
             else failwithf "Not all the listeners have the same type."
@@ -469,6 +468,6 @@ let rec isContinuous (env:TypeContext) expr =
 let isContinuousType typ =
   match typ with
   | TyStream _ -> false
-  | TyWindow (TyStream _, _) -> false
+  | TyWindow (TyStream _) -> false
   | TyDict _ -> false
   | _ -> true  

@@ -158,6 +158,8 @@ Expr:
   | BOOLEAN_LITERAL                                       { Bool $1 }
   | STRING_LITERAL                                        { String $1 }
   | NULL                                                  { Null }
+  | LET ID OptType ASSIGN Expr ID Listeners IN Expr       { LetListener (Identifier $2, $3, $5, $7, $9) }
+
 
 BinaryExpr:
   | Arith                                                 { $1 }
@@ -198,7 +200,7 @@ Type:
   | STRING                                                { TyString }
   | Type ARROW Type                                       { TyArrow ($1, $3) }
   | RecordType                                            { $1 }
-  | LBRACKET Type RBRACKET                                { TyWindow ($2, Unbounded) }
+  | LBRACKET Type RBRACKET                                { TyWindow $2 }
   | ID                                                    { TyAlias $1 }
   | LPAREN Type RPAREN                                    { $2 }
 

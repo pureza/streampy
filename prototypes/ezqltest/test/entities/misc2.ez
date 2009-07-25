@@ -1,6 +1,8 @@
 temp_readings = stream (room_id:int, temperature:int);;
 
+define coalesce (n:int) : int = if n.null? then 0 else n;;
 
+/*
 define sum(n:int) : int =
   listenN(n, when (n.changes(), fun _ -> fun (v:int) -> n + v));;
 
@@ -15,7 +17,18 @@ define avg(n:int) : int =
 define max(n:int) : int =
   listenN (n, when (n.changes(), fun _ -> fun (v:int) -> if n > v then n else v));;
 
-when (temp_readings, fun _ -> print(max(temp_readings.last(:temperature))));;
+*/
+
+define blah(n:[int]) : int =
+  let listener = n[0]
+    when | n.changes() -> coalesce(listener) + n.last()
+  in
+    listener;;
+
+
+lastTemp = temp_readings.last(:temperature);;
+
+when (temp_readings, fun _ -> print(blah(lastTemp[3 sec])));;
 
 /*
 

@@ -8,6 +8,7 @@ type prog =
 
 and expr =
   | Let of id * Type option * expr * expr
+  | LetListener of id * Type option * expr * listener list * expr
   | BinaryExpr of op * expr * expr
   | MethodCall of expr * id * expr list
   | FuncCall of expr * expr list
@@ -99,7 +100,7 @@ and Type =
   | TyAlias of string
   | TyRecord of Map<string, Type>
   | TyStream of Type
-  | TyWindow of Type * WindowType
+  | TyWindow of Type
   | TyDict of Type
   | TyRef of Type
   | TyVariant of id * (id * Type) list
@@ -136,12 +137,6 @@ and Type =
     match self with
     | TyFixed _ -> true
     | _ -> false
-
-and WindowType =
-  | TimedWindow of int
-  | Unbounded
-  | SortedWindow
-
 
 let freeVars expr =
   let rec freeVars' boundVars expr =
