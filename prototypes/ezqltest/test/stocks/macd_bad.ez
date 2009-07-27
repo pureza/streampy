@@ -1,0 +1,31 @@
+stocks = stream (timestamp:int, symbol:string, value:float, volume:int);;
+
+
+entity Company =
+  createFrom (stocks, :symbol)
+
+  member self.macd =
+    let macd = self.value[1 day].avg() - self.value[2 day].avg() in
+    let signal = macd[9 day].avg() in
+    macd - signal
+
+  member self.buy = self.macd > 0
+
+  member self.sell = self.macd < 0;;
+
+
+toBuy = Company.all
+          .where (fun c -> c.buy)
+          .select (fun c -> c.buy);;
+
+toSell = Company.all
+          .where (fun c -> c.sell)
+          .select (fun c -> c.sell);;
+
+when (toSell.changes(), fun _ -> print (toSell));;
+
+
+
+
+#! stocks
+# import "test/stocks/stocks.csv"

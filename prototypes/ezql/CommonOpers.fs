@@ -275,8 +275,8 @@ let makeRecord (fields:list<string * Operator>) (uid, prio, parents, context) =
                              SpreadChildren recordChanges),
                    parents, context)
 
-//  for field, op in fields do
-//    result := (!result).Add(VString field, op.Value)
+  //for field, op in fields do
+  //  result := (!result).Add(VString field, op.Value)
 
   recordOp
 
@@ -301,6 +301,24 @@ let makeToStream (uid, prio, parents, context) =
 
   Operator.Build(uid, prio, eval, parents, context)
 
+
+(* Returns a stream with the added or expired (but not both) events from a window *)
+let makeAddedOrExpired isAdded (uid, prio, parents, context) =
+  let makeEvent value = VRecord (Map.of_list [VString "timestamp", VInt (Scheduler.now ()); VString "value", value])
+  
+  let eval = fun ((op:Operator), inputs) ->
+               let changes = [ for change in List.hd inputs do
+                                 match isAdded, change with
+                                 | true, Added v -> yield Added (makeEvent v)
+                                 | false, Expired v -> yield Added (makeEvent v)
+                                 | _ -> () ]
+               match changes with
+               | (Added ev)::_ -> op.Value <- ev
+                                  SpreadChildren changes
+               | _ -> Nothing
+
+  Operator.Build(uid, prio, eval, parents, context)
+  
 
 let makeRef getId (uid, prio, (parents:Operator list), context) =
   let objOper = List.hd parents
@@ -442,7 +460,7 @@ let makeClosure lambda closureBuilder itself (uid, prio, parents, context) =
  * - an evaluator whose value is a VClosure. In this case the closure is meant to
  *   be evaluated directly (no network creation shall happen).
  *)
-let makeFuncCall (uid, prio, parents, context) =
+let makeFuncCall (uid, prio, parents:Operator list, context) =
   let subnetworks = ref Map.empty
   let currNetwork : ref<uid option> = ref None
 
@@ -458,11 +476,14 @@ let makeFuncCall (uid, prio, parents, context) =
                  then let roots, final = closureBuilder prio !closureContext
                       connect final resultOp id
                       subnetworks := Map.add closureUid (roots, final) (!subnetworks)
+                      
+                      // Initialize roots
+                      for (child:Operator, parent:Operator) in (List.zip roots (List.tl parents)) do
+                        child.Value <- parent.Value
+
                currNetwork := Some closureUid
 
                let subnet, _ = (!subnetworks).[closureUid]
-               for (child:Operator, parent:Operator) in (List.zip subnet (List.tl parents)) do
-                 child.Value <- parent.Value
                
                // Now I must pass the parameter changes to the subnetwork
                let argsToEval : ChildData list = 
@@ -507,19 +528,21 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                    match inputs with
                    | [Added v]::rest when op.Value = VNull -> setValueAndGetChanges op v // Initializing
                    | _::listenerInputs ->
-                       let parentIdx = List.tryFindIndex (fun input -> input <> []) listenerInputs
-                       match parentIdx with
-                       | None -> Nothing
-                       | Some idx ->
-                           let closure = 
-                             match op.Parents.[idx + 1].Value with
-                             | VClosureSpecial _ as special ->
-                                 convertClosureSpecial special
-                             | VClosure _ as closure -> closure
-                             | _ -> failwithf "Listener didn't return a closure!!!"
-                           let env = Map.of_list ["$curr", op.Value]
-                           let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
-                           setValueAndGetChanges op result
+                       // Get the index of the whens that changed
+                       let parentIdxs = List.filter (fun (idx, input) -> input <> []) (List.zip [1 .. listenerInputs.Length] listenerInputs)
+                                          |> List.map fst
+                       let result = List.fold (fun value parentIdx ->
+                                                 let closure = 
+                                                   match op.Parents.[parentIdx].Value with
+                                                   | VClosureSpecial _ as special ->
+                                                       convertClosureSpecial special
+                                                   | VClosure _ as closure -> closure
+                                                   | _ -> failwithf "Listener didn't return a closure!!!"
+                                                 let env = Map.of_list ["$curr", value]
+                                                 let result = eval (env.Add("$closure", closure)) (FuncCall (Id (Identifier "$closure"), [Id (Identifier "$curr")]))
+                                                 result)
+                                              op.Value parentIdxs
+                       setValueAndGetChanges op result
                    | _ -> failwithf "Can't happen"
 
   Operator.Build(uid, prio, operEval, parents, context, contents = parents.[0].Value)

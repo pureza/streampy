@@ -1,5 +1,6 @@
 {
 open System
+open System.Globalization
 open System.Collections
 open Parser
 open Lexing
@@ -80,7 +81,7 @@ rule token = parse
     | null                  { NULL }
     | identifier			{ tokenize (lexeme lexbuf) }
     | integer				{ INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
-    | float                 { FLOAT_LITERAL (Single.Parse(lexeme lexbuf)) }
+    | float                 { FLOAT_LITERAL (Single.Parse(lexeme lexbuf, CultureInfo( "en-US", false ).NumberFormat)) }
     | "//"  [^'\n''\r']*    { token lexbuf  }
     | "/*"                  { comment lexbuf; token lexbuf }
     | "\""                  { STRING_LITERAL (string lexbuf.StartPos "" lexbuf) }

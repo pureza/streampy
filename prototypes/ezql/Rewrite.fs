@@ -312,7 +312,7 @@ let rec transListeners types stmt =
         let defType = TyUnknown (typeOf types binder)
         let whens = List.map (transListener name defType (fun _ -> id)) listeners
         let binder' = FuncCall(Id (Identifier "listenN"), binder::whens)
-        Let (Identifier name, optType, binder', body)
+        Let (Identifier name, optType, binder', replaceLetListeners types body)
     | _ -> visitWithTypes types expr replaceLetListeners
 
   

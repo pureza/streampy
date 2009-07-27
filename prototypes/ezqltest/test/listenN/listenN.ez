@@ -53,6 +53,7 @@ a = A(3)
        | ev in temp_readings -> match a with
                                   | A(v) -> A(v + 1)
                                   | B(v) -> A(ev.temperature + v.a)
+                                  | C -> B({ a = 10 })
                                 end
        | entries -> B({ a = 0 });;
 

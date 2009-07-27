@@ -56,18 +56,18 @@ let test_streamsWhere (test:Test) =
                      SetKey "3" "{ a = 45 }" (At  4)
                      SetKey "2" "{ a = 50 }" (At  6)
                      SetKey "3" "{ a = 30 }" (At  7)])      
-                    
+                   
   test.AssertThat (In "temp_plus_hum"
                     [Set " 70" (At 0)
                      Set "150" (At 1)
-                     Set "175" (At 2)
-                     Set "246" (At 3)
-                     Set "291" (At 4)
-                     Set "316" (At 5)
-                     Set "366" (At 6)
-                     Set "396" (At 7)
-                     Set "488" (At 8)
-                     Set "511" (At 9)])
+                     Set "265" (At 2)
+                     Set "336" (At 3)
+                     Set "462" (At 4)
+                     Set "578" (At 5)
+                     Set "700" (At 6)
+                     Set "812" (At 7)
+                     Set "904" (At 8)
+                     Set "927" (At 9)])
                      
   test.AssertThat (In "eventsPerRoomd"
                     [SetKey "1" "25" (At  2)
@@ -76,7 +76,8 @@ let test_streamsWhere (test:Test) =
                      SetKey "3" "30" (At  7)])                  
 
   test.AssertThat (In "where_with_listenN"
-                    [Added "{ room_id = 1, temperature = 25, timestamp = 5 }" (At  5)
+                    [Added "{ room_id = 3, temperature = 45, timestamp = 4 }" (At  4)
+                     Added "{ room_id = 1, temperature = 25, timestamp = 5 }" (At  5)
                      Added "{ room_id = 2, temperature = 50, timestamp = 6 }" (At  6)
                      Added "{ room_id = 3, temperature = 30, timestamp = 7 }" (At  7)])
 
@@ -247,14 +248,26 @@ let test_streamsSelect (test:Test) =
                      SetKey "2" "null" (At  9)
                      SetKey "3" "null" (At 10)
                      SetKey "1" "null" (At 12)])
+
+  test.AssertThat (In "temp_plus_hum"
+                    [Set " 70" (At 0)
+                     Set "150" (At 1)
+                     Set "265" (At 2)
+                     Set "336" (At 3)
+                     Set "462" (At 4)
+                     Set "578" (At 5)
+                     Set "700" (At 6)
+                     Set "812" (At 7)
+                     Set "904" (At 8)
+                     Set "927" (At 9)])
                             
   test.AssertThat (In "select_with_listenN"
-                    [Added "{ a = 175 +  50, timestamp = 2 }" (At  2)
-                     Added "{ a = 291 +  90, timestamp = 4 }" (At  4)
-                     Added "{ a = 316 +  50, timestamp = 5 }" (At  5)
-                     Added "{ a = 366 + 100, timestamp = 6 }" (At  6)
-                     Added "{ a = 396 +  60, timestamp = 7 }" (At  7)
-                     Added "{ a = 511 +  46, timestamp = 9 }" (At  9)])
+                    [Added "{ a = 265 +  50, timestamp = 2 }" (At  2)
+                     Added "{ a = 462 +  90, timestamp = 4 }" (At  4)
+                     Added "{ a = 578 +  50, timestamp = 5 }" (At  5)
+                     Added "{ a = 700 + 100, timestamp = 6 }" (At  6)
+                     Added "{ a = 812 +  60, timestamp = 7 }" (At  7)
+                     Added "{ a = 927 +  46, timestamp = 9 }" (At  9)])
 
 
 [<TestCase ("streams/groupby.ez")>]

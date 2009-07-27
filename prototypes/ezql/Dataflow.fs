@@ -223,7 +223,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
       let (depsBinder:Set<NodeInfo>), g1, binder' = dataflowClosure env types graph binder (if isRec then Some (name, typ) else None)
       
       let closureNode, g2, depsBinder' =
-        if isRec
+        if isRec || not (isContinuous types binder)
           then NodeInfo.AsUnknown(name, typ), g1, depsBinder
           else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
                n, g2, Set.singleton n
@@ -238,13 +238,18 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
         with
           | UnknownId id -> raise (IncompleteLet ((name, env, types, graph, body), id))
         
+      let binderNode, g2, depsBinder', binder'' =
+        if not (isContinuous types expr)
+          then NodeInfo.AsUnknown(name, typeOf types binder), g1, depsBinder, binder'
+          else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
+               n, g2, Set.singleton n, Id (Identifier n.Uid)
+        
       // We must create a final node for the binder in order to extend the
       // environment with it, to dataflow the body.
-      let binderNode, g2 = makeFinalNode env types g1 binder' depsBinder name
       let env' = env.Add(name, binderNode).Add(binderNode.Uid, binderNode)
       let types' = types.Add(name, binderNode.Type).Add(binderNode.Uid, binderNode.Type)
       let depsBody, g3, body' = dataflowE env' types' g2 body
-      Set.add binderNode depsBody, g3, Let (Identifier name, optType, Id (Identifier binderNode.Uid), body')
+      Set.union depsBinder' depsBody, g3, Let (Identifier name, optType, binder'', body')
   | If (cond, thn, els) ->
       let deps1, g1, cond' = dataflowE env types graph cond
       let deps2, g2, thn' = dataflowE env types g1 thn
@@ -313,12 +318,19 @@ and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
               | "select" -> dataflowSelect env types graph target paramExps expr
               | "groupby" -> dataflowGroupby env types graph target paramExps expr
               | _ -> failwithf "Unkown method: %s" methName
-          | TyWindow _ ->
+          | TyWindow valueType ->
               match methName with
               | "where" -> dataflowWhere env types graph target paramExps expr
               | "select" -> dataflowSelect env types graph target paramExps expr
               | "groupby" -> dataflowGroupby env types graph target paramExps expr
               | "sort" | "sortBy"-> dataflowSortBy env types graph target paramExps expr
+              | "added" | "expired" ->
+                  let typ = match valueType with
+                            | TyStream _ -> valueType
+                            | _ -> TyStream (TyRecord (Map.of_list ["timestamp", TyInt; "value", valueType]))
+                  let addedOrExpired = if methName = "added" then true else false
+                  let n, g' = createNode (nextSymbol methName) typ [target] (makeAddedOrExpired addedOrExpired) graph
+                  Set.singleton n, g', Id (Identifier n.Uid)
               | _ -> failwithf "Unkown method of type Window: %s" methName
           | TyDict valueType ->
               match methName with
@@ -932,10 +944,10 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
     
   // Spread all changes in the stack. If some step fails, try the remaining steps.
   and retrySpread stack delayed =
-    //try
+    try
       spread stack delayed
-    //with
-    //  | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
+    with
+      | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
   
 
   // GroupBy's should be visited first because of belongsTo/hasMany association.
@@ -968,6 +980,12 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
                                                                       failwithf "shit")
                                                     info.ParentUids
                             let op = info.MakeOper (uid, fixPrio orderPrio.[uid], parents, contextRef)
+                            //let changes' = [ for p in parents do
+                            //                   if p.Value <> VNull
+                            //                     then yield (p, [Added (p.Value)])
+                            //                     else () ] @ changes
+                            
+                            
                             let changes' = if op.Value <> VNull then (op, [Added (op.Value)])::changes else changes
                             //printfn "Created operator %s with priority %A" uid (fixPrio orderPrio.[uid])
                             Map.add uid op context, changes')

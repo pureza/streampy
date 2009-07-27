@@ -326,6 +326,10 @@ and typeOfMethodCall env target name paramExps =
                       | TyRecord projFields -> TyWindow (TyStream (TyRecord (projFields.Add("timestamp", TyInt))))
                       | _ -> failwithf "The projector of the select doesn't return a record!"
                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "added" | "expired" ->
+                  match paramExps with
+                  | [] -> TyStream evType
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "sortBy" ->
                   match paramExps with
                   | [SymbolExpr (Symbol field)] ->
@@ -339,6 +343,10 @@ and typeOfMethodCall env target name paramExps =
               | _ -> failwithf "The type %A does not have method %A!" targetType name
           | TyWindow valueType ->
               match name with
+              | "added" | "expired" ->
+                  match paramExps with
+                  | [] -> TyStream (TyRecord (Map.of_list ["timestamp", TyInt; "value", valueType]))
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
               | "sort" ->
                   match paramExps with
                   | [] -> targetType

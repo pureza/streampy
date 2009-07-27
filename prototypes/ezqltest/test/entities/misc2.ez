@@ -1,34 +1,38 @@
 temp_readings = stream (room_id:int, temperature:int);;
 
-define coalesce (n:int) : int = if n.null? then 0 else n;;
-
-/*
-define sum(n:int) : int =
-  listenN(n, when (n.changes(), fun _ -> fun (v:int) -> n + v));;
-
-define count(n:int) : int =
-  listenN(0, when (n.changes(), fun _ -> fun (v:int) -> 1 + v));;
-
-
-define avg(n:int) : int =
-  let c = count (n) in
-  if c == 0 then 0 else sum (n) / c;;
-
-define max(n:int) : int =
-  listenN (n, when (n.changes(), fun _ -> fun (v:int) -> if n > v then n else v));;
-
-*/
-
-define blah(n:[int]) : int =
-  let listener = n[0]
-    when | n.changes() -> coalesce(listener) + n.last()
-  in
-    listener;;
-
 
 lastTemp = temp_readings.last(:temperature);;
 
-when (temp_readings, fun _ -> print(blah(lastTemp[3 sec])));;
+
+enum EmaState =
+  | Init of { count:int, sum:float }
+  | Normal of float;;
+
+define ema (data:int) (n:int) : float =
+  let alpha = 2 / (n + 1.0) in
+  let result = Init ({ count = 0, sum = 0.0 })
+    when | data.changes() ->
+      match result with
+        | Init (s) -> let c = s.count + 1 in
+                      if s.count < 2
+                        then Init ({ count = c, sum = s.sum + data })
+                        else Normal ((s.sum + data) / c)
+        | Normal (f) -> Normal (alpha * data + (1 - alpha) * f)
+      end
+  in
+    match result with
+      | Init (s) -> s.sum / s.count
+      | Normal (f) -> f
+    end;;
+
+
+
+
+
+lastTemp_ema = ema(lastTemp, 3);;
+
+when (temp_readings, fun _ -> print ("the ema: " + lastTemp_ema));;
+
 
 /*
 
@@ -53,7 +57,6 @@ tempsX2 = select (temp_readings2, fun (ev:{ timestamp:int, room_id:int, temperat
 
 when (tempsX2.changes(), fun _ -> print (tempsX2));;
 */
-
 
 #! temp_readings
 Timestamp, room_id, temperature

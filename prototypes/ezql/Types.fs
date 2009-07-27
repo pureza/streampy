@@ -144,9 +144,9 @@ and value =
     static member Add(left, right) = 
       match left, right with
       | VInt l, VInt r -> VInt (l + r)
-      | VNull, _ | _, VNull -> VNull
       | VString l, _ -> VString (l + right.ToString())
       | _, VString r -> VString (left.ToString() + r)
+      | VNull, _ | _, VNull -> VNull
       | VFloat l, VInt r -> VFloat (l + (single r))
       | VInt l, VFloat r -> VFloat ((single l) + r)
       | VFloat l, VFloat r -> VFloat (l + r)
