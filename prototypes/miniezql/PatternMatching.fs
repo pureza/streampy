@@ -47,7 +47,7 @@ let patternMatch pattern binder =
         // Since, at this point, we don't know the complete type, we use dummy generic
         // types, that will be re-created for real during typechecking. For now, all that
         // matters is that this is a tuple with elts.Length elements.
-        let tupleTy = TyTuple [ for i in 1 .. elts.Length -> TyGen (-i, None) ]
+        let tupleTy = TyTuple [ for i in 1 .. elts.Length -> TyGen -i ]
         List.fold (fun (instr, i) expr ->
                      patternMatch' expr (MemberAccess (Id (Identifier binderId), Identifier (string i))) instr, i + 1)
                   ((Bind (binderId, Some tupleTy, binder)::instr), 1) elts |> fst
@@ -66,7 +66,7 @@ let patternMatch pattern binder =
         // Similar to tuples. Create $x, annotate it with the pattern's type and use dummy
         // generic variables to fill in the gaps.
         let binderId = fresh ()
-        let recordTy = TyRecord (Map.of_list [ for (label, _) in fields -> (label, TyGen (-1, None)) ])
+        let recordTy = TyRecord (Map.of_list [ for (label, _) in fields -> (label, TyGen -1) ])
         List.fold (fun instr (label, expr) ->
                      patternMatch' expr (MemberAccess (Id (Identifier binderId), Identifier label)) instr)
                   (Bind (binderId, Some recordTy, binder)::instr) fields

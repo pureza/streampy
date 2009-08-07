@@ -9,7 +9,7 @@ let rec occurs k = function
   | TyInt | TyFloat | TyBool | TyString | TyUnit | TySymbol | TyAlias _ | TyPrimitive _ -> false
   | TyVariant (_, variants) -> List.exists (occurs k) (List.map snd variants)
   | TyStream ty | TyWindow ty | TyUnknown ty | TyDict ty -> occurs k ty
-  | TyGen (j, bounds) -> k = j || Option.exists (Set.exists (occurs k)) bounds
+  | TyGen j -> k = j
   | TyArrow (t1, t2) -> occurs k t1 || occurs k t2
   | TyRecord fields -> Map.exists (fun _ v -> occurs k v) fields
   | TyTuple elts -> List.exists (occurs k) elts
@@ -27,9 +27,9 @@ let rec typeSubst subst t =
     | TyRecord fields -> TyRecord (Map.map (fun _ v -> typeSubst subst v) fields)
     | TyTuple elts -> TyTuple (List.map (typeSubst subst) elts)
     | TyVariant (name, variants) -> TyVariant (name, List.map (fun (label, ty) -> label, typeSubst subst ty) variants)
-    | TyGen (k, b) -> match List.tryFind (fun (TyGen (k', _), _) -> k' = k) subst with
-                      | Some (s, t) -> t
-                      | _ -> TyGen (k, b)
+    | TyGen k -> match List.tryFind (fun (k', _) -> k' = k) subst with
+                 | Some (s, t) -> t
+                 | _ -> TyGen k
 
 // Replace alias with their real types
 // TODO: Merge with typeSubst
@@ -47,53 +47,14 @@ let rec replaceAliases (env:TypeContext) = function
 
 // Produces fresh new generic variables with incremental identifiers and a
 // counter that returns the next identifier
-let fresh, freshB, counter =
+let fresh, counter =
   let counter = ref 0
   (fun () ->
     let label = !counter
     counter := !counter + 1
-    TyGen (label, None)),
-  (fun bounds ->
-    let label = !counter
-    counter := !counter + 1
-    TyGen (label, bounds)),
+    TyGen label),
   (fun () -> !counter)
 
-let rec typeMatch t b subst =
-  match t, b with
-  | _ when b = t -> true, subst
-  | _, TyGen (k, None) -> failwithf "Can't happen"
-  | TyStream tt, TyStream tb -> typeMatch tt tb subst
-  | TyWindow tt, TyWindow tb -> typeMatch tt tb subst
-  | TyUnknown tt, TyUnknown tb -> typeMatch tt tb subst
-  | TyDict tt, TyDict tb -> typeMatch tt tb subst
-  | TyArrow (tt1, tt2), TyArrow (tb1, tb2) ->
-      let v1, subst1 = typeMatch tt1 tb1 subst
-      let v2, subst2 = typeMatch tt2 tb2 subst1
-      v1 && v2, subst2
-  //| TyGen _, TyGen _ -> failwithf "what to do, what to do"
-  | TyGen (_, None), _ ->
-      true, if Map.contains t subst
-              then let contents = subst.[t]
-                   Map.add t (b::contents) subst
-              else Map.add t [b] subst
- (* | _, TyGen (k, None) ->
-      true, if Map.contains k subst
-              then let contents = subst.[k]
-                   Map.add k (t::contents) subst
-              else Map.add k [t] subst *)
-  | _, TyGen (_, Some set) -> failwithf "what to do what to do %A %A" t b
-  | TyRecord _, _ -> failwithf "not implemented"
-  | TyTuple _, _ -> failwithf "not implemented"
-  | TyVariant _, _ -> failwithf "not implemented"
-  | _ -> false, Map.empty
-
-and typeMatchBounds t bounds =
-  let v, map = Set.fold (fun (valid, subst) b ->
-                           let v, susbt' = typeMatch t b subst
-                           v || valid, susbt')
-                        (false, Map.empty) bounds
-  v, map |> Map.to_list |> List.map (fun (k, v) -> (k, freshB (Some (Set.of_list v))))
 
 let solve constr =
   let rec unify constr subst =
@@ -102,55 +63,22 @@ let solve constr =
     | c::cs ->
         //printfn "%A\n %A\n\n\n\n\n\n" constr subst
         match c with
-        | SameType (s, t) when s = t -> unify cs subst
-        | SameType (TyGen (_, b1) as s, (TyGen (_, b2) as t)) ->
-            // Choose the new bounds from b1 and b2
-            let b' = match b1, b2 with
-                     | None, _ -> b2
-                     | _, None -> b1
-                     | Some b1s, Some b2s ->
-                         let inter = Set.intersect b1s b2s
-                         if inter.IsEmpty
-                           then failwithf "No type belongs to the intersection of %A and %A" b1 b2
-                           else Some inter
-
-            let u = freshB b'
-            let sub = typeSubst [(s, u); (t, u)]
-            unify (List.map (function
-                               | SameType (a, b) -> SameType (sub a, sub b)
-                               | HasField (record, (label, fieldType)) -> HasField (sub record, (label, sub fieldType))) cs)
-                  ((s, u)::(t, u)::(List.map (fun (k, v) -> (k, sub v)) subst))
-        | SameType (TyGen (s, b) as g, t) | SameType (t, (TyGen (s, b) as g)) when not (occurs s t) ->
-            let thsub = match b with
-                        | Some set ->
-                            let v, s = typeMatchBounds t set
-                            if not v then failwithf "neps"
-                            s
-                        | _ -> []
-
-            let sub = typeSubst ((g, t)::thsub)
-
-            unify (List.map (function
-                               | SameType (a, b) -> SameType (sub a, sub b)
-                               | HasField (record, (label, fieldType)) -> HasField (sub record, (label, sub fieldType))) cs)
-                  ((g, t)::(List.map (fun (k, v) -> (k, sub v)) subst))
-        | SameType (TyArrow (a1, r1), TyArrow (a2, r2)) -> unify (SameType (a1, a2)::SameType (r1, r2)::cs) subst
-        | SameType (TyTuple tys1, TyTuple tys2) -> unify ((List.map SameType (List.zip tys1 tys2)) @ cs) subst
-        | SameType (TyRecord fields1, TyRecord fields2) ->
+        | (s, t) when s = t -> unify cs subst
+        | (TyGen s, t) | (t, TyGen s) when not (occurs s t) ->
+            let sub = typeSubst [s, t]
+            unify (List.map (fun (a, b) -> (sub a, sub b)) cs)
+                  ((s, t)::(List.map (fun (k, v) -> (k, sub v)) subst))
+        | (TyArrow (a1, r1), TyArrow (a2, r2)) -> unify ((a1, a2)::(r1, r2)::cs) subst
+        | (TyTuple tys1, TyTuple tys2) -> unify ((List.zip tys1 tys2) @ cs) subst
+        | (TyRecord fields1, TyRecord fields2) ->
             let labels1 = Map.keySet fields1
             let labels2 = Map.keySet fields2
             if labels1 = labels2
-              then let toCheck = [ for l in labels1 -> SameType (fields1.[l], fields2.[l]) ]
+              then let toCheck = [ for l in labels1 -> (fields1.[l], fields2.[l]) ]
                    unify (toCheck @ cs) subst
               else failwithf "Can't unify %A" c
-        | SameType (TyStream t1, TyStream t2) -> unify (SameType (t1, t2)::cs) subst
-        | SameType (TyDict t1, TyDict t2) -> unify (SameType (t1, t2)::cs) subst
-        | HasField (record, (label, fieldType)) ->
-            match record with
-            | TyRecord fields when Map.contains label fields -> unify ((SameType (fieldType, fields.[label]))::cs) subst
-            | TyTuple elts when (int label) <= elts.Length -> unify ((SameType (fieldType, elts.[(int label) - 1]))::cs) subst
-            | _ -> printfn "WARNING: Can't infer if the record %A has the field %s" record label
-                   unify cs subst
+        | (TyStream t1, TyStream t2) -> unify ((t1, t2)::cs) subst
+        | (TyDict t1, TyDict t2) -> unify ((t1, t2)::cs) subst
         | _ -> failwithf "Can't unify %A" c
 
 
@@ -162,7 +90,7 @@ let solve constr =
  * used in more than one place, all the uses must be replaced with the SAME new
  * fresh variable.
  *)
-let rec generalize ty threshold (subst:(Type * Type) list) =
+let rec generalize ty threshold (subst:(int * Type) list) =
   match ty with
   | TyInt | TyFloat | TyBool | TyString | TyUnit | TySymbol | TyPrimitive _ | TyAlias _ -> ty, subst
   | TyVariant (name, variants)  ->
@@ -175,13 +103,16 @@ let rec generalize ty threshold (subst:(Type * Type) list) =
   | TyWindow ty  -> first TyWindow (generalize ty threshold subst)
   | TyDict ty    -> first TyDict (generalize ty threshold subst)
   | TyUnknown ty -> generalize ty threshold subst // Ignore the TyUnknown part.
-  | TyGen (k, _) when k < threshold -> ty, subst
-  | TyGen (k, b) -> try
-                      let t = List.assoc ty subst
-                      t, subst
-                    with err ->
-                      let t = freshB b
-                      t, (ty, t)::subst
+  | TyGen k when k < 0 ->
+      let t = fresh () 
+      t, (k, t)::subst
+  | TyGen k when k < threshold -> ty, subst
+  | TyGen k -> try
+                 let t = List.assoc k subst
+                 t, subst
+               with err ->
+                 let t = fresh ()
+                 t, (k, t)::subst
   | TyArrow (t1, t2) ->
     let t1', subst' = generalize t1 threshold subst
     let t2', subst'' = generalize t2 threshold subst'
@@ -226,15 +157,21 @@ let rec constr (env:TypeContext) expr =
       | _ -> let tf, cf = constr env fn
              let tp, cp = constr env param
              let ty = fresh ()
-             ty, SameType (tf, TyArrow (tp, ty))::(cf @ cp)
+             ty, (tf, TyArrow (tp, ty))::(cf @ cp)
   | MemberAccess (target, Identifier label) ->
-      let tt, ct = constr env target
-      let ty = fresh ()
-      ty, ct @ [HasField (tt, (label, ty))]
+      match typeOf env target with
+      | TyGen _ -> failwithf "Can't determine the type of the target in _____.%s. Please annotate." label
+      | TyRecord fields when Map.contains label fields -> fields.[label], []
+      | TyTuple elts when (int label) <= elts.Length -> elts.[(int label) - 1], []
+      | other -> failwithf "The target of the _____.%s is %A" label other
   | MethodCall (target, Identifier methd, paramExprs) ->
-      let ty, cs = typeOfMethodCall env target methd paramExprs
-      typeSubst (solve cs) ty, cs
-  | ArrayIndex (target, index) -> typeOfMethodCall env target "[]" [index]
+      match typeOf env target with
+      | TyGen _ -> failwithf "Can't determine the type of the target in _____.%s(). Please annotate." methd
+      | other -> typeOfMethodCall env other methd paramExprs
+  | ArrayIndex (target, index) ->
+      match typeOf env target with
+      | TyGen _ -> failwithf "Can't determine the type of the target in _____.[]. Please annotate."
+      | other -> typeOfMethodCall env other "[]" [index]
   | BinaryExpr (oper, expr1, expr2) ->
       let t1, c1 = constr env expr1
       let t2, c2 = constr env expr2
@@ -261,7 +198,7 @@ let rec constr (env:TypeContext) expr =
       let tbi', cbi = constr env' binder
 
       // Find the binder's principal type
-      let subst = solve (SameType (tbi, tbi')::cbi)
+      let subst = solve ((tbi, tbi')::cbi)
       let ptbi = typeSubst subst tbi'
 
       let env' = env.Add (name, (ptbi, prevCounter))
@@ -282,33 +219,42 @@ let rec constr (env:TypeContext) expr =
       // We don't want to generalize ty'
       let env' = env.Add (name, dg ty')
       let tbo, cbo = constr env' body
-      tbo, SameType (ty', tbi)::(cbi @ cbo)
+      tbo, (ty', tbi)::(cbi @ cbo)
   | Lambda (args, expr) ->
-      let env', argTypes =
-        List.fold (fun (env:TypeContext, argTypes) (Param (pattern, _)) ->
-                     let id = match pattern with
-                              | Id (Identifier id) -> id
-                              | _ -> failwithf "The argument to the lambda is a complex pattern. Rewrite was supposed to eliminate this."
-                     let typ = fresh ()
-                     // The threshold is max_int because we don't want to generalize parameters.
-                     env.Add (id, (typ, System.Int32.MaxValue)), argTypes @ [typ])
-                  (env, []) args
+      let expr' = genAnnot expr  // Generalize user type annotations.
+  
+      match expr' with
+      | Lambda (args, body) ->
+          let env', argTypes =
+            List.fold (fun (env:TypeContext, argTypes) (Param (pattern, opty)) ->
+                         let id = match pattern with
+                                  | Id (Identifier id) -> id
+                                  | _ -> failwithf "The argument to the lambda is a complex pattern. Rewrite was supposed to eliminate this."
+                         
+                         let typ = match opty with
+                                   | Some t -> t
+                                   | _ -> fresh ()
+                         
+                         // The threshold is max_int because we don't want to generalize parameters.
+                         env.Add (id, (typ, System.Int32.MaxValue)), argTypes @ [typ])
+                      (env, []) args
 
-      let texp, cexp = constr env' expr
-      let funType = List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes texp  //TyArrow (List.reduce (fun acc arg -> TyArrow (acc, arg)) argTypes, texp)
-      funType, cexp
+          let texp, cexp = constr env' body
+          let funType = List.foldBack (fun arg acc -> TyArrow (arg, acc)) argTypes texp  //TyArrow (List.reduce (fun acc arg -> TyArrow (acc, arg)) argTypes, texp)
+          funType, cexp
+      | _ -> failwithf "Can't happen"          
   | If (cond, thn, els) ->
       let tc, cc = constr env cond
       let tt, ct = constr env thn
       let te, ce = constr env els
-      tt, SameType (tc, TyBool)::SameType (tt, te)::(cc @ ct @ ce)
+      tt, (tc, TyBool)::(tt, te)::(cc @ ct @ ce)
   | Match (expr, cases) ->
       // All cases should return the same type. Furthermore, the body of each
       // match case can be ignored because of rewrite phase.
       let te, ce = constr env expr
       let tc, cc = List.fold (fun (tc, cc) (MatchCase (pattern, _)) ->
                                 let tp, cp = constr env pattern
-                                tp, SameType (tp, tc)::(cp @ cc))
+                                tp, (tp, tc)::(cp @ cc))
                              (fresh (), [])  cases
       tc, ce @ cc
   | Seq (expr1, expr2) ->
@@ -333,19 +279,17 @@ let rec constr (env:TypeContext) expr =
 and constrBinOp oper tleft tright =
   match oper, tleft, tright with
   | Plus, TyString, _ -> TyString, []
-  | Plus, _, _ ->
-      let ty = freshB (Some (Set.of_list [TyInt; TyFloat]))
-      let tleft' = freshB (Some (Set.of_list [TyInt; TyFloat]))
-      let tright' = freshB (Some (Set.of_list [TyInt; TyFloat]))
-      ty, [SameType (tleft, tleft'); SameType (tright, tright')]
-  | (Minus | Times | Div | Mod), _, _ -> TyInt, [SameType (tleft, TyInt); SameType (tleft, tright)]
-  | (GreaterThan | GreaterThanOrEqual | Equal | NotEqual | LessThanOrEqual | LessThan), _, _ -> TyBool, [SameType (tleft, tright)]
+  | Plus, _, _ -> tleft, [(tleft, tright)]
+  | (Minus | Times | Div | Mod), _, _ -> TyInt, [(tleft, TyInt); (tleft, tright)]
+  | (GreaterThan | GreaterThanOrEqual | Equal | NotEqual | LessThanOrEqual | LessThan), _, _ -> TyBool, [(tleft, tright)]
   | (And | Or), TyBool, TyBool -> TyBool, []
   | Is, _, TyString -> TyBool, []
   | other -> failwithf "Binary operation not implemented for these types: %A" other
 
 
 and typeOfMethodCall env target name paramExps =
+  failwithf "n/i"
+(*
   let targetType = match typeOf env target with
                    //| TyFixed (t, _) -> t
                    | other -> other
@@ -536,7 +480,36 @@ and typeOfMethodCall env target name paramExps =
               | _ -> failwithf "The type %A does not have method %A!" targetType name
               *)
           | _ -> failwithf "The type %A does not have method %A!" targetType name
+*)
 
+and genAnnot expr =
+  match expr with
+  | Lambda (args, body) ->
+      fst (List.fold (fun (expr, subst) (Param (pattern, opty)) ->
+                        match opty with
+                        | Some ty -> // maxValue ensures that only developer annotations are generalized,
+                                     // not inferred types.
+                                     let ty', subst' = generalize ty (System.Int32.MaxValue) subst
+                                     replaceTypes subst' expr, subst'
+                        | None -> expr, subst)
+                    (expr, []) args)
+  | _ -> failwithf "genAnnot called with a %A" expr
+
+
+(*
+ * Perform the given substitutions in all type annotations present in expr.
+ *)  
+and replaceTypes subs expr =
+    match expr with
+    | Lambda (args, body) ->
+        let args' =
+          List.map (fun (Param (pattern, opty) as arg) ->
+                      match opty with
+                      | Some ty  -> Param (pattern, Some (typeSubst subs ty))
+                      | _ -> arg)
+                   args
+        Lambda (args', replaceTypes subs body)
+    | _ -> visit expr (replaceTypes subs)
 
 and types (env:TypeContext) = function
   | DefVariant (Identifier name, variants) ->

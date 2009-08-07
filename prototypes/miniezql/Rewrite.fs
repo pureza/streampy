@@ -8,30 +8,6 @@ open PatternMatching
 open Util
 
 
-(*
- * Replaces the given expression with another.
- *)
-let rec visit expr visitor =
-  match expr with
-  | FuncCall (fn, param) -> FuncCall (visitor fn, visitor param)
-  | MethodCall (target, name, paramExps) -> MethodCall (visitor target, name, List.map visitor paramExps)
-  | ArrayIndex (target, index) -> ArrayIndex (visitor target, visitor index)
-  | MemberAccess (target, name) -> MemberAccess (visitor target, name)
-  | Lambda (ids, expr) -> Lambda (ids, visitor expr)
-  | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
-  | Let (pattern, optType, binder, body) -> Let (visitor pattern, optType, visitor binder, visitor body)
-  | LetListener (pattern, optType, binder, listeners, body) ->
-      let listeners' = List.map (fun (Listener (evOpt, stream, guardOpt, body)) ->
-                                       Listener (evOpt, visitor stream, Option.bind (visitor >> Some) guardOpt, visitor body))
-                                listeners
-      LetListener (visitor pattern, optType, visitor binder, listeners', visitor body)
-  | If (cond, thn, els) -> If (visitor cond, visitor thn, visitor els)
-  | Match (expr, cases) -> Match (visitor expr, List.map (fun (MatchCase (pattern, body)) -> MatchCase (pattern, visitor body)) cases)
-  | Seq (expr1, expr2) -> Seq (visitor expr1, visitor expr2)
-  | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)
-  | Tuple fields -> Tuple (List.map visitor fields)
-  | Id _ | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Fail | Null -> expr
-
 
 (* Translate listeners into calls to listenN
  *

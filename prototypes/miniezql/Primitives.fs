@@ -12,8 +12,8 @@ type PrimitiveFunction =
 let print =
   { Name = "print"
     TypeCheck = fun env param ->
-                  typeOf env param |> ignore
-                  TyUnit, []
+                  let tp, cp = constr env param
+                  TyUnit, cp
     Eval = fun eval env param ->
              let v = eval env param
              printfn "%O" v
@@ -28,7 +28,7 @@ let makeEnum =
                       let tm, cm = constr env meta
                       let tr = fresh ()
                       let tl = TyArrow (tm, tr)
-                      tr, SameType (tl, getType env.[label])::cm
+                      tr, (tl, getType env.[label])::cm
                   | _ -> failwithf "Invalid parameter to $makeEnum: %A" param
     Eval = fun eval env param ->
              match param with
@@ -55,12 +55,12 @@ let whenFun =
   { Name = "when"
     TypeCheck = fun env param ->
                   match param with
-                  | Tuple [source; Lambda ([Param (Id (Identifier ev), _)], body) as handler] ->
+                  | Tuple [source; Lambda _ as  handler] ->
                       let ts, cs = constr env source
-                      match constr env handler with
-                      | TyArrow (evTy, t2), ch ->
-                          t2, (SameType (ts, TyStream evTy))::(cs @ ch)
-                      | _ -> failwithf "Can't happen"
+                      let th, ch = constr env handler
+                      let unk = fresh ()
+                      let res = fresh ()
+                      res, (ts, TyStream unk)::(th, TyArrow (unk, res))::(cs @ ch)        
                   | _ -> failwithf "Invalid parameter to when: %A" param
     Eval = fun _ _ _ -> failwithf "Will never be called" }
 
@@ -73,7 +73,7 @@ let listenN =
                       let ty, ci = constr env initial
                       let cs = List.fold (fun ccs listener ->
                                        let listym, cl = constr env listener
-                                       SameType (listym, TyArrow (ty, ty))::(cl @ ccs))
+                                       (listym, TyArrow (ty, ty))::(cl @ ccs))
                                     ci rest
                       ty, cs
                   | _ -> failwithf "Invalid parameter to when: %A" param

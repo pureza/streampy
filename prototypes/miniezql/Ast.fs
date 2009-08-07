@@ -89,7 +89,7 @@ and Type =
   | TyString
   | TySymbol
   | TyArrow of Type * Type
-  | TyGen of int * option<Type Set>
+  | TyGen of int    // int < 0 means that this is a user type annotation.
   | TyRecord of Map<string, Type>
   | TyTuple of Type list
   | TyVariant of id * (id * Type) list
@@ -109,7 +109,7 @@ and Type =
     | TyString -> "string"
     | TySymbol -> "symbol"
     | TyArrow (type1, type2) -> sprintf "%O -> %O" type1 type2
-    | TyGen (typ, _) -> sprintf "'%d" typ
+    | TyGen typ -> sprintf "'%d" typ
     | TyRecord _ -> "record"
     | TyTuple _ -> "tuple"
     | TyVariant (Identifier id, cases) -> sprintf "%s<%s>" id (List.fold (fun acc (Identifier name, _) -> acc + "|" + name) "" cases)
@@ -130,11 +130,8 @@ and Type =
     | TyUnknown _ -> true
     | _ -> false
 
-and Constraint =
-  | SameType of Type * Type
-  | HasField of Type * (string * Type)
 
-and PrimTyChecker = TypeContext -> expr -> Type * Constraint list
+and PrimTyChecker = TypeContext -> expr -> Type * (Type * Type) list
 and TypeContext = Map<string, Type * int>
 
 let getType = fst
@@ -229,3 +226,28 @@ let isContinuousType typ =
   | TyWindow (TyStream _) -> false
   | TyDict _ -> false
   | _ -> true
+
+
+(*
+ * Replaces the given expression with another.
+ *)
+let rec visit expr visitor =
+  match expr with
+  | FuncCall (fn, param) -> FuncCall (visitor fn, visitor param)
+  | MethodCall (target, name, paramExps) -> MethodCall (visitor target, name, List.map visitor paramExps)
+  | ArrayIndex (target, index) -> ArrayIndex (visitor target, visitor index)
+  | MemberAccess (target, name) -> MemberAccess (visitor target, name)
+  | Lambda (ids, expr) -> Lambda (ids, visitor expr)
+  | BinaryExpr (op, left, right) -> BinaryExpr (op, visitor left, visitor right)
+  | Let (pattern, optType, binder, body) -> Let (visitor pattern, optType, visitor binder, visitor body)
+  | LetListener (pattern, optType, binder, listeners, body) ->
+      let listeners' = List.map (fun (Listener (evOpt, stream, guardOpt, body)) ->
+                                       Listener (evOpt, visitor stream, Option.bind (visitor >> Some) guardOpt, visitor body))
+                                listeners
+      LetListener (visitor pattern, optType, visitor binder, listeners', visitor body)
+  | If (cond, thn, els) -> If (visitor cond, visitor thn, visitor els)
+  | Match (expr, cases) -> Match (visitor expr, List.map (fun (MatchCase (pattern, body)) -> MatchCase (pattern, visitor body)) cases)
+  | Seq (expr1, expr2) -> Seq (visitor expr1, visitor expr2)
+  | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)
+  | Tuple fields -> Tuple (List.map visitor fields)
+  | Id _ | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Fail | Null -> expr  
