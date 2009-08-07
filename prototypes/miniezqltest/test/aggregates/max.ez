@@ -1,0 +1,47 @@
+temp_readings = stream of { room_id:int, temperature:int };;
+
+// The dictionary value is a window that does not depend on g
+a = temp_readings.groupby(:room_id, fun g -> temp_readings[2.sec])
+                 .select (fun r -> r.max(:temperature));;
+
+
+// The dictionary value is a stream that does not depend on g
+b = temp_readings.groupby(:room_id, fun g -> temp_readings)
+                 .select (fun r -> r.max(:temperature));;
+
+
+// The dictionary value is a stream
+c = temp_readings.groupby(:room_id, fun g -> g)
+                 .select (fun r -> r.max(:temperature));;
+
+
+// The dictionary value is a window
+d = temp_readings.groupby(:room_id, fun g -> g[2.sec])
+                 .select (fun r -> r.max(:temperature));;
+
+// The dictionary value is a record with a stream
+e = temp_readings.groupby(:room_id, fun g -> { a = g })
+                 .select (fun r -> r.a.max(:temperature));;
+
+
+// The dictionary value is a record with a window
+f = temp_readings.groupby(:room_id, fun g -> { a = g[2.sec] })
+                 .select (fun r -> r.a.max(:temperature));;
+
+// The dictionary value is a continuous value
+g = temp_readings.groupby(:room_id, fun g -> g.last().temperature)
+                 .select (fun r -> r.max());;
+
+
+// The dictionary value is a continuous value window
+h = temp_readings.groupby(:room_id, fun g -> g.last().temperature[2.sec])
+                 .select (fun r -> r.max());;
+
+#! temp_readings
+timestamp, room_id, temperature
+2,               1,      25
+4,               3,      45
+5,               1,      25
+6,               2,      50
+7,               3,      30
+9,               1,      23

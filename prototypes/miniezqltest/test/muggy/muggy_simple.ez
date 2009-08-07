@@ -1,0 +1,37 @@
+temp_readings = stream of { room_id:int, temperature:int };;
+entries = stream of { room_id:int, product_id:int };;
+
+
+entity Room =
+  createFrom(temp_readings, :room_id);;
+
+
+entity Product =
+  createFrom (entries, :product_id)
+  belongsTo :room
+  member x.temperature = x.room.temperature;;
+
+
+spoiled = Product.all.where(fun p -> (p.temperature > 25).howLong() >= 10.min)
+                     .select (fun p -> p.product_id);;
+
+
+#! temp_readings
+Timestamp, room_id, temperature
+2,               1,      25
+4,               3,      45  # Out-of-order keys (1, 3, 2 instead of 1, 2, 3)
+5,               1,      25  # Retain the previous value
+6,               2,      50
+7,               3,      30
+9,               1,      23
+20,              3,      10
+30,              3,      40
+
+#! entries
+Timestamp, room_id, product_id
+3,               1,          1
+4,               1,          2
+6,               2,          2
+7,               1,          3
+8,               2,          1
+9,               3,          2

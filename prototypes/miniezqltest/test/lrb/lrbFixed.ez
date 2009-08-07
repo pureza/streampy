@@ -1,0 +1,54 @@
+seg_speed_str = stream of { vehicle_id:int, speed:int, segment_id:int };;
+
+define justNow(x:bool) : bool = x[1 sec][0];;
+
+define not(v:bool) : bool =
+  if v then false else true;;
+
+entity Segment =
+   createFrom(seg_speed_str, :segment_id)
+   hasMany :vehicles
+
+   member self.avg5mins = self.events[5 min].avg(:speed)
+
+    // A segment is congested if the speed average reported over the
+    // last 5 minutes is less than 80 MPH
+   member self.isCongested = if not (self.avg5mins.null?) then self.avg5mins < 80 else false
+
+   member self.vehicleCount = self.vehicles.values().count();;
+
+
+entity Vehicle =
+  createFrom(seg_speed_str, :vehicle_id)
+  belongsTo :segment
+
+  // The toll is updated whenever the vehicle enters
+  // a congested segment
+  member self.toll = 0
+        when | self.segment_id.changes() ->
+                 if justNow({self.segment}.isCongested)
+                   then self.segment.vehicleCount
+                   else 0
+
+  member self.totalToll = self.toll.updates().sum(:value);;
+
+
+total = Vehicle.all.select(fun v -> v.totalToll);;
+
+
+
+#! seg_speed_str
+timestamp, vehicle_id, speed, segment_id
+1,                 10,    70,          1
+2,                 20,    80,          1
+3,                 10,    90,          2
+4,                 30,    71,          1
+5,                 20,    81,          2
+6,                 30,    91,          2
+7,                 10,    72,          3
+8,                 20,    82,          3
+
+
+
+
+

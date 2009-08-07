@@ -1,0 +1,84 @@
+temp_readings = stream of { room_id:int, temperature:int };;
+entries = stream of { room_id:int, product_id:int };;
+
+lastTemp = temp_readings.last(:temperature);;
+
+
+enum State =
+  | A of int
+  | B of { a:int }
+  | C of bool;;
+
+define not(v:bool) : bool =
+  if v then false else true;;
+
+
+entity Room =
+  createFrom(temp_readings, :room_id)
+
+
+  member self.foo = A(self.temperature)
+                  when | temp_readings ->
+                           match self.foo with
+                             | A (v) -> B ({ a = self.temperature })
+                             | B (v) -> C (not(v.a > 30))
+                             | C (v) -> A (0)
+                           end;;
+
+// This function receives a room
+define isA(r:Room) : bool =
+  match r.foo with
+    | A(_) -> true
+    | B(_) -> false
+    | C(_) -> false
+  end;;
+
+// This function receives a State
+define isA2(foo:State) : bool =
+  match foo with
+    | A(_) -> true
+    | B(_) -> false
+    | C(_) -> false
+  end;;
+
+roomsInStateA = Room.all.where  (fun r -> isA(r) and isA2(r.foo))
+                        .select (fun r -> r.room_id);;
+
+
+
+define what?() : bool = lastTemp > 30;;
+
+a = A(3)
+  when | (lastTemp > 30).changes() if lastTemp > 30 -> C (what?())
+       | ev in temp_readings -> match a with
+                                  | A(v) -> A(v + 1)
+                                  | B(v) -> A(ev.temperature + v.a)
+                                end
+       | entries -> B({ a = 0 });;
+
+
+b = 0
+  when | (lastTemp > 30).changes() if lastTemp > 30 -> b + 1
+       | entries if lastTemp < 30 -> b - 1;;
+
+
+
+
+
+#! temp_readings
+Timestamp, room_id, temperature
+2,               1,      25
+4,               3,      45  # Out-of-order keys (1, 3, 2 instead of 1, 2, 3)
+5,               1,      25  # Retain the previous value
+6,               2,      50
+7,               3,      30
+9,               1,      23
+
+#! entries
+Timestamp, room_id, product_id
+3,               1,          1
+4,               1,          2
+6,               2,          2
+7,               1,          3
+8,               2,          1
+9,               3,          2

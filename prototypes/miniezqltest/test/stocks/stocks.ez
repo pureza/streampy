@@ -1,0 +1,49 @@
+stocks = stream of { timestamp:int, symbol:string, value:float, volume:int };;
+
+day_change = ticks.where (fun ev -> ev.timestamp % 86400 == 0);;
+
+
+now = ticks.last(:timestamp);;
+
+
+enum GainerState =
+  | Losing
+  | NoGainNoPain
+  | SmallGain
+  | BigGain;;
+
+
+entity Company =
+  createFrom (stocks, :symbol)
+
+  member self.yesterday = 0.0
+                   when | day_change -> self.value
+
+
+  member self.gain = let y = self.yesterday in
+                     if y != 0.0
+                       then (self.value - y) / y
+                       else 0.0;;
+
+
+sum_all_companies = Company.all.values().sum(:value);;
+
+gainers = Company.all.where (fun c -> c.gain != 0)
+                     .select (fun c -> { symbol = c.symbol, gain = c.gain })
+                     .values()
+                     .sortBy(:gain);;
+
+gainersState = Company.all.select (fun c -> if c.gain < -2 then Losing ()
+                                              else if c.gain == 0 then NoGainNoPain ()
+                                              else if c.gain < 0.02 then SmallGain ()
+                                              else BigGain ());;
+
+
+
+when (gainers.changes(), fun _ -> print (now + " " + gainersState));;
+
+
+when (day_change, fun _ -> print ("Day " + (now / 86400)));;
+
+#! stocks
+# import "test/stocks/stocks.csv"

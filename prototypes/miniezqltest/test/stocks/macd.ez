@@ -1,0 +1,59 @@
+stocks = stream (timestamp:int, symbol:string, value:float, volume:int);;
+
+
+day_change = ticks.where (fun ev -> ev.timestamp % 86400 == 0);;
+
+
+enum EmaState =
+  | Init of { count:int, sum:float }
+  | Normal of float;;
+
+define ema (data:float) (n:int) : float =
+  let alpha = 2 / (n + 1.0) in
+  let result = Init ({ count = 0, sum = 0.0 })
+    when | data.changes() ->
+      match result with
+        | Init (s) -> if s.count < 2
+                        then Init ({ count = s.count + 1, sum = s.sum + data })
+                        else Normal ((s.sum + data) / (s.count + 1))
+        | Normal (f) -> Normal (alpha * data + (1 - alpha) * f)
+      end
+  in
+    match result with
+      | Init (s) -> if s.count == 0 then 0.0 else s.sum / s.count
+      | Normal (f) -> f
+    end;;
+
+
+entity Company =
+  createFrom (stocks, :symbol)
+
+  member self.yesterday = 0.0
+    when | day_change -> self.value
+
+
+  member self.macd =
+    let macd = ema(self.yesterday, 12) - ema(self.yesterday, 26) in
+    let signal = ema(macd, 9) in
+    macd - signal
+
+  member self.buy = self.macd > 0
+
+  member self.sell = self.macd < 0;;
+
+
+toBuy = Company.all
+          .where (fun c -> c.buy)
+          .select (fun c -> c.buy);;
+
+toSell = Company.all
+          .where (fun c -> c.sell)
+          .select (fun c -> c.sell);;
+
+when (toSell.changes(), fun _ -> print (toSell));;
+when (day_change, fun ev -> print (ev.timestamp / 86400));;
+
+
+
+#! stocks
+# import "test/stocks/stocks.csv"

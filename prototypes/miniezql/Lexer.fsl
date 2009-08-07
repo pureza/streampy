@@ -1,0 +1,109 @@
+{
+open System
+open System.Globalization
+open System.Collections
+open Parser
+open Lexing
+
+let ids = Map.of_list ["let",        LET
+                       "in",         IN
+                       "define",     DEFINE
+                       "and",        AND
+                       "or",         OR
+                       "if",         IF
+                       "then",       THEN
+                       "else",       ELSE
+                       "fun",        FUN
+                       "enum",       ENUM
+                       "of",         OF
+                       "match",      MATCH
+                       "with",       WITH
+                       "end",        END
+                       "when",       WHEN
+                       "for",        FOR
+                       "group",      GROUP
+                       "by",         BY
+                       "int",        INT
+                       "float",      FLOAT
+                       "bool",       BOOL
+                       "string",     STRING
+                       "null",       NULL]
+let tokenize text =
+  if ids.ContainsKey(text)
+      then ids.[text]
+      else ID text
+}
+
+let num        = ['0'-'9']+
+let alpha      = ['a'-'z' 'A'-'Z']
+let identifier = alpha + (alpha | ['_'] | num)* + ('?')?
+let integer    = '-'? num
+let float      = '-'? num '.' num
+let boolean    = "true" | "false"
+let null       = "null"
+let whitespace = ' ' | '\t'
+let newline    = '\n' | '\r' '\n'
+
+rule token = parse
+    | whitespace            { token lexbuf }
+    | newline               { (lexbuf:lexbuf).EndPos <- lexbuf.EndPos.NextLine; token lexbuf }
+    | "("                   { LPAREN }
+    | ")"                   { RPAREN }
+    | "["                   { LBRACKET }
+    | "]"                   { RBRACKET }
+    | "{"                   { LBRACE }
+    | "}"                   { RBRACE }
+    | "="                   { ASSIGN }
+    | "+"                   { PLUS }
+    | "-"                   { MINUS }
+    | "/"                   { DIV }
+    | "%"                   { MOD }
+    | "*"                   { TIMES }
+    | ">"                   { GT }
+    | ">="                  { GTE }
+    | "=="                  { EQ }
+    | "!="                  { DIFF }
+    | "<="                  { LTE }
+    | "<"                   { LT }
+    | ","                   { COMMA }
+    | ":"                   { COLON }
+    | "->"                  { ARROW }
+    | "."                   { DOT }
+    | ";"                   { SEMICOLON }
+    | ";;"                  { SEMICOLON2 }
+    | "_"                   { UNDERSCORE }
+    | "'"                   { APOSTROPHE }
+    | "|"                   { PIPE }
+    | boolean               { BOOLEAN_LITERAL (Boolean.Parse(lexeme lexbuf)) }
+    | identifier            { tokenize (lexeme lexbuf) }
+    | integer               { INTEGER_LITERAL (Int32.Parse(lexeme lexbuf)) }
+    | float                 { FLOAT_LITERAL (Single.Parse(lexeme lexbuf, CultureInfo( "en-US", false ).NumberFormat)) }
+    | "//"  [^'\n''\r']*    { token lexbuf  }
+    | "/*"                  { comment lexbuf; token lexbuf }
+    | "\""                  { STRING_LITERAL (string lexbuf.StartPos "" lexbuf) }
+    | eof                   { EOF }
+
+// Shamelessly copied from Expert F#
+and comment = parse
+    | "/*"       { comment lexbuf; comment lexbuf }
+    | "*/"       { () }
+    | "\n"       { lexbuf.EndPos <- lexbuf.EndPos.NextLine;
+                    comment lexbuf }
+    | eof        { failwith "Unterminated comment" }
+    | _          { comment lexbuf }
+
+and string pos s = parse
+    | "\\" ('"' | 'n' | 'r' | 't')
+                  { let s' = s + (match Lexing.lexeme lexbuf with
+                                    | "\\\"" -> "\""
+                                    | "\\n" -> "\n"
+                                    | "\\r" -> "\r"
+                                    | "\\t" -> "\t"
+                                    | "\\\\" -> "\\"
+                                    | _ ->      "") in
+                     string pos s' lexbuf }
+    | "\""          { s }
+    | "\n"          { lexbuf.EndPos <- lexbuf.EndPos.NextLine;
+                      string pos (s + "\n") lexbuf }
+    | eof           { failwithf "end of file in string started at or near %A" pos }
+    | _             { string pos (s + (Lexing.lexeme lexbuf)) lexbuf }
