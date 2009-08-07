@@ -192,15 +192,7 @@ in id 5; id 6.0;;
 "
 *)
 
-run "
-tempReadings = stream of { timestamp:int, roomId:int, temperature:int };;
-
-define sum n = n.sum();;
-
-sum 5;;
-
-sum 5.0;;
-"
+//TypeTest.runTypeTests ()
 
 Console.ReadLine() |> ignore
 

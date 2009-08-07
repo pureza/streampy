@@ -55,9 +55,12 @@ let whenFun =
   { Name = "when"
     TypeCheck = fun env param ->
                   match param with
-                  | Tuple [source; Lambda _ as  handler] ->
+                  | Tuple [source; Lambda ([Param (Id (Identifier ev), _)], body) as handler] ->
                       let ts, cs = constr env source
-                      let th, ch = constr env handler
+                      let th, ch = match typeOf env source with
+                                   | TyStream ty -> let tb, cb = constr (env.Add(ev, dg ty)) body
+                                                    TyArrow (ty, tb), cb
+                                   | _ -> constr env handler
                       let unk = fresh ()
                       let res = fresh ()
                       res, (ts, TyStream unk)::(th, TyArrow (unk, res))::(cs @ ch)        

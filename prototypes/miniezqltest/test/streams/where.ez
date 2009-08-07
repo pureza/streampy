@@ -38,12 +38,12 @@ hot_or_wet = [ ev for ev in merged if ev.temperature > 30 or ev.humidity > 85 ];
 
 // The values of the dictionary are streams.
 eventsPerRoom = { g for g in temp_readings group by :room_id };;
-minTempRoom1 = eventsPerRoom[1].where(fun ev -> ev.temperature != 23).temperature.min();;
+minTempRoom1 = eventsPerRoom[1].where(fun ev -> ev.temperature != 23).min(:temperature);;
 
 
 // The values of the dictionary are records with one field that is a stream.
 eventsPerRoomb = { { a = g } for g in temp_readings group by :room_id };;
-minTempRoom1b = eventsPerRoomb[1].a.where(fun ev -> ev.temperature != 23).temperature.min();;
+minTempRoom1b = eventsPerRoomb[1].a.where(fun ev -> ev.temperature != 23).min(:temperature);;
 
 
 

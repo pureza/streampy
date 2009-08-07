@@ -2,17 +2,17 @@ temp_readings = stream of { room_id:int, temperature:int };;
 hum_readings = stream of { room_id:int, humidity:int };;
 
 
-tempsPerRoom = temp_readings[3 sec]
+tempsPerRoom = temp_readings[3.sec]
                  .groupby(:room_id, fun g -> g.min(:temperature));;
 
 
 // The group does not depend on anything!
-allRooms20 = temp_readings[3 sec]
+allRooms20 = temp_readings[3.sec]
                .groupby(:room_id, fun g -> 20);;
 
 
 #! hum_readings
-Timestamp, room_id, humidity
+timestamp, room_id, humidity
 0,         1, 70
 1,         2, 80
 2,         3, 90
@@ -25,7 +25,7 @@ Timestamp, room_id, humidity
 
 
 #! temp_readings
-Timestamp, room_id, temperature
+timestamp, room_id, temperature
 2,               1,      25
 4,               3,      45
 5,               1,      25

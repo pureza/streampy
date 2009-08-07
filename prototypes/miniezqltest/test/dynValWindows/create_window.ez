@@ -2,17 +2,17 @@ temp_readings = stream of { room_id:int, temperature:int };;
 hum_readings = stream of { room_id:int, humidity:int };;
 
 
-currTemp = temp_readings.last(:temperature);;
+currTemp = temp_readings.last().temperature;;
 
-last3secs = currTemp[3 sec];;
+last3secs = currTemp[3.sec];;
 
 
-sumLast3secs = currTemp[3 sec].sum();;
+sumLast3secs = currTemp[3.sec].sum();;
 
 
 
 #! hum_readings
-Timestamp, room_id, humidity
+timestamp, room_id, humidity
 0,         1, 70
 1,         2, 80
 2,         3, 90
@@ -25,7 +25,7 @@ Timestamp, room_id, humidity
 
 
 #! temp_readings
-Timestamp, room_id, temperature
+timestamp, room_id, temperature
 2,               1,      25
 4,               3,      45  # Out-of-order keys (1, 3, 2 instead of 1, 2, 3)
 5,               1,      25  # Retain the previous value

@@ -220,7 +220,7 @@ let rec constr (env:TypeContext) expr =
       let env' = env.Add (name, dg ty')
       let tbo, cbo = constr env' body
       tbo, (ty', tbi)::(cbi @ cbo)
-  | Lambda (args, expr) ->
+  | Lambda (args, body) ->
       let expr' = genAnnot expr  // Generalize user type annotations.
   
       match expr' with
@@ -287,42 +287,19 @@ and constrBinOp oper tleft tright =
   | other -> failwithf "Binary operation not implemented for these types: %A" other
 
 
-and typeOfMethodCall env target name paramExps =
-  failwithf "n/i"
-(*
-  let targetType = match typeOf env target with
-                   //| TyFixed (t, _) -> t
-                   | other -> other
-
-  // Generic methods first
+and typeOfMethodCall env targetType name paramExps =
   match name with
-  | "changes" | "updates" ->
-    match paramExps with
-    | [] -> TyStream (TyRecord (Map.of_list ["value", targetType])), []
-    | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
   | "count" -> TyInt, []
   | "last" | "prev" ->
       // last is applied to Stream of ev and returns an ev
       let ty = fresh ()
-      ty, [SameType (targetType, TyStream ty)]
+      ty, [(targetType, TyStream ty)]
   | "sum" | "avg" | "max" | "min" ->
       // sum and avg may be applied to integers, floats, integer windows and float windows
       match targetType, paramExps with
-      | _, [] -> TyInt, [SameType (targetType, freshB (Some (Set.of_list [TyInt; TyWindow TyInt])))]
+      | (TyInt | TyWindow TyInt), [] -> TyInt, []
       | (TyStream (TyRecord fields) | TyWindow (TyStream (TyRecord fields))), [SymbolExpr (Symbol field)] when Map.contains field fields -> fields.[field], []
-      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-  | "groupby" ->
-      match paramExps with
-      | [SymbolExpr (Symbol field); Lambda ([Param (Id (Identifier g), _)], body) as param] ->
-          match targetType with
-          | TyStream _ | TyWindow (TyStream _) -> TyDict (typeOf (env.Add(g, dg targetType)) body), []
-          | _ -> failwithf "Can't happen"
-      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-  | "[]" ->
-      match paramExps with
-      | [param] when isTimeLength param -> TyWindow targetType, []
-      | _ -> let ty = fresh ()
-             ty, [SameType (targetType, TyDict ty)]
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps      
   | "where" ->
       match targetType, paramExps with
       | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType)) | TyDict argType),
@@ -342,22 +319,38 @@ and typeOfMethodCall env target name paramExps =
           | TyDict _ -> TyDict projty, []
           | _ -> failwithf "Can't happen"
       | _ -> failwithf "It was not possible to determine the type of the target in the call to %s" name
+  | "groupby" ->
+      match paramExps with
+      | [SymbolExpr (Symbol field); Lambda ([Param (Id (Identifier g), _)], body) as param] ->
+          match targetType with
+          | TyStream _ | TyWindow (TyStream _) -> TyDict (typeOf (env.Add(g, dg targetType)) body), []
+          | _ -> failwithf "Can't happen"
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps  
+  | "[]" ->
+      match paramExps with
+      | [param] when isTimeLength param -> TyWindow targetType, []
+      | _ -> let ty = fresh ()
+             ty, [(targetType, TyDict ty)]    
+  | _ -> match targetType with
+         | TyDict valueType ->
+             match name with
+             | "values" when paramExps = [] -> TyWindow valueType, []
+             | _ -> failwithf "n/i %A %s" targetType name
+         | _ -> failwithf "n/i %A %s" targetType name
+  
+(*
+  let targetType = match typeOf env target with
+                   //| TyFixed (t, _) -> t
+                   | other -> other
 
- (*
-   | _ -> match targetType with
-          | TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType)) ->
+  // Generic methods first
+  match name with
+  | "changes" | "updates" ->
+    match paramExps with
+    | [] -> TyStream (TyRecord (Map.of_list ["value", targetType])), []
+    | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+ 
 
-          [Lambda ([Param (Id (Identifier arg), _)], expr)] ->
-          if (typeOf (env.Add(arg, dg argType)) expr) <> TyBool
-            then failwithf "The predicate of the where doesn't return a boolean!"
-          targetType, []
-      | TyDict argType, [Lambda ([Param (Id (Identifier g), _)], body) as param] ->
-              let ty, cs = constr env param
-              match ty with
-              | TyArrow (tyg, TyBool) -> TyDict argType, SameType (argType, tyg)::cs
-              | _ -> failwithf "Can't happen"
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-*)
 
 (*
   | "last" | "sum" | "max" | "min" | "avg" | "prev" ->
@@ -385,26 +378,6 @@ and typeOfMethodCall env target name paramExps =
           if (typeOf (env.Add(arg, dg v)) expr) <> TyBool
             then failwithf "The predicate of %s doesn't return a boolean!" name
           TyBool, []
-      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-  | "where" ->
-      match targetType, paramExps with
-      | (TyStream (TyRecord _ as argType) | TyWindow (TyStream (TyRecord _ as argType))),
-          [Lambda ([Param (Id (Identifier arg), _)], expr)] ->
-          if (typeOf (env.Add(arg, dg argType)) expr) <> TyBool
-            then failwithf "The predicate of the where doesn't return a boolean!"
-          targetType, []
-      | TyDict argType, [Lambda ([Param (Id (Identifier g), _)], body) as param] ->
-              let ty, cs = constr env param
-              match ty with
-              | TyArrow (tyg, TyBool) -> TyDict argType, SameType (argType, tyg)::cs
-              | _ -> failwithf "Can't happen"
-          | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
-  | "groupby" ->
-      match targetType, paramExps with
-      | (TyStream (TyRecord fields as evType) | TyWindow (TyStream (TyRecord fields as evType))),
-        [SymbolExpr (Symbol field); Lambda ([Param (Id (Identifier g), _)], expr)] when Map.contains field fields ->
-                                                                                     TyDict (typeOf (env.Add(g, dg targetType)) expr), []
       | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
 *)
   // Specific methods below

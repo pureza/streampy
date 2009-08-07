@@ -30,7 +30,7 @@ open Ast
 %left PLUS MINUS
 %left TIMES DIV MOD
 %left DOT
-%nonassoc LPAREN LBRACKET
+%nonassoc LPAREN LBRACKET RPAREN RBRACKET
 
 
 %type <prog list> TopLevel
@@ -166,12 +166,15 @@ Type:
   | RecordType                                                      { $1 }
   | TupleType                                                       { $1 }
   | LPAREN Type RPAREN                                              { $2 }
-  | ID                                                              { TyAlias $1 }
+  | ID                                                              { if $1 = "unit" then TyUnit else TyAlias $1 }
   | APOSTROPHE ID                                                   { let h = hash $2 in
                                                                       let h' = if h > 0
                                                                                  then 0 - h
                                                                                  else h in
                                                                       TyGen h' }
+  | ID LT Type GT                                                   { match $1 with
+                                                                      | "stream" -> TyStream $3
+                                                                      | _ -> failwithf "Unknown generic type: %s" $1 }
 
 
 RecordType: LBRACE FieldTypes RBRACE                                { TyRecord (Map.of_list $2) }
@@ -254,7 +257,6 @@ CommonPatterns:
   | TuplePat                                                        { $1 }
   | ID                                                              { Id (Identifier $1) }
   | UNDERSCORE                                                      { Id (Identifier "_") }
-  | Symbol                                                          { SymbolExpr $1 }
   | INTEGER_LITERAL                                                 { Integer $1 }
   | FLOAT_LITERAL                                                   { Float $1 }
   | BOOLEAN_LITERAL                                                 { Bool $1 }

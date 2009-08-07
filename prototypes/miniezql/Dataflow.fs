@@ -234,9 +234,9 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
 
       let closureNode, g2, depsBinder' = NodeInfo.AsUnknown(name, ty), g1, depsBinder
         //if isRec || not (isContinuous types binder)
-       //   then NodeInfo.AsUnknown(name, ty), g1, depsBinder
-       //   else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
-       //        n, g2, Set.singleton n
+        //  then NodeInfo.AsUnknown(name, ty), g1, depsBinder
+        //  else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
+        //       n, g2, Set.singleton n
 
       let env', types' = env.Add(name, closureNode), types.Add(name, dg closureNode.Type)
       let depsBody, g3, body' = dataflowE env' types' g1 body
