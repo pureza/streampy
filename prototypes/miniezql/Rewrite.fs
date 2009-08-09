@@ -173,8 +173,26 @@ let rec transFunctions stmt =
   | _ -> [stmt]
 
 
+(*
+ * Translates lambda expressions with multiple parameters into equivalent
+ * lambda expressions with a single parameter.
+ *
+ * Assumes that function translation has already happened.
+ *)
+let rec transMultiParamFuns stmt =
+  let rec replacer expr =
+    match expr with
+    | Lambda (parms, body) -> List.foldBack (fun param acc -> Lambda ([param], acc)) parms body
+    | _ -> visit expr replacer
+
+  match stmt with
+  | Def (name, expr, listeners) -> Def (name, replacer expr, listeners)
+  | Expr expr -> Expr (replacer expr)
+  | _ -> stmt
+
+
 let rewrite1 stmts =
   stmts |> List.map transPatterns |> List.map transListeners
 
 let rewrite2 stmts =
-  stmts |> List.collect transFunctions
+  stmts |> List.collect transFunctions |> List.map transMultiParamFuns

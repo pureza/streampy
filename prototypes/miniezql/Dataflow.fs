@@ -225,18 +225,18 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                   (Set.empty, graph, []) elts
 
       deps, g', Tuple elts'
-  | Lambda (args, body) -> dataflowClosure env types graph expr (typeOf types expr) None true
+  | Lambda (args, body) -> dataflowClosure env types graph expr (typeOf types expr) None (isContinuous types expr)
   | Let (Id (Identifier name), _, (Lambda (args, binderBody) as binder), body) ->
       // Check if the binder is recursive
       let isRec = isRecursive name binder
       let ty = typeOf types (Let (Id (Identifier name), None, binder, Id (Identifier name)))
       let (depsBinder:Set<NodeInfo>), g1, binder' = dataflowClosure env types graph binder ty (Some name) (not isRec && isContinuous types binder)
 
-      let closureNode, g2, depsBinder' = NodeInfo.AsUnknown(name, ty), g1, depsBinder
-        //if isRec || not (isContinuous types binder)
-        //  then NodeInfo.AsUnknown(name, ty), g1, depsBinder
-        //  else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
-        //       n, g2, Set.singleton n
+      let closureNode, g2, depsBinder' = //NodeInfo.AsUnknown(name, ty), g1, depsBinder
+        if isRec || not (isContinuous types binder)
+          then NodeInfo.AsUnknown(name, ty), g1, depsBinder
+          else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
+               n, g2, Set.singleton n
 
       let env', types' = env.Add(name, closureNode), types.Add(name, dg closureNode.Type)
       let depsBody, g3, body' = dataflowE env' types' g1 body
@@ -248,11 +248,11 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
         with
           | UnknownId id -> raise (IncompleteLet ((name, env, types, graph, body), id))
 
-      let binderNode, g2, depsBinder', binder'' = NodeInfo.AsUnknown(name, typeOf types binder), g1, depsBinder, binder'
-    //    if not (isContinuous types expr)
-    //      then NodeInfo.AsUnknown(name, typeOf types binder), g1, depsBinder, binder'
-    //      else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
-     //          n, g2, Set.singleton n, Id (Identifier n.Uid)
+      let binderNode, g2, depsBinder', binder'' = //NodeInfo.AsUnknown(name, typeOf types binder), g1, depsBinder, binder'
+        if not (isContinuous types expr)
+          then NodeInfo.AsUnknown(name, typeOf types binder), g1, depsBinder, binder'
+          else let n, g2 = makeFinalNode env types g1 binder' depsBinder name
+               n, g2, Set.singleton n, Id (Identifier n.Uid)
 
       // We must create a final node for the binder in order to extend the
       // environment with it, to dataflow the body.
@@ -289,7 +289,7 @@ and dataflowE (env:NodeContext) types (graph:DataflowGraph) expr =
                         else Set.singleton info', graph, Id (Identifier info'.Uid)
 
       | _ -> raise (UnknownId name)
-  | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Null | Fail -> Set.empty, graph, expr
+  | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Unit | Null | Fail -> Set.empty, graph, expr
   | _ -> failwithf "Expression type not supported: %A" expr
 
 and dataflowMethod env types graph (target:NodeInfo) methName paramExps expr =
@@ -645,7 +645,7 @@ and extractSubNetwork env types graph dataflowBodyFn args body : Set<NodeInfo> *
 and dataflowClosure env types graph expr funType name createNetwork =
   (* Recursive closures are evaluated normally: no network is created for them.
    * They need, however, to be dataflown, to gather global dependencies. *)
-  let recClosure args body ty =
+  let recClosure env types graph args body ty =
     // Add the arguments
     let env', types', _  =
       List.fold (fun (env:NodeContext, types:TypeContext, TyArrow (argType, rest)) (Param (Id (Identifier arg), _)) ->
@@ -665,7 +665,7 @@ and dataflowClosure env types graph expr funType name createNetwork =
     deps, g', Lambda (args, body'), None
 
 
-  let nonRecClosure args body ty =
+  let nonRecClosure env types graph args body ty =    
     // Extract the body's network, so that we can recreate it everytime we
     // call the closure.
     let env', types', g1, args', argUids, _ =
@@ -681,8 +681,9 @@ and dataflowClosure env types graph expr funType name createNetwork =
                    env', types', Graph.add ([], argUid, node, []) graph, args', argUids @ [argUid], rest)
                 (env, types, graph, [], [], ty) args
 
-    let deps, g2, body', network = extractSubNetwork env' types' g1 dataflowE argUids body
-    deps, g2, Lambda (args', body'), network
+    let deps, g2, body', network = extractSubNetwork env' types' g1 dataflowE argUids body    
+    deps, g2, Lambda (args, body), network
+
 
   let args, body =
     match expr with
@@ -690,10 +691,10 @@ and dataflowClosure env types graph expr funType name createNetwork =
     | _ -> invalid_arg "expr"
 
   // FIXME: Compare with dataflowdictOps. Do I need to check if opResult is in g2 and add it as a dep?
-  let deps, g', newLambda, network = recClosure args body funType
-    //if createNetwork
-    //  then nonRecClosure args body funType
-    //  else recClosure args body funType
+  let deps, g', newLambda, network = //recClosure args body funType
+    if createNetwork
+      then nonRecClosure env types graph args body funType
+      else recClosure env types graph args body funType
 
   match network with
   | Some (_,  networkBuilder) ->
@@ -951,10 +952,10 @@ and makeOperNetwork (graph:DataflowGraph) (roots:string list) fixPrio context : 
 
   // Spread all changes in the stack. If some step fails, try the remaining steps.
   and retrySpread stack delayed =
-    try
+    //try
       spread stack delayed
-    with
-      | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
+    //with
+    //  | SpreadException (_, rest, delayed, _) -> retrySpread rest delayed
 
 
   // GroupBy's should be visited first because of belongsTo/hasMany association.

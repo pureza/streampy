@@ -32,7 +32,11 @@ let patternMatch pattern binder =
     | (Integer _ | Float _ | Bool _ | String _ | SymbolExpr _), _ ->
         // Returns a check to perform on runtime
         Guard (BinaryExpr (Equal, pattern, binder))::instr
-    | Id (Identifier var), _ -> extendIfNew var binder instr
+    | Id (Identifier var), _ ->
+        let isUpper ch = ch >= 'A' && ch <= 'Z'
+        if isUpper var.[0]
+          then patternMatch' (FuncCall (pattern, Id (Identifier "_"))) binder instr
+          else extendIfNew var binder instr
     | Tuple elts1, Tuple elts2 ->
         if elts1.Length = elts2.Length
           then List.fold (fun instr (expr1, expr2) ->

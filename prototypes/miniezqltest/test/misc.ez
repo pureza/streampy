@@ -1,16 +1,34 @@
 temp_readings = stream of { room_id:int, temperature:int };;
 
 
+enum State =
+  | Event of 'a
+  | NoEvent;;
+
+
+define select s f =
+  match s with
+  | Event ev -> Event (f ev)
+  | NoEvent -> NoEvent ()
+  end;;
+
+
+define toStream s =
+  let r = NoEvent ()
+    when ev in s -> Event ev
+  in
+    r;;
 
 
 
-h = temp_readings.groupby(:room_id, fun g -> g.last().temperature[2.sec])
-                 .select (fun r -> r.max());;
+a = toStream temp_readings;;
 
+b = select a (fun (ev:{ timestamp:int, room_id:int, temperature:int }) ->
+                            { timestamp = ev.timestamp, tx2 = ev.temperature * 2 });;
 
-
-when (temp_readings, fun _ -> print (h));;
-
+//when (a.changes(), fun _ -> print a);;
+when (b.changes(), fun _ -> print b);;
+//when (c.changes(), fun _ -> print c);;
 
 #! temp_readings
 timestamp, room_id, temperature

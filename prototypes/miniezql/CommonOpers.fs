@@ -527,6 +527,7 @@ let makeFuncCall (uid, prio, parents:Operator list, context) =
  * The first parent is the evaluator for the initial expression,
  * the others are the whens.
  *)
+ (*
 let makeListenN (uid, prio, (parents:Operator list), context) =
   let operEval = fun ((op:Operator), inputs) ->
                    match inputs with
@@ -551,6 +552,60 @@ let makeListenN (uid, prio, (parents:Operator list), context) =
                    | _ -> failwithf "Can't happen"
 
   Operator.Build(uid, prio, operEval, parents, context, contents = parents.[0].Value)
+*)
+
+let makeListenN (uid, prio, (parents:Operator list), context) =
+  let lambda = ref None
+  let v = ref None
+  let call = ref None
+
+  let createFuncNetwork () =
+    lambda := Some (DictOpers.makeInitialOp (sprintf "%s_λ" uid, Priority.add prio (Priority.of_list [0; 1; 0]), [], ref Map.empty))
+    v      := Some (DictOpers.makeInitialOp (sprintf "%s_param" uid, Priority.add prio (Priority.of_list [0; 1; 1]), [], ref Map.empty))
+    call   := Some (makeFuncCall (sprintf "%s_call()" uid, Priority.add prio (Priority.of_list [0; 1; 2]), [(!lambda).Value; (!v).Value], ref Map.empty))
+  
+  Operator.Build(uid, prio, 
+    (fun (op, inputs) ->
+       match inputs with
+       | [Added v]::rest when op.Value = VNull -> setValueAndGetChanges op v
+       | _::listenerInputs ->
+           // Get the index of the whens that changed
+           let parentIdxs = List.filter (fun (idx, input) -> input <> []) (List.zip [1 .. listenerInputs.Length] listenerInputs)
+                              |> List.map fst
+           // Collect the changes to pass down to the function calls.
+           // Each call uses, as a parameter, the result from the previous one.
+           
+           let initial = ref op.Value
+           for i in parentIdxs do
+             createFuncNetwork ()
+             let (lambdaOp, paramOp) = (!lambda).Value, (!v).Value
+             let closure = op.Parents.[i].Value
+             let children = [lambdaOp, 0, (fun  _ -> [Added closure]); paramOp, 0, fun _ -> [Added !initial]]
+             spread (toEvalStack children []) []
+             initial := (!call).Value.Value
+             
+           lambda := None; v := None; call := None  
+           setValueAndGetChanges op !initial
+       | _ -> failwithf "No changes? Then why am I here?"),
+    parents, context, contents = parents.[0].Value)
+
+  
+(*
+  and opBottom =
+    Operator.Build(uid + "_results", Priority.add prio (Priority.of_list [9]),
+      (fun (op, inputs) ->
+         match List.hd inputs with
+         | [Added v] -> setValueAndGetChanges op v
+         | _ -> let toSpread = setValueAndGetChanges op (!call).Value.Value
+                lambda := None; v := None; call := None
+                toSpread),
+      [opTop], context, contents = parents.[0].Value)
+      
+  { opTop with
+      Children = opBottom.Children;
+      Contents = opBottom.Contents;
+      AllChanges = opBottom.AllChanges }
+*)
 
 
 (* ticks *)

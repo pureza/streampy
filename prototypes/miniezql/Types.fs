@@ -239,6 +239,7 @@ and value =
 
     static member Is (left, right) =
       match left, right with
+      | VNull, _ -> VNull
       | VVariant (label, _), VString label' -> VBool (label = label')
       | _ -> failwithf "Invalid types in call to value.Is: %A, %A" left right
 

@@ -48,7 +48,7 @@ let metadata =
     Eval = fun eval env param ->
              match eval env param with
              | VTuple [expec; VVariant (label, meta)] when VString label = expec -> meta
-             | other -> failwithf  "$metadata: The variant is not a variant but %A" other }
+             | other -> VNull }//failwithf  "$metadata: The variant is not a variant but %A" other }
 
 
 let whenFun =

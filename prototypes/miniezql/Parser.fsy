@@ -126,6 +126,7 @@ NonApp:
   | STRING_LITERAL                                                  { String $1 }
   | LPAREN Expr RPAREN                                              { $2 }
   | NULL                                                            { Null }
+  | LPAREN RPAREN                                                   { Unit }
 
 
 BinaryExpr:
@@ -159,7 +160,7 @@ Symbol: COLON ID                                                    { Symbol $2 
 
 Type:
   | INT                                                             { TyInt }
-  | FLOAT                                                           { TyFloat }
+  | FLOAT                                                           { TyInt } // This is cheating
   | BOOL                                                            { TyBool }
   | STRING                                                          { TyString }
   | Type ARROW Type                                                 { TyArrow ($1, $3) }
@@ -172,6 +173,7 @@ Type:
                                                                                  then 0 - h
                                                                                  else h in
                                                                       TyGen h' }
+  | LBRACKET Type RBRACKET                                          { TyWindow $2 }
   | ID LT Type GT                                                   { match $1 with
                                                                       | "stream" -> TyStream $3
                                                                       | _ -> failwithf "Unknown generic type: %s" $1 }

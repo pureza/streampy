@@ -82,9 +82,10 @@ let rec eval (env:Context) = function
   | String v -> VString v
   | Bool v -> VBool v
   | SymbolExpr (Symbol s) -> VSymbol s
+  | Unit -> VUnit
   | Fail -> raise (MatchFail "Match failure.")
   | Null -> VNull
-  | other -> failwithf "Unknown expression: %A. Maybe rewrite was supposed to eliminate this?" other
+  | other -> VNull //failwithf "Unknown expression: %A. Maybe rewrite was supposed to eliminate this?" other
 
 
 and evalOp = function

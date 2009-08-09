@@ -17,9 +17,9 @@ a = let g = fun a f -> f a in
 //  - Closures
 //  - Currying
 //  - Passing records to functions
-//b = let g = fun t -> fun u -> t * (u.a[2.sec].sum()) in
-//    let u = g (1) in
-//    u ({ a = lastTemp });;
+b = let g = fun t -> fun (u:{ a:int }) -> t * (u.a[2.sec].sum()) in
+    let u = g (1) in
+    u ({ a = lastTemp });;
 
 
 // Test:
@@ -44,10 +44,10 @@ e = fact(lastTemp);;
 
 
 // Non-recursive function with global deps
-//define x2a(n) = n.sum() + lastTemp;;
+define x2a(n:int) = n.sum() + lastTemp;;
 
 
-//f = x2a(lastTemp);;
+f = x2a(lastTemp);;
 
 
 

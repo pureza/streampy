@@ -74,23 +74,23 @@ let rec spread (stack:EvalStack) (delayed:EvalStack) =
           | [] -> ()
           | _ -> spread delayed []
   | (op, parentChanges)::xs ->
-      //printfn "*** Vou actualizar o %s" op.Uid
+      //printfn "*** Vou actualizar o %s %A" op.Uid op.Priority
       //printfn "    Changes = %A\n" parentChanges
       //printfn "    Value before = %A\n" op.Value
       let filledChanges = fillLeftArgs op parentChanges 0
-      try
-        let toSpread = op.Eval (op, filledChanges)
-        //printfn "    Value after = %A\n" op.Value
-        match toSpread with
-        | SpreadChildren changes ->
-            //checkConsistency op changes
-            spread (mergeStack xs (toEvalStack op.Children changes)) delayed
-        | SpreadTo (children, changes) ->
-            //checkConsistency op changes
-            spread (mergeStack xs (toEvalStack children changes)) delayed
-        | Delay (children, changes) ->
-            spread xs (mergeStack delayed (toEvalStack children changes))
-        | Nothing -> spread xs delayed
-      with
-        | SpreadException _ as ex -> raise ex
-        | ex -> raise (SpreadException (op, xs, delayed, ex))
+      //try
+      let toSpread = op.Eval (op, filledChanges)
+      //printfn "    Value after = %A\n" op.Value
+      match toSpread with
+      | SpreadChildren changes ->
+          //checkConsistency op changes
+          spread (mergeStack xs (toEvalStack op.Children changes)) delayed
+      | SpreadTo (children, changes) ->
+          //checkConsistency op changes
+          spread (mergeStack xs (toEvalStack children changes)) delayed
+      | Delay (children, changes) ->
+          spread xs (mergeStack delayed (toEvalStack children changes))
+      | Nothing -> spread xs delayed
+      //with
+      //  | SpreadException _ as ex -> raise ex
+      //  | ex -> raise (SpreadException (op, xs, delayed, ex))

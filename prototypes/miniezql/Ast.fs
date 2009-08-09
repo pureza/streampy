@@ -25,6 +25,7 @@ and expr =
   | String of string
   | Id of id
   | SymbolExpr of symbol
+  | Unit
   | Fail // Represents a failed pattern match.
   | Null
 
@@ -49,9 +50,9 @@ and expr =
     | Float f -> f.ToString()
     | Bool b -> b.ToString()
     | String s -> sprintf "\"%O\"" s
-   // | Null -> "null"
     | SymbolExpr (Symbol sym) -> sprintf ":%s" sym
     | Id (Identifier id) -> id
+    | Unit -> "()"
     | Fail -> "<fail>"
     | Null -> "<null>"
 
@@ -172,19 +173,14 @@ let freeVars expr =
         Set.union freeBinder (freeVars' boundVars' body)
     | Let _ -> failwithf "Can't happen because rewrite is supposed to eliminate pattern parameters."
     | If (cond, thn, els) -> Set.union (freeVars' boundVars cond) (Set.union (freeVars' boundVars thn) (freeVars' boundVars els))
- //   | Match (expr, cases) ->
- //       let freeExpr = freeVars' boundVars expr
- //       List.fold (fun acc (MatchCase (_, metaOpt, body)) ->
- //                    let freeCase =
- //                      match metaOpt with
- //                      | Some (Identifier meta) -> freeVars' (boundVars.Add(meta)) body
- //                      | None -> freeVars' boundVars body
- //                    Set.union acc freeCase)
- //                 freeExpr cases
+    | Match (expr, cases) ->
+        let freeExpr = freeVars' boundVars expr
+        List.fold (fun acc (MatchCase (pattern, body)) -> Set.union acc (freeVars' boundVars pattern))
+                  freeExpr cases
     | BinaryExpr (oper, expr1, expr2) as expr -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
     | Seq (expr1, expr2) -> Set.union (freeVars' boundVars expr1) (freeVars' boundVars expr2)
     | Id (Identifier name) -> if Set.contains name boundVars then Set.empty else Set.singleton name
-    | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Fail | Null -> Set.empty
+    | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Fail | Null | Unit -> Set.empty
 
   freeVars' Set.empty expr
 
@@ -217,7 +213,7 @@ let rec isContinuous (env:TypeContext) expr =
   | BinaryExpr (oper, expr1, expr2) as expr -> isContinuous env expr1 && isContinuous env expr2
   | Seq (expr1, expr2) -> isContinuous env expr1 && isContinuous env expr2
   | Id (Identifier name) -> if Map.contains name env && ((getType env.[name]).IsUnknown()) then false else true
-  | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Fail | Null -> true
+  | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Unit | Fail | Null -> true
 
 
 let isContinuousType typ =
@@ -250,4 +246,4 @@ let rec visit expr visitor =
   | Seq (expr1, expr2) -> Seq (visitor expr1, visitor expr2)
   | Record fields -> Record (List.map (fun (n, e) -> (n, visitor e)) fields)
   | Tuple fields -> Tuple (List.map visitor fields)
-  | Id _ | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Fail | Null -> expr  
+  | Id _ | Integer _ | Float _ | String _ | Bool _ | SymbolExpr _ | Unit | Fail | Null -> expr  

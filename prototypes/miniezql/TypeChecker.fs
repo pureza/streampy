@@ -3,6 +3,11 @@ open Types
 open Extensions
 open Util
 
+let rec delUnk ty =
+  match ty with
+  | TyUnknown ty' -> delUnk ty'
+  | _ -> ty
+
 // Shamelessly stolen and adapted from Andrej Bauer's "Programming Language Zoo"
 // -- http://andrej.com/plzoo/html/poly.html
 let rec occurs k = function
@@ -63,22 +68,28 @@ let solve constr =
     | c::cs ->
         //printfn "%A\n %A\n\n\n\n\n\n" constr subst
         match c with
-        | (s, t) when s = t -> unify cs subst
-        | (TyGen s, t) | (t, TyGen s) when not (occurs s t) ->
+        | s, t when s = t -> unify cs subst
+        | TyGen s, t | t, TyGen s when not (occurs s t) ->
             let sub = typeSubst [s, t]
             unify (List.map (fun (a, b) -> (sub a, sub b)) cs)
                   ((s, t)::(List.map (fun (k, v) -> (k, sub v)) subst))
-        | (TyArrow (a1, r1), TyArrow (a2, r2)) -> unify ((a1, a2)::(r1, r2)::cs) subst
-        | (TyTuple tys1, TyTuple tys2) -> unify ((List.zip tys1 tys2) @ cs) subst
-        | (TyRecord fields1, TyRecord fields2) ->
+        | TyArrow (a1, r1), TyArrow (a2, r2) -> unify ((a1, a2)::(r1, r2)::cs) subst
+        | TyTuple tys1, TyTuple tys2 -> unify ((List.zip tys1 tys2) @ cs) subst
+        | TyRecord fields1, TyRecord fields2 ->
             let labels1 = Map.keySet fields1
             let labels2 = Map.keySet fields2
             if labels1 = labels2
               then let toCheck = [ for l in labels1 -> (fields1.[l], fields2.[l]) ]
                    unify (toCheck @ cs) subst
               else failwithf "Can't unify %A" c
-        | (TyStream t1, TyStream t2) -> unify ((t1, t2)::cs) subst
-        | (TyDict t1, TyDict t2) -> unify ((t1, t2)::cs) subst
+        | TyStream t1, TyStream t2 -> unify ((t1, t2)::cs) subst
+        | TyDict t1, TyDict t2 -> unify ((t1, t2)::cs) subst
+        | TyVariant (name1, vs1), TyVariant(name2, vs2) ->
+            let labels1 = List.map fst vs1
+            let labels2 = List.map fst vs2
+            if name1 = name2 && labels1 = labels2
+              then unify (List.zip (List.map snd vs1) (List.map snd vs2)) subst
+              else failwithf "Can't unify %A" c
         | _ -> failwithf "Can't unify %A" c
 
 
@@ -102,7 +113,7 @@ let rec generalize ty threshold (subst:(int * Type) list) =
   | TyStream ty  -> first TyStream (generalize ty threshold subst)
   | TyWindow ty  -> first TyWindow (generalize ty threshold subst)
   | TyDict ty    -> first TyDict (generalize ty threshold subst)
-  | TyUnknown ty -> generalize ty threshold subst // Ignore the TyUnknown part.
+  | TyUnknown ty -> first TyUnknown (generalize ty threshold subst) // Ignore the TyUnknown part.
   | TyGen k when k < 0 ->
       let t = fresh () 
       t, (k, t)::subst
@@ -158,18 +169,19 @@ let rec constr (env:TypeContext) expr =
              let tp, cp = constr env param
              let ty = fresh ()
              ty, (tf, TyArrow (tp, ty))::(cf @ cp)
+  | MemberAccess (_, Identifier "null?") -> TyBool, []           
   | MemberAccess (target, Identifier label) ->
-      match typeOf env target with
+      match typeOf env target |> delUnk with
       | TyGen _ -> failwithf "Can't determine the type of the target in _____.%s. Please annotate." label
       | TyRecord fields when Map.contains label fields -> fields.[label], []
       | TyTuple elts when (int label) <= elts.Length -> elts.[(int label) - 1], []
       | other -> failwithf "The target of the _____.%s is %A" label other
   | MethodCall (target, Identifier methd, paramExprs) ->
-      match typeOf env target with
+      match typeOf env target |> delUnk with
       | TyGen _ -> failwithf "Can't determine the type of the target in _____.%s(). Please annotate." methd
       | other -> typeOfMethodCall env other methd paramExprs
   | ArrayIndex (target, index) ->
-      match typeOf env target with
+      match typeOf env target |> delUnk with
       | TyGen _ -> failwithf "Can't determine the type of the target in _____.[]. Please annotate."
       | other -> typeOfMethodCall env other "[]" [index]
   | BinaryExpr (oper, expr1, expr2) ->
@@ -268,10 +280,11 @@ let rec constr (env:TypeContext) expr =
           fst (generalize t threshold []), []
       | None -> failwithf "constraintsOf: Not found in context - %s" name
   | Integer v -> TyInt, []
-  | Float f -> TyFloat, []
+  | Float f -> TyInt, []
   | String s -> TyString, []
   | Bool b -> TyBool, []
   | SymbolExpr _ -> TySymbol, []
+  | Unit -> TyUnit, []
   | Fail | Null -> fresh (), []
   | _ -> failwithf "Unknown expression: %A. Maybe rewrite was supposed to eliminate this?" expr
 
@@ -282,13 +295,17 @@ and constrBinOp oper tleft tright =
   | Plus, _, _ -> tleft, [(tleft, tright)]
   | (Minus | Times | Div | Mod), _, _ -> TyInt, [(tleft, TyInt); (tleft, tright)]
   | (GreaterThan | GreaterThanOrEqual | Equal | NotEqual | LessThanOrEqual | LessThan), _, _ -> TyBool, [(tleft, tright)]
-  | (And | Or), TyBool, TyBool -> TyBool, []
+  | (And | Or), _, _ -> TyBool, [tleft, TyBool; tright, TyBool]
   | Is, _, TyString -> TyBool, []
   | other -> failwithf "Binary operation not implemented for these types: %A" other
 
 
 and typeOfMethodCall env targetType name paramExps =
   match name with
+  | "changes" | "updates" ->
+    match paramExps with
+    | [] -> TyStream (TyRecord (Map.of_list ["value", targetType])), []
+    | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
   | "count" -> TyInt, []
   | "last" | "prev" ->
       // last is applied to Stream of ev and returns an ev
@@ -329,13 +346,53 @@ and typeOfMethodCall env targetType name paramExps =
   | "[]" ->
       match paramExps with
       | [param] when isTimeLength param -> TyWindow targetType, []
-      | _ -> let ty = fresh ()
-             ty, [(targetType, TyDict ty)]    
+      | [index] -> match targetType with
+                   | TyDict ty | TyWindow (TyStream ty) | TyWindow ty -> ty, []
+                   | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps  
+      | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps  
   | _ -> match targetType with
          | TyDict valueType ->
              match name with
              | "values" when paramExps = [] -> TyWindow valueType, []
              | _ -> failwithf "n/i %A %s" targetType name
+          | TyWindow (TyStream evType) ->
+              match name with
+              | "added" | "expired" ->
+                  match paramExps with
+                  | [] -> TyStream evType, []
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "sortBy" ->
+                  match paramExps with
+                  | [SymbolExpr (Symbol field)] ->
+                      match evType with
+                      | TyRecord fields when Map.contains field fields -> TyWindow (TyStream evType), []
+                      | _ -> failwithf "The type %A does not have field %A" evType field
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "[]" -> match paramExps with
+                        | [expr] when typeOf env expr = TyInt -> evType, []
+                        | _ -> failwithf "Invalid index in []"
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
+          | TyWindow valueType ->
+              match name with
+              | "added" | "expired" ->
+                  match paramExps with
+                  | [] -> TyStream (TyRecord (Map.of_list ["timestamp", TyInt; "value", valueType])), []
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "sort" ->
+                  match paramExps with
+                  | [] -> targetType, []
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "sortBy" ->
+                  match paramExps with
+                  | [SymbolExpr (Symbol field)] ->
+                      match valueType with
+                      | TyRecord fields (*| TyType (_, fields, _, _) *)when Map.contains field fields -> targetType, []
+                      | _ -> failwithf "The type %A does not have field %A" valueType field
+                  | _ -> failwithf "Invalid parameters to method '%s': %A" name paramExps
+              | "[]" -> match paramExps with
+                        | [expr] when typeOf env expr = TyInt -> valueType, []
+                        | _ -> failwithf "Invalid index in []"
+              | _ -> failwithf "The type %A does not have method %A!" targetType name
          | _ -> failwithf "n/i %A %s" targetType name
   
 (*

@@ -73,4 +73,4 @@ let test_UDA (test:Test) =
                      Set "105 / 3" (At  8)
                      Set "103 / 3" (At  9)
                      Set " 53 / 2" (At  10)
-                     Set "     23" (At  12)])                        
+                     Set "     23" (At  12)])                     

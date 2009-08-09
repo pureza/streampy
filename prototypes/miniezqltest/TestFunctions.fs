@@ -9,7 +9,7 @@ let test_functions (test:Test) =
                      Set "100" (At  6)
                      Set " 60" (At  7)
                      Set " 46" (At  9)])
-(*
+
   test.AssertThat (In "b"
                     [Set " 25" (At  2)
                      Set " 70" (At  4)
@@ -19,7 +19,7 @@ let test_functions (test:Test) =
                      Set " 80" (At  8)
                      Set " 53" (At  9)
                      Set " 23" (At 11)])
-*)
+
   test.AssertThat (In "c"
                     [Set "25" (At  2)
                      Set "45" (At  4)
@@ -43,7 +43,7 @@ let test_functions (test:Test) =
                      Set "1325" (At  6)
                      Set " 495" (At  7)
                      Set " 299" (At  9)])
-(*
+
   test.AssertThat (In "f"
                     [Set " 50" (At  2)
                      Set "115" (At  4)
@@ -51,7 +51,7 @@ let test_functions (test:Test) =
                      Set "195" (At  6)
                      Set "205" (At  7)
                      Set "221" (At  9)])
-*)
+
   test.AssertThat (In "g"
                     [Set " 350" (At  2)
                      Set "1080" (At  4)
