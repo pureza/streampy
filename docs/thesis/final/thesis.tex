@@ -1,0 +1,180 @@
+\documentclass[a4,11pt]{report}
+
+
+\usepackage{alltt}
+\usepackage{graphicx}
+\usepackage{color}
+\usepackage[small,bf]{caption}
+\usepackage{listings}
+\usepackage{cite}
+\usepackage{url}
+\usepackage[hmargin=3.5cm]{geometry}
+
+\lstdefinelanguage{EzQL}
+{
+  morekeywords=[1]{from, select, where, group, by, in, hour, min,
+    class, end, min, and, stream, of, let, in},
+  morekeywords=[2]{avg},
+  sensitive=false,
+  morecomment=[l]{\#},
+  morestring=[b]",
+}
+
+\lstdefinelanguage{CCL}
+{
+  morekeywords=[1]{dummy, from, select, where, group, by, create, input,
+    stream, schema, string, integer, as, window, insert, removed, rows,
+  keep, seconds, into, float, last, per, outer, join, boolean,
+  if, then, else, end, dummy, ON, left, right, interval, timestamp,
+  full, local, and, hours, minutes, dummy}
+  morekeywords=[2]{dummy, max, coalesce, now, avg, dummy},
+  sensitive=false,
+  morecomment=[l]{--},
+  morestring=[b]",
+}
+
+\lstdefinelanguage{Oracle}
+{
+  morekeywords={dummy, on, if, then, and, dummy}
+  sensitive=false,
+  morecomment=[l]{--},
+  morestring=[b]",
+}
+
+
+\lstdefinelanguage{MonitorScript}
+{
+  morekeywords=[1]{dummy, monitor, dictionary, string, int, action, on, all,
+    route, if, then, dummy}
+  morekeywords=[2]{},
+  sensitive=false,
+  morecomment=[l]{//},
+  morestring=[b]",
+}
+
+
+
+\definecolor{light-gray}{gray}{0.97}
+\definecolor{dark-gray}{gray}{0.50}
+
+\begin{document}
+\title{EzQL: A new language for Event Stream Processing}
+\author{Lu\'{\i}s Pureza}
+
+\maketitle
+
+\tableofcontents
+
+\addtolength{\parskip}{\baselineskip}
+\chapter{Introduction}
+\label{chap:introduction}
+
+\lstset{
+  language=EzQL,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+  % frame=leftline,
+  % framerule=1pt,
+  % rulesep=20pt,
+  % backgroundcolor=\color{light-gray},
+  % rulecolor=\color{dark-gray}
+}
+
+
+As we will see, EzQL is very different from the query languages
+presented in the state of the art. However, at its core, it still has
+streams of events and operations to query them.
+
+Suppose you are given a stream called \verb=stocks= that receives
+events from the financial market. These events contain three fields --
+\verb=timestamp=, \verb=symbol= and \verb=price=. In EzQL you would
+begin by declaring this stream with:
+
+\begin{lstlisting}
+stocks = stream of { timestamp:int, symbol:string, price:int }
+\end{lstlisting}
+
+Now that the stream is ready to use, you may query its data. For
+example, to multiply the price of ACME events by two, you could write:
+
+\begin{lstlisting}
+acmeStocks_x2 =
+  from ev in stocks
+  where ev.symbol == "ACME"
+  select { price_x2 = ev.price * 2 }
+\end{lstlisting}
+
+The result of this operation is a new stream -- \verb=acmeStocks_x2=
+--, that can be subjected to further analysis. The next listing shows
+off a few more features that EzQL shares with other languages, namely
+temporal windows, projection and aggregation:
+
+\begin{lstlisting}
+avg_5min =
+  let cheapStocks =
+    from ev in stocks[5 min]
+    where ev.price < 20
+  in cheapStocks.avg (:price)
+\end{lstlisting}
+
+
+This example computes the average price of all events received during
+the last 5 minutes where the price is below 20. To ease reading and
+understanding, the query has been partitioned into two smaller
+sub-queries: the first -- \verb=cheapStocks= --, which is declared as
+a local stream containing the desired events, and the second which is
+the application of the \verb=avg()= method over \verb=cheapStocks=. In
+EzQL, the syntactic form \verb!let <var> = <expr> in <body>! is used
+to declare a variable named \verb=<var>= initialized with the value of
+\verb=<expr>=, that may then be used inside \verb=<body>=. The result of
+the entire expression is the result of \verb=<body>=. Hence, in the query
+above, \verb=avg_5min= will be assigned to the result of calculating
+the average price of \verb=cheapStocks=.
+
+In traditional SQL or derived languages, \verb=avg_5min= would be a
+stream, whose events would represent changes to the average. However,
+as we have seen earlier, events are ephemeral and if we need the
+current average to use it in other queries, we have to keep it inside
+a window with a single entry created specifically for this
+purpose. But, conceptually, the average is just a value that should be
+available directly. Hiding this value inside a window represents an
+unnecessary level of indirection that impacts the amount of code that
+needs to be written and hides its meaning.  We believe this is an
+instance where the language semantics do not map well with the way
+programmers think. What we need here is a variable to store the
+average, not streams or windows.
+
+Thus, in EzQL, \verb=avg_5min= is a simple number whose value is
+automatically updated by the engine as the average changes. This
+number can be accessed in subsequent queries by just referencing its
+name -- \verb=avg_5min=. For example, to check if it is smaller than
+10 one could write:
+
+\begin{lstlisting}
+  isSmall = avg_5min < 10
+\end{lstlisting}
+
+While it may seem uninteresting and purely fictional, this example
+illustrates one important point: \verb=isSmall= is a continuously
+running query. Every time the average is updated, so is
+\verb=isSmall=. The engine works like a spread-sheet application where
+a modification to one cell is automatically propagated to other cells
+that depend on the first. Notice how \verb=avg_5min= has been
+completely abstracted from its definition that depends on the
+\verb=stocks= stream. The developer may simply use \verb=avg_5min=
+without needing to worry himself with the low-level details of how and
+when this value will be updated. As we will see, this is a crucial
+ability that allows the language to grow, by enabling developers to
+write more complex queries while retaining conciseness and
+expressiveness.
+
+Values such as \verb=isSmall= and \verb=avg_5min=, that are always
+defined and are managed by the engine, are called \emph{continuous
+  values}, in opposition to streams which are discrete. Continuous
+values play an important role in EzQL and their usage will become
+ubiquitous in the rest of this chapter.
+
+\end{document}
+
