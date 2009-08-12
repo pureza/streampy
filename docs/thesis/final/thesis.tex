@@ -12,9 +12,9 @@
 
 \lstdefinelanguage{EzQL}
 {
-  morekeywords=[1]{from, select, where, group, by, in, hour, min,
-    class, end, min, and, stream, of, let, in},
-  morekeywords=[2]{avg},
+  morekeywords=[1]{from, select, where, group, by, in, hour,
+    class, end, and, stream, of, let, in, min, into},
+  morekeywords=[2]{avg, last, max, values, minBy, howLong, all, any},
   sensitive=false,
   morecomment=[l]{\#},
   morestring=[b]",
@@ -82,6 +82,8 @@
   % rulecolor=\color{dark-gray}
 }
 
+\section{Streams and windows}
+
 
 As we will see, EzQL is very different from the query languages
 presented in the state of the art. However, at its core, it still has
@@ -89,49 +91,49 @@ streams of events and operations to query them.
 
 Suppose you are given a stream called \verb=stocks= that receives
 events from the financial market. These events contain three fields --
-\verb=timestamp=, \verb=symbol= and \verb=price=. In EzQL you would
-begin by declaring this stream with:
+\verb=timestamp=, \verb=symbol= -- which is the company id --, and
+\verb=price=. In EzQL you would begin by declaring this stream with:
 
 \begin{lstlisting}
-stocks = stream of { timestamp:int, symbol:string, price:int }
+  stocks = stream of { timestamp:int, symbol:string, price:float }
 \end{lstlisting}
 
 Now that the stream is ready to use, you may query its data. For
 example, to multiply the price of ACME events by two, you could write:
 
 \begin{lstlisting}
-acmeStocks_x2 =
-  from ev in stocks
-  where ev.symbol == "ACME"
-  select { price_x2 = ev.price * 2 }
+  acmeStocks_x2 =
+    from ev in stocks
+    where ev.symbol == "ACME"
+    select { price_x2 = ev.price * 2 }
 \end{lstlisting}
 
 The result of this operation is a new stream -- \verb=acmeStocks_x2=
 --, that can be subjected to further analysis. The next listing shows
 off a few more features that EzQL shares with other languages, namely
-temporal windows, projection and aggregation:
+temporal windows and aggregations:
 
 \begin{lstlisting}
-avg_5min =
-  let cheapStocks =
-    from ev in stocks[5 min]
-    where ev.price < 20
-  in cheapStocks.avg (:price)
+  avg_5min =
+    let cheapStocks =
+      from ev in stocks[5 min]
+      where ev.price < 20
+    in cheapStocks.avg (:price)
 \end{lstlisting}
 
 
 This example computes the average price of all events received during
-the last 5 minutes where the price is below 20. To ease reading and
+the last 5 minutes where the price is below \$20. To ease reading and
 understanding, the query has been partitioned into two smaller
 sub-queries: the first -- \verb=cheapStocks= --, which is declared as
 a local stream containing the desired events, and the second which is
 the application of the \verb=avg()= method over \verb=cheapStocks=. In
 EzQL, the syntactic form \verb!let <var> = <expr> in <body>! is used
 to declare a variable named \verb=<var>= initialized with the value of
-\verb=<expr>=, that may then be used inside \verb=<body>=. The result of
-the entire expression is the result of \verb=<body>=. Hence, in the query
-above, \verb=avg_5min= will be assigned to the result of calculating
-the average price of \verb=cheapStocks=.
+\verb=<expr>=, that may then be used inside \verb=<body>=. The result
+of the entire expression is the result of \verb=<body>=. Hence, in the
+query above, \verb=avg_5min= will be assigned to the result of
+calculating the average price of \verb=cheapStocks=.
 
 In traditional SQL or derived languages, \verb=avg_5min= would be a
 stream, whose events would represent changes to the average. However,
@@ -175,6 +177,418 @@ defined and are managed by the engine, are called \emph{continuous
   values}, in opposition to streams which are discrete. Continuous
 values play an important role in EzQL and their usage will become
 ubiquitous in the rest of this chapter.
+
+\section{Dictionaries}
+
+The next example shows how to obtain the current price per company:
+
+\begin{lstlisting}
+  pricePerCompany =
+    from stocks
+    group by :symbol into g
+    select g.last().price
+\end{lstlisting}
+
+Group by works by partitioning the events from the input stream into N
+smaller streams, one per group. In the example above, each one of
+these streams is given the name \verb=g= and then, for each one in
+parallel, the price from its last event is retrieved -- using the
+\verb=last()= method --, to be used as the resulting value of the
+query.
+
+In this listing, \verb=pricePerCompany= is a dictionary that maps keys
+(the company symbols) to values (the current price of their
+stocks). Moreover, being the result of a continuous query,
+\verb=pricePerCompany= is also a continuous entity: when a new event
+arrives, the price of its company is automatically updated and every
+time a previously unseen symbol arrives, a new entry is created for
+it. Moreover, these changes are automatically propagated to other
+queries that depend on its value, as can be seen in the next example:
+
+\begin{lstlisting}
+  cheapCompanies =
+    from price in pricePerCompany
+    where price < 20
+    select price
+\end{lstlisting}
+
+\verb=cheapCompanies= is a filtered dictionary: it contains only those
+companies whose current price is below \$20. Every time a company goes
+above this threshold, it is removed from the dictionary; and every
+time the stocks of some company descend below \$20, a new entry is
+created for it.
+
+Sometimes one needs to return multiple values in the same query. For
+example, one might need to return the maximum and average prices over
+the last 5 minutes for all companies. In EzQL, this can be done as
+follows:
+
+\begin{lstlisting}
+  avgMax_5min =
+    from stocks
+    group by :symbol into g
+    select let g5 = g[5 min] in
+           { maximum = g5.max(:price), average = g5.avg(:price) }
+\end{lstlisting}
+
+The segment in braces creates a record with two attributes:
+\verb=maximum= and \verb=average=. One can access individual
+attributes in a record using the dot (\verb=.=) operator. For example,
+it is possible to access ACME's maximum price with:
+
+\begin{lstlisting}
+  acme_max = avgMax_5min["ACME"].maximum
+\end{lstlisting}
+
+This example also shows how to index individual entries inside a
+dictionary using square brackets. Needless to say, whenever a new
+event is received for ACME or an old event leaves the 5 minutes
+window, \verb=acme_max= will automatically be updated to reflect this
+change.
+
+To conclude this section, we show how to perform aggregations over
+dictionaries. For example, to find the company with the cheapest
+stocks overall, one could write:
+
+\begin{lstlisting}
+  cheapest =
+    let companies =
+      from stocks
+      group by :symbol into g
+      select g.last()
+    in companies.values().minBy(:price).symbol
+\end{lstlisting}
+
+\verb=companies= is a dictionary that contains the last event received
+for each company. Remember that a dictionary maps keys to values. The
+method \verb=values()= allows us to obtain a list containing just the
+values which, in this case, are the events. To this list, we apply the
+\verb=minBy()= aggregator which returns the event with the lowest
+price. Finally, we access the \verb=symbol= field of this event to
+obtain the corresponding company id.
+
+\section{Continuous values}
+
+We have already discussed continuous values above. This section will
+expand that knowledge by showing what is possible to do with them.
+
+Being, by definition, values that change, it is only natural to
+exploit the temporal information contained in them. As such, it is
+possible to open windows and apply aggregators over regular integers,
+booleans or other values. The following listing illustrates this:
+
+\begin{lstlisting}
+  maxPerCompany_5min =
+    from stocks
+    group by :symbol into g
+    select g.last().price[1 hour].max()
+\end{lstlisting}
+
+The result is a dictionary that keeps, for each company, the maximum
+price its stocks attained over the course of the last hour.
+
+Note that the 1 hour window is created over \verb=g.last().price= --
+that is, the current price. You could have solved this by opening a
+regular event window over the stream \verb=g=, as in section
+\ref{sec:stream-operations}:
+
+\begin{lstlisting}
+  maxPerCompany_1h =
+    from stocks
+    group by :symbol into g
+    select g[1 hour].max(:price)
+\end{lstlisting}
+
+Surprisingly though, the results would differ. To see why, note that
+this is just another instance of the pulse vs state-changes problem
+discussed in section \ref{sec:acme-problem}: the price could have been
+at its maximum 1 hour ago, but the notification for this value might
+have happened a little earlier and thus, a regular sliding window
+applied to a stream would not consider it when calculating the
+maximum. Continuous values, on the other hand, behave differently. As
+mentioned in section \ref{sec:stream-operations}, an object's
+attribute retains its value until a new event changes it. Thus,
+querying the attribute for its maximum value over the last hour would
+consider all the values the attribute possessed during that time ---
+even if the corresponding event came earlier --- and would give the
+correct result.
+
+This is surprising because continuous values were introduced to
+simplify queries. But they also introduce state and this seemingly
+innocuous change has profound implications. In essence, events are
+discrete while continuous values are just that: continuous. Through
+them, we can now support the state-changes semantics discussed in
+chapter \ref{chap:simple-questions-complex-answers} while retaining
+support for pulse semantics by using regular stream operations.
+
+Continuous values are a natural medium to express a few recurring
+patterns. For example, a common problem in ESP asks if a given
+condition was true any time or every time during some period of
+time. In EzQL, this can be done with the \verb=any?()= or
+\verb=all()?= aggregators:
+
+\begin{lstlisting}
+  isSmall =
+    let acmeMax = maxPerCompany_1h["ACME"] in
+    acmeMax < 20
+
+  alwaysSmall = isSmall[1 hour].all?()
+\end{lstlisting}
+
+In the previous example, \verb=isSmall= is a boolean value that is
+true if the maximum price over the last hour for ACME is smaller than
+\$20. Since this maximum will vary, \verb=isSmall= is expected to
+alternate between \verb=true= and \verb=false=. To check if the
+maximum was always small, we just need to open a 1 hour window over
+\verb=isSmall= and use \verb=all?()= over that window.
+
+A related problem asks for the duration of a given condition. In EzQL,
+we can solve it using the \verb=howLong()= aggregator:
+
+\begin{lstlisting}
+  mostlySmall = isSmall[1 hour].howLong() > 50 min
+\end{lstlisting}
+
+\section{Modeling entities}
+
+\label{sec:entities}
+
+In chapter \ref{chap:simple-questions-complex-answers}, we argued that
+some queries would become simpler if the developer could model the
+state of each entity and the relationships between them using
+objects. In this section we will explain how to do this in EzQL using
+the defective product detection example from section
+\ref{sec:spoiled-products}.
+
+Suppose you have two streams:
+
+\begin{itemize}
+\item \verb!tempReadings = stream of { roomId:string, temperature:float }! which receives
+  temperature readings per room;
+\item and \verb!entries = stream of { roomId:string, productId:int }! whose events are
+  created when a product has entered a room.
+\end{itemize}
+
+For this particular use-case, it might be appropriate to set up a
+dictionary with all the room's data and another with the products:
+
+\begin{lstlisting}
+  allRooms =
+    from tempReadings
+    group by :roomId into g
+    select let ev = g.last() in
+           { roomId = ev.roomId, temperature = ev.temperature }
+
+  allProducts =
+    from entries
+    group by :productId into g
+    select let ev = g.last()
+           { productId = ev.productId, roomId = ev.roomId }
+\end{lstlisting}
+
+With these dictionaries, one can, for example, find out which products
+are in room where the temperature is greater than 30 degrees:
+
+\begin{lstlisting}
+  hotProducts =
+    from p in allProducts
+    where allRooms[p.roomId].temperature > 30
+\end{lstlisting}
+
+Or how many products are in each room:
+
+\begin{lstlisting}
+  productsPerRoom =
+    from r in allRooms
+    select let prodsInR = from p in allProducts
+                          where p.roomId == r.roomId
+           in prodsInR.count()
+\end{lstlisting}
+
+
+
+
+Defining a class \verb=Room= in EzQL can be done as follows:
+
+\begin{lstlisting}
+  # A room is created every time a new room_id is seen in any of
+  # these streams
+  @createFrom(temp_readings, onNew = :room_id)
+  @createFrom(hum_readings,  onNew = :room_id)
+  class Room
+  end
+\end{lstlisting}
+
+This code declares a new class --- \verb=Room= ---, but leaves the
+declaration empty. However, is also tags the class with two
+\verb=@createFrom= annotations. This signals the ESP engine to
+automatically create new \verb=Room= instances when previously unseen
+\verb=room_id=s show up in either \verb=temp_readings= or
+\verb=hum_readings= streams.
+
+In addition, this annotation adds the stream fields to the class. This
+way, every Room instance ends up with three attributes:
+\verb=room_id=, \verb=temperature= and \verb=humidity=. These
+attributes are automatically filled and updated by the system as new
+events arrive, so that the developer doesn't have to worry with such
+details. Naturally, the values of these attributes are independent
+from object to object. That is, an event with \verb=room_id= equal to
+2 will only affect the \verb=Room= instance with \verb=room_id= equal
+to 2 and not the others.
+
+Having set up this apparatus, we can now run the simulation and see
+the objects being created for us automatically. All the \verb=Room=
+instances are accessible using \verb=Room.all=. In essence, this is a
+dictionary that maps object id's (taken from the \verb=:room_id= field
+in this case) to the objects themselves. If the stream
+\verb=temps_readings= contains:
+
+\begin{tabular}{ |l|l|c| }
+  \hline
+  Timestamp & \verb=:room_id= & \verb=:temperature= \\
+  \hline
+  11:00:00 am & \verb="A"= & 20 \\
+  11:01:00 am & \verb="B"= & 21 \\
+  11:02:00 am & \verb="A"= & 23 \\
+  11:03:00 am & \verb="B"= & 22 \\
+  \hline
+\end{tabular}
+
+and if \verb=hum_readings= receives:
+
+\begin{tabular}{ |l|l|c| }
+  \hline
+  Timestamp & \verb=:room_id= & \verb=:humidity= \\
+  \hline
+  11:00:30 am & \verb="B"= & 0.60 \\
+  11:01:30 am & \verb="A"= & 0.62 \\
+  11:02:30 am & \verb="A"= & 0.61 \\
+  11:03:00 am & \verb="B"= & 0.59 \\
+  \hline
+\end{tabular}
+
+then \verb=Room.all=, if evaluated after 11:03:00 am, will return:
+
+\begin{tabular}{ |l|l| }
+  \hline
+  Object id & Object \\
+  \hline
+  \verb="A"= & Room with room\_id = \verb="A"=, temperature = 23, humidity = 0.61 \\
+  \verb="B"= & Room with room\_id = \verb="B"=, temperature = 22, humidity = 0.59 \\
+  \hline
+\end{tabular}
+
+Note that the temperature inside room A is 23 degrees even though the
+last update was received at least 1 minute ago. It's like in a regular
+OOP programming language: if an attribute isn't modified, it retains
+the previous value.
+
+Naturally, we can query these objects as if they were normal streams:
+
+\begin{lstlisting}
+  from   room in Room.all
+  where  room.humidity > 0.60
+  select room.room_id
+\end{lstlisting}
+
+This would result in a subset of \verb=Room.all= containing only one
+room:
+
+\begin{tabular}{ |l|l| }
+  \hline
+  Object id & Object \\
+  \hline
+  \verb="A"= & Room with room\_id = \verb="A"=, temperature = 23, humidity = 0.61 \\
+  \hline
+\end{tabular}
+
+Individual \verb=Room=s may be accessed by indexing \verb=Room.all=
+with the room's id. For instance, evaluating
+\verb=Room.all["A"].temperature= would result in 23.
+
+Modeling associations between entities is just as easy. For instance,
+to specify the one-to-many relationship between products and rooms you
+would just need to add a few annotations to the declarations:
+
+\begin{lstlisting}
+  # A room is created every time a new room_id is seen in any of
+  # these streams.
+  @createFrom(temp_readings, onNew = :room_id)
+  @createFrom(hum_readings,  onNew = :room_id)
+  @hasMany(:products) # There may be many products inside one room
+  class Room
+  end
+
+  # A product is created every time a new product_id is seen.
+  @createFrom(entries, onNew = :product_id)
+  @belongsTo(:room)  # A product is inside one room
+  class Product
+  end
+\end{lstlisting}
+
+The \verb=@hasMany= annotation means that each room may contain an
+unbounded number of products. This annotation also adds a list of
+\verb=Product= instances to every \verb=Room=. So, if you want to get
+the list of products in room A you can do so with:
+
+\begin{lstlisting}
+  Room.all["A"].products
+\end{lstlisting}
+
+The \verb=@belongsTo= annotation adds the reverse association, i.e.,
+it means that every product is inside one room. Moreover, this
+annotation also adds an attribute \verb=room= to every
+\verb=Product=. Thus, to know in which room is product X one could
+write:
+
+\begin{lstlisting}
+  Products.all["X"].room
+  # or ...
+  Products.all["X"].room.room_id  # ... to get just the ID
+\end{lstlisting}
+
+And you can find the number of products per room using:
+
+\begin{lstlisting}
+  from   room in Room.all
+  select { :room_id => room.room_id,
+           :product_count => room.products.length }
+\end{lstlisting}
+
+In this example, \verb=length= returns the number of elements in a
+list.
+
+All these attributes created automatically are managed by the engine
+without any additional effort required from the programmer. Thus, when
+product X enters room B, its \verb=room= attribute will point to room
+B and the room's \verb=products= list will contain a reference to
+product X.
+
+This may seem like a bit of hidden magic at first, but it's really
+just a simple convention:
+
+\begin{enumerate}
+\item The \verb=:products= parameter to the \verb=@hasMany= annotation
+  instructs the engine to create a list of \verb=Product=
+  instances. It knows that this list should hold \verb=Product=s,
+  because ``product'' is the singular of ``products''. This list will
+  be named \verb=products=;
+\item On the other hand, the \verb=:room= parameter to the
+  \verb=belongsTo= annotation tells the engine to create a field named
+  \verb=room= in every product. This field will hold an instance of the
+  \verb=Room= class (once again, it finds the class name through the
+  parameter);
+\item The engine fills the \verb=room= attribute of every product by
+  checking its \verb=room_id= field. Remember, this field was created
+  automatically by the \verb=@createFrom= annotation. Given the
+  identifier of the room, the engine can easily lookup the
+  corresponding \verb=Room= instance using the \verb=Room.all=
+  dictionary;
+\item The \verb=products= list in every \verb=Room= is filled using
+  the reverse relationship. That is, the products that belong to room
+  ``A'' are those where the condition \verb!room_id == "A"! is true.
+\end{enumerate}
+
 
 \end{document}
 
