@@ -13,11 +13,15 @@
 \lstdefinelanguage{EzQL}
 {
   morekeywords=[1]{from, select, where, group, by, in, hour,
-    class, end, and, stream, of, let, in, min, into},
-  morekeywords=[2]{avg, last, max, values, minBy, howLong, all, any},
+    entity, match, with, if, then, else, end, and, stream, of,
+    createFrom, hasMany, belongsTo, let, in, min, into, member,
+    when, enum},
+  morekeywords=[2]{avg, last, max, values, minBy, howLong, all, any,
+    changes},
   sensitive=false,
   morecomment=[l]{\#},
   morestring=[b]",
+  tabsize=2,
 }
 
 \lstdefinelanguage{CCL}
@@ -353,6 +357,8 @@ we can solve it using the \verb=howLong()= aggregator:
 
 \label{sec:entities}
 
+\subsection{Motivation}
+
 In chapter \ref{chap:simple-questions-complex-answers}, we argued that
 some queries would become simpler if the developer could model the
 state of each entity and the relationships between them using
@@ -405,65 +411,58 @@ Or how many products are in each room:
            in prodsInR.count()
 \end{lstlisting}
 
+While this approach works, it also feels rather unnatural. Basically,
+\verb=allRooms= and \verb=allProducts= are nothing more than
+containers for the current state of all rooms and products known by
+the system. This current state is very easy to manage and if you look
+closer at the queries, you'll see that they have a lot in common: the
+only things that change are the attribute names. Furthermore, the
+queries for \verb=hotProducts= and \verb=productsPerRoom= follow
+directly from the fact that there is an association between rooms and
+products: at any given moment, a product is in one room while each
+room may contain any number of products. As a consequence, these
+queries also exhibit a few common patterns that could be abstracted.
 
+\subsection{Modeling simple entities}
 
-
-Defining a class \verb=Room= in EzQL can be done as follows:
+To improve this situation, EzQL includes an entity framework inspired
+by Object-Relational Mapping tools for databases, that allows the
+developer to model entities that constitute a scenario, as well as the
+associations between them. This results in simpler queries compared to
+the ones above. For example, defining an entity to model rooms can be
+done as follows:
 
 \begin{lstlisting}
-  # A room is created every time a new room_id is seen in any of
-  # these streams
-  @createFrom(temp_readings, onNew = :room_id)
-  @createFrom(hum_readings,  onNew = :room_id)
-  class Room
-  end
+  entity Room =
+    createFrom (tempReadings, :roomId)
 \end{lstlisting}
 
-This code declares a new class --- \verb=Room= ---, but leaves the
-declaration empty. However, is also tags the class with two
-\verb=@createFrom= annotations. This signals the ESP engine to
-automatically create new \verb=Room= instances when previously unseen
-\verb=room_id=s show up in either \verb=temp_readings= or
-\verb=hum_readings= streams.
-
-In addition, this annotation adds the stream fields to the class. This
-way, every Room instance ends up with three attributes:
-\verb=room_id=, \verb=temperature= and \verb=humidity=. These
+This is equivalent to the definition of \verb=allRooms=
+above. \verb=createFrom= instructs the system to automatically create
+new \verb=Room= entities whenever a previously unseen \verb=roomId=
+arrives on \verb=tempReadings=. In addition, \verb=createFrom= adds
+the stream fields to the class. This way, every Room instance ends up
+with two attributes: \verb=roomId= and \verb=temperature=. These
 attributes are automatically filled and updated by the system as new
 events arrive, so that the developer doesn't have to worry with such
-details. Naturally, the values of these attributes are independent
-from object to object. That is, an event with \verb=room_id= equal to
-2 will only affect the \verb=Room= instance with \verb=room_id= equal
-to 2 and not the others.
+details.
 
-Having set up this apparatus, we can now run the simulation and see
-the objects being created for us automatically. All the \verb=Room=
-instances are accessible using \verb=Room.all=. In essence, this is a
-dictionary that maps object id's (taken from the \verb=:room_id= field
-in this case) to the objects themselves. If the stream
-\verb=temps_readings= contains:
+Having declared \verb=Room=, we can now run a simulation to see how
+the system manages these entities automatically. All the \verb=Room=
+instances are accessible using \verb=Room.all=. This is a dictionary
+that maps \verb=Room= id's (taken from the \verb=:roomId= field in
+this case) to the \verb=Room=s themselves. In essence, it plays a similar
+role to \verb=allRooms= above. If the stream \verb=tempsReadings=
+receives the following events:
 
 \begin{tabular}{ |l|l|c| }
   \hline
-  Timestamp & \verb=:room_id= & \verb=:temperature= \\
+  Timestamp & \verb=:roomId= & \verb=:temperature= \\
   \hline
   11:00:00 am & \verb="A"= & 20 \\
-  11:01:00 am & \verb="B"= & 21 \\
+  11:01:00 am & \verb="B"= & 29 \\
   11:02:00 am & \verb="A"= & 23 \\
-  11:03:00 am & \verb="B"= & 22 \\
-  \hline
-\end{tabular}
-
-and if \verb=hum_readings= receives:
-
-\begin{tabular}{ |l|l|c| }
-  \hline
-  Timestamp & \verb=:room_id= & \verb=:humidity= \\
-  \hline
-  11:00:30 am & \verb="B"= & 0.60 \\
-  11:01:30 am & \verb="A"= & 0.62 \\
-  11:02:30 am & \verb="A"= & 0.61 \\
-  11:03:00 am & \verb="B"= & 0.59 \\
+  11:03:00 am & \verb="B"= & 30 \\
   \hline
 \end{tabular}
 
@@ -471,124 +470,353 @@ then \verb=Room.all=, if evaluated after 11:03:00 am, will return:
 
 \begin{tabular}{ |l|l| }
   \hline
-  Object id & Object \\
+  Entity id & Entity \\
   \hline
-  \verb="A"= & Room with room\_id = \verb="A"=, temperature = 23, humidity = 0.61 \\
-  \verb="B"= & Room with room\_id = \verb="B"=, temperature = 22, humidity = 0.59 \\
+  \verb="A"= & Room with roomId = \verb="A"=, temperature = 23 \\
+  \verb="B"= & Room with roomId = \verb="B"=, temperature = 30 \\
   \hline
 \end{tabular}
 
-Note that the temperature inside room A is 23 degrees even though the
-last update was received at least 1 minute ago. It's like in a regular
-OOP programming language: if an attribute isn't modified, it retains
-the previous value.
-
-Naturally, we can query these objects as if they were normal streams:
+Naturally, we can query these entities as if they were normal streams:
 
 \begin{lstlisting}
-  from   room in Room.all
-  where  room.humidity > 0.60
-  select room.room_id
+  hotRooms =
+    from   room in Room.all
+    where  room.temperature > 25
+    select room.roomId
 \end{lstlisting}
 
-This would result in a subset of \verb=Room.all= containing only one
-room:
+This results in a subset of \verb=Room.all= containing only one room:
 
 \begin{tabular}{ |l|l| }
   \hline
-  Object id & Object \\
+  Entity id & Entity \\
   \hline
-  \verb="A"= & Room with room\_id = \verb="A"=, temperature = 23, humidity = 0.61 \\
+  \verb="A"= & Room with room\_id = \verb="B"=, temperature = 30 \\
   \hline
 \end{tabular}
 
-Individual \verb=Room=s may be accessed by indexing \verb=Room.all=
-with the room's id. For instance, evaluating
-\verb=Room.all["A"].temperature= would result in 23.
+\subsection{Modeling associations}
 
 Modeling associations between entities is just as easy. For instance,
-to specify the one-to-many relationship between products and rooms you
-would just need to add a few annotations to the declarations:
+to specify the one-to-many relationship between products and rooms we
+may redefine the entities as follows:
 
 \begin{lstlisting}
-  # A room is created every time a new room_id is seen in any of
-  # these streams.
-  @createFrom(temp_readings, onNew = :room_id)
-  @createFrom(hum_readings,  onNew = :room_id)
-  @hasMany(:products) # There may be many products inside one room
-  class Room
-  end
+  entity Room =
+    createFrom (tempReadings, :roomId)
+    hasMany :products
 
-  # A product is created every time a new product_id is seen.
-  @createFrom(entries, onNew = :product_id)
-  @belongsTo(:room)  # A product is inside one room
-  class Product
-  end
+  entity Product =
+    createFrom (entries, :productId)
+    belongsTo :room
 \end{lstlisting}
 
-The \verb=@hasMany= annotation means that each room may contain an
-unbounded number of products. This annotation also adds a list of
-\verb=Product= instances to every \verb=Room=. So, if you want to get
-the list of products in room A you can do so with:
+As the name implies, \verb=hasMany= means that each room may contain
+an unbounded number of products. This annotation also adds a
+collection of \verb=Product= instances to every \verb=Room=. So, the
+list of products in room A may be retrieved with:
 
 \begin{lstlisting}
   Room.all["A"].products
 \end{lstlisting}
 
-The \verb=@belongsTo= annotation adds the reverse association, i.e.,
-it means that every product is inside one room. Moreover, this
-annotation also adds an attribute \verb=room= to every
-\verb=Product=. Thus, to know in which room is product X one could
-write:
+In fact, \verb=products= is not a list, but a dictionary defined by
+taking only those products that belong to room A from
+\verb=Product.all=. As such, we can apply other dictionary operators
+to this attribute. To show this, the next example determintes which
+products that are now in room A were also in room B less than 5
+minutes ago:
 
 \begin{lstlisting}
-  Products.all["X"].room
+  from p in Room.all["A"].products
+  where (p.roomId == "B")[5 min].any?()
+\end{lstlisting}
+
+The predicate opens a window over the result of \verb!p.roomId == "B"!
+and the \verb=.any?()= aggregator discussed in section ?? checks if
+the value was true any time during that interval.
+
+This example also features a previously unseen situation where the
+predicate requires historical data in order to actuate. This poses
+some difficulties because the set of products that are in room A is
+constantly changing and, in order to work correctly, the system must
+take that into consideration. That is, as soon as a product arrives
+into room A, its 5 minute data must already be available. The
+implementation of this class of queries -- that combine filtered
+dictionaries with temporal windows --, presents some challenges that
+will be discussed in chapter ??.
+
+Proceeding with the previous example, \verb=belongsTo= sets up the
+reverse association, i.e., it means that every product is inside one
+room. Moreover, this instruction also adds an attribute \verb=room= to
+every \verb=Product=. Thus, to find out in which room product 123 is,
+one could write:
+
+\begin{lstlisting}
+  Products.all[123].room
   # or ...
-  Products.all["X"].room.room_id  # ... to get just the ID
+  Products.all[123].room.roomId  # ... to get just the ID
 \end{lstlisting}
 
 And you can find the number of products per room using:
 
 \begin{lstlisting}
   from   room in Room.all
-  select { :room_id => room.room_id,
-           :product_count => room.products.length }
+  select room.products.count()
 \end{lstlisting}
 
-In this example, \verb=length= returns the number of elements in a
-list.
+As you can verify, this is simpler -- though equivalent --, than the
+definition of \verb=productsPerRoom= above and, what's more important,
+this simplification was achieved by abstracting a few patterns that
+show up recurringly and not by introducing very specific features that
+are useless 99.9\% of time time.
 
 All these attributes created automatically are managed by the engine
 without any additional effort required from the programmer. Thus, when
-product X enters room B, its \verb=room= attribute will point to room
-B and the room's \verb=products= list will contain a reference to
-product X.
+product 123 enters room B, its \verb=room= attribute will point to
+room B and B's \verb=products= list will contain a reference to
+product 123.
 
 This may seem like a bit of hidden magic at first, but it's really
 just a simple convention:
 
 \begin{enumerate}
-\item The \verb=:products= parameter to the \verb=@hasMany= annotation
-  instructs the engine to create a list of \verb=Product=
-  instances. It knows that this list should hold \verb=Product=s,
-  because ``product'' is the singular of ``products''. This list will
-  be named \verb=products=;
-\item On the other hand, the \verb=:room= parameter to the
-  \verb=belongsTo= annotation tells the engine to create a field named
-  \verb=room= in every product. This field will hold an instance of the
-  \verb=Room= class (once again, it finds the class name through the
-  parameter);
+\item The \verb=:products= parameter to \verb=hasMany= instructs the
+  engine to create a list of \verb=Product= instances. It knows that
+  this list should hold \verb=Product=s, because ``product'' is the
+  singular of ``products''. This list will be named \verb=products=;
+\item On the other hand, the \verb=:room= parameter to
+  \verb=belongsTo= tells the engine to create a field named
+  \verb=room= in every product. This field will hold an instance of
+  the \verb=Room= class (once again, it finds the class name through
+  the parameter);
 \item The engine fills the \verb=room= attribute of every product by
-  checking its \verb=room_id= field. Remember, this field was created
-  automatically by the \verb=@createFrom= annotation. Given the
-  identifier of the room, the engine can easily lookup the
-  corresponding \verb=Room= instance using the \verb=Room.all=
-  dictionary;
+  checking its \verb=roomId= field. Remember, this field was created
+  automatically by \verb=createFrom=. Given the identifier of the
+  room, the engine can easily lookup the corresponding \verb=Room=
+  instance using the \verb=Room.all= dictionary;
 \item The \verb=products= list in every \verb=Room= is filled using
   the reverse relationship. That is, the products that belong to room
-  ``A'' are those where the condition \verb!room_id == "A"! is true.
+  A are those where the condition \verb!room_id == "A"! is true.
 \end{enumerate}
 
+\subsection{Defining additional attributes}
+
+It is possible to add new attributes to an entity, on top of those
+that are created automatically by the system. For example, suppose we
+want to add a temperature attribute to every product that is taken
+from the temperature of the room where the product currently is. We
+could do it with:
+
+\begin{lstlisting}
+  entity Product =
+    createFrom (entries, :productId)
+    belongsTo :room
+
+    member this.temperature = this.room.temperature
+
+\end{lstlisting}
+
+There is a subtle detail in this definition: despite being equal to
+the temperature of the current room, the product's temperature has a
+``life of its own'' when it comes to history. That is, the past values
+of the product's temperature reflect the fact that the product might
+have been in other rooms. Hence, \verb=this.room.temperature[5 min]=
+is, in general, different from the current room's temperature over the
+last 5 minutes.
+
+
+\section{Additional features}
+
+\subsection{When blocks}
+
+Event processing problems are all about executing the right actions
+when something happens, be it the arrival of a new event or the
+expiration of an old one. In EzQL, we have decided to abstract this
+notion of \emph{when} to execute an action as much as possible,
+because this results in queries that are more declarative and less
+algorithmic. If you're not convinced about this, go back to the
+previous section, choose any query, and try to enumerate the external
+events that, ultimately, trigger the re-evaluation of the entire
+query. Allowing the developer to write his queries in a higher-level
+of abstraction, without needing to worry with such details (``What
+happens if two events arrive at the same time?'', ``What happens if,
+at the same time, an event expires and another arrives at a window?'')
+should be seen as one of the most important features of EzQL.
+
+Nonetheless, there are situations where specifying the right time to
+execute some action is actually the way to go, because it gives the
+developer more freedom and allows him to do things that couldn't be
+done using the standard operators. For example -- and continuing with
+our rooms and products example --, suppose you'd like to know, for
+each room, how many products entered the room, but only if the room's
+temperature was hot (greater than 25). In EzQL you could employ when
+blocks to solve this problem:
+
+\begin{lstlisting}
+  entity Room =
+    createFrom (tempReadings, :roomId)
+    hasMany :products
+
+    member self.hotEntries = 0
+      when ev in entries ->
+        # If the entry happened in this room and this room is hot...
+        if ev.roomId == self.roomId and self.temperature > 25
+          then self.hotEntries + 1
+          else self.hotEntries
+
+
+\end{lstlisting}
+
+The snippet above adds a new field called \verb=hotEntries= to the
+\verb=Room= entity. When a room instance is created, this field starts
+at 0. However, when a product enters a hot room, the \verb=hotEntries=
+field for the corresponding room instance will be incremented by 1,
+while all the other rooms will remain unchanged.
+
+You may also use when blocks with more than one stream. For example,
+reseting the counter when the temperature goes below 25 is a
+straightforward extension:
+
+\begin{lstlisting}
+    member self.hotEntries = 0
+      when
+        | ev in entries ->
+            if ev.roomId == self.roomId and self.temperature > 25
+              then self.hotEntries + 1
+              else self.hotEntries
+        | self.temperature.changes() if self.temperature < 25 -> 0
+\end{lstlisting}
+
+The \verb=changes()= operator was introduced in section ??. Basically,
+it converts the attribute \verb=self.temperature= into a stream with
+the different values it takes during execution. When an event arrives
+into that stream (meaning: when the temperature changes), if the new
+temperature is below 25, then \verb=hotEntries= will be reset to
+0. Notice that \verb=ev in...= is optional: if the event itself is not
+necessary, there is no need to declare it.
+
+The careful reader will notice that these last two examples are the
+perfect testbed for a feature that was proposed in section ??:
+semantic windows. EzQL does not provide lexical support for these
+constructs. Yet, as we can see, when blocks already come with the
+power necessary to solve the same problems. Maybe the syntax could be
+improved, but it's not like when blocks are difficult to use. Besides,
+modifying the syntax is the easy part.
+
+\subsection{Variants and pattern matching}
+
+Sometimes we would like to classify the status of a set of entities
+using descriptive names. For example, a room could be categorized into
+hot or cold, crowded or empty. We could use strings for this, but
+strings are not type-safe (what happens if the programmer makes a
+typo?). Variants and pattern matching are two features commonly found
+in functional languages that work together to help solve these
+problems.
+
+Conceptually, a variant -- also called a ``sum type'' in literature
+--, is a value that may take a number of forms. For example, a variant
+to hold the different states we may classify a room's temperature may
+be declared with:
+
+\begin{lstlisting}
+  enum RoomState =
+    | Cold
+    | Hot
+\end{lstlisting}
+
+We could now define a \verb=state= attribute inside the definition of
+the \verb=Room= entity that classifies the room as cold or hot:
+
+\begin{lstlisting}
+  member self.state = if self.temperature <= 25
+                        then Cold ()
+                        else Hot ()
+\end{lstlisting}
+
+Now, to find out how many rooms are hot we could write the following query:
+
+\begin{lstlisting}
+  hotCount =
+    let hotRooms = from room in Room.all
+                   where room.state == Hot ()
+    in hotRooms.count()
+\end{lstlisting}
+
+Variants may also carry payloads -- i.e., each state may also include
+inner state. For example, suppose that we want to know how many
+products entered the room while it was hot. This is the exact same
+problem that we solved in the previous section, but we are now going
+to present an alternative solution. First, let's add a counter to the
+hot state:
+
+\begin{lstlisting}
+  enum RoomState =
+    | Cold
+    | Hot of int  # int is the type of the counter
+\end{lstlisting}
+
+Now we need to manage this counter inside the definition of the
+\verb=state= attribute:
+
+\begin{lstlisting}
+  # Is this room hot or cold?
+  member self.isHot = self.temperature > 25
+
+  member self.state = null
+    when
+      | (self.isHot).changes() -> if self.isHot then Hot 0 else Cold
+      | ev in entries if ev.roomId == self.roomId ->
+          match self.state with
+          | Cold -> Cold ()
+          | Hot c -> Hot (c + 1)
+
+\end{lstlisting}
+
+%% TODO: Talk about NULL before
+
+The first part of this definition is straightforward: the initial
+value is \verb=null= -- because we don't know if the room is hot or
+cold in the beginning --, and we alternate between the \verb=Hot= and
+\verb=Cold= states when the \verb=isHot= condition changes. Notice
+that we pass \verb=0= to the \verb=Hot= state, to initialize the
+counter.
+
+In the second part we use pattern matching for the first time. The
+\verb=match ... with= operator provides a way to deconstruct a
+variant. Basically, if the current value is \verb=Cold=, the next
+value will continue to be \verb=Cold=. However, if the current state
+is \verb=Hot c= for any counter \verb=c=, then we would like the next
+state to be \verb=Hot= with the counter incremented.
+
+Now we may use these definitions to find out how many rooms are
+\verb=Hot= and have more than 10 entries at the same time:
+
+\begin{lstlisting}
+  hotPopulatedCount =
+    let hotRooms = from room in Room.all
+                   where match room.state with
+                         | Hot c if c > 10 -> true
+                         | _ -> false
+    in hotRooms.count()
+\end{lstlisting}
+
+Inside \verb=match ... with=, the underscore means ``match anything''.
+
+Arguably, this might not be the best example to illustrate the full
+potential of variants and pattern matching. After all, we could have
+done the same using the concepts from the last section -- and the
+result would probably have been easier. However, the purpose of this
+section is to introduce the reader to these new concepts. The real
+usefulness of variants and pattern matching will be demonstrated in
+the following chapters.
+
+\subsection{Functions}
+
+\subsection{User defined aggregators}
+
+\subsection{EzQL from a design point of view}
 
 \end{document}
 
