@@ -16,8 +16,8 @@
     entity, match, with, if, then, else, end, and, stream, of,
     createFrom, hasMany, belongsTo, let, in, min, into, member,
     when, enum},
-  morekeywords=[2]{avg, last, max, values, minBy, howLong, all, any,
-    changes},
+  morekeywords=[2]{avg, last, max, values, minBy, howLong, any,
+    changes, count},
   sensitive=false,
   morecomment=[l]{\#},
   morestring=[b]",
@@ -125,26 +125,19 @@ temporal windows and aggregations:
     in cheapStocks.avg (:price)
 \end{lstlisting}
 
-
 This example computes the average price of all events received during
-the last 5 minutes where the price is below \$20. To ease reading and
-understanding, the query has been partitioned into two smaller
-sub-queries: the first -- \verb=cheapStocks= --, which is declared as
-a local stream containing the desired events, and the second which is
-the application of the \verb=avg()= method over \verb=cheapStocks=. In
-EzQL, the syntactic form \verb!let <var> = <expr> in <body>! is used
-to declare a variable named \verb=<var>= initialized with the value of
-\verb=<expr>=, that may then be used inside \verb=<body>=. The result
-of the entire expression is the result of \verb=<body>=. Hence, in the
-query above, \verb=avg_5min= will be assigned to the result of
-calculating the average price of \verb=cheapStocks=.
+the last 5 minutes where the price is under \$20. The query has been
+partitioned into two smaller sub-queries: the first --
+\verb=cheapStocks= --, which is declared (using \verb=let=) as a local
+stream containing the desired events, and the second which is the
+application of the \verb=avg()= method over \verb=cheapStocks=.
 
 In traditional SQL or derived languages, \verb=avg_5min= would be a
 stream, whose events would represent changes to the average. However,
-as we have seen earlier, events are ephemeral and if we need the
+as we have seen in chapter ??, events are ephemeral and if we need the
 current average to use it in other queries, we have to keep it inside
 a window with a single entry created specifically for this
-purpose. But, conceptually, the average is just a value that should be
+purpose. Yet, conceptually, the average is just a value that should be
 available directly. Hiding this value inside a window represents an
 unnecessary level of indirection that impacts the amount of code that
 needs to be written and hides its meaning.  We believe this is an
@@ -154,9 +147,9 @@ average, not streams or windows.
 
 Thus, in EzQL, \verb=avg_5min= is a simple number whose value is
 automatically updated by the engine as the average changes. This
-number can be accessed in subsequent queries by just referencing its
-name -- \verb=avg_5min=. For example, to check if it is smaller than
-10 one could write:
+number can be accessed in subsequent queries by referencing its name
+-- \verb=avg_5min=. For example, to check if it is smaller than 10 we
+could write:
 
 \begin{lstlisting}
   isSmall = avg_5min < 10
@@ -205,9 +198,9 @@ In this listing, \verb=pricePerCompany= is a dictionary that maps keys
 stocks). Moreover, being the result of a continuous query,
 \verb=pricePerCompany= is also a continuous entity: when a new event
 arrives, the price of its company is automatically updated and every
-time a previously unseen symbol arrives, a new entry is created for
-it. Moreover, these changes are automatically propagated to other
-queries that depend on its value, as can be seen in the next example:
+time a previously unseen symbol is processed, a new entry is created
+for it. Moreover, these changes are automatically propagated to other
+queries that depend on them, as can be seen in the next example:
 
 \begin{lstlisting}
   cheapCompanies =
@@ -246,13 +239,13 @@ it is possible to access ACME's maximum price with:
 
 This example also shows how to index individual entries inside a
 dictionary using square brackets. Needless to say, whenever a new
-event is received for ACME or an old event leaves the 5 minutes
+event is received for ACME, or an old event leaves the 5 minutes
 window, \verb=acme_max= will automatically be updated to reflect this
 change.
 
 To conclude this section, we show how to perform aggregations over
 dictionaries. For example, to find the company with the cheapest
-stocks overall, one could write:
+stocks overall, you could write:
 
 \begin{lstlisting}
   cheapest =
@@ -273,8 +266,9 @@ obtain the corresponding company id.
 
 \section{Continuous values}
 
-We have already discussed continuous values above. This section will
-expand that knowledge by showing what is possible to do with them.
+We have already discussed continuous values in section ??. This
+section will expand that knowledge by showing what is possible to do
+with them.
 
 Being, by definition, values that change, it is only natural to
 exploit the temporal information contained in them. As such, it is
@@ -318,18 +312,21 @@ even if the corresponding event came earlier --- and would give the
 correct result.
 
 This is surprising because continuous values were introduced to
-simplify queries. But they also introduce state and this seemingly
-innocuous change has profound implications. In essence, events are
-discrete while continuous values are just that: continuous. Through
-them, we can now support the state-changes semantics discussed in
-chapter \ref{chap:simple-questions-complex-answers} while retaining
-support for pulse semantics by using regular stream operations.
+simplify queries. Nonetheless, they also introduce state and this
+seemingly innocuous change has profound implications. In essence,
+events are discrete while continuous values are just that:
+continuous. Through them, we can now support the state-changes
+semantics discussed in chapter
+\ref{chap:simple-questions-complex-answers} while retaining support
+for pulse semantics by using regular stream operations.
 
 Continuous values are a natural medium to express a few recurring
 patterns. For example, a common problem in ESP asks if a given
 condition was true any time or every time during some period of
 time. In EzQL, this can be done with the \verb=any?()= or
-\verb=all()?= aggregators:
+\verb=all()?=\footnote{EzQL allows functions that end in '?'; a
+  convention, found in other languages such as Scheme and Ruby, that
+  indicates that the function is a predicate.}  aggregators:
 
 \begin{lstlisting}
   isSmall =
@@ -347,7 +344,8 @@ maximum was always small, we just need to open a 1 hour window over
 \verb=isSmall= and use \verb=all?()= over that window.
 
 A related problem asks for the duration of a given condition. In EzQL,
-we can solve it using the \verb=howLong()= aggregator:
+we can solve it using the \verb=howLong()= aggregator\footnote{50 min
+  means 50 minutes}
 
 \begin{lstlisting}
   mostlySmall = isSmall[1 hour].howLong() > 50 min
@@ -363,10 +361,13 @@ In chapter \ref{chap:simple-questions-complex-answers}, we argued that
 some queries would become simpler if the developer could model the
 state of each entity and the relationships between them using
 objects. In this section we will explain how to do this in EzQL using
-the defective product detection example from section
-\ref{sec:spoiled-products}.
-
-Suppose you have two streams:
+a simple fictional scenario based on a factory. This factory has many
+rooms and each room is crossed by a pipeline that carries products
+between rooms. Furthermore, each room has one temperature sensor --
+because the conditions under which the products are manufactured must
+be rigorously controled --, and one RFID sensor that signals the
+entrace of a new product in the room. We can model this scenario using
+two streams:
 
 \begin{itemize}
 \item \verb!tempReadings = stream of { roomId:string, temperature:float }! which receives
@@ -376,7 +377,7 @@ Suppose you have two streams:
 \end{itemize}
 
 For this particular use-case, it might be appropriate to set up a
-dictionary with all the room's data and another with the products:
+dictionary with all the room's data and another with the products':
 
 \begin{lstlisting}
   allRooms =
@@ -388,12 +389,12 @@ dictionary with all the room's data and another with the products:
   allProducts =
     from entries
     group by :productId into g
-    select let ev = g.last()
+    select let ev = g.last() in
            { productId = ev.productId, roomId = ev.roomId }
 \end{lstlisting}
 
 With these dictionaries, one can, for example, find out which products
-are in room where the temperature is greater than 30 degrees:
+are in rooms where the temperature is greater than 30 degrees:
 
 \begin{lstlisting}
   hotProducts =
@@ -406,8 +407,9 @@ Or how many products are in each room:
 \begin{lstlisting}
   productsPerRoom =
     from r in allRooms
-    select let prodsInR = from p in allProducts
-                          where p.roomId == r.roomId
+    select let prodsInR =
+             from p in allProducts
+             where p.roomId == r.roomId
            in prodsInR.count()
 \end{lstlisting}
 
@@ -415,8 +417,8 @@ While this approach works, it also feels rather unnatural. Basically,
 \verb=allRooms= and \verb=allProducts= are nothing more than
 containers for the current state of all rooms and products known by
 the system. This current state is very easy to manage and if you look
-closer at the queries, you'll see that they have a lot in common: the
-only things that change are the attribute names. Furthermore, the
+closer at their queries, you'll see that they have a lot in common:
+the only things that change are the attribute names. Furthermore, the
 queries for \verb=hotProducts= and \verb=productsPerRoom= follow
 directly from the fact that there is an association between rooms and
 products: at any given moment, a product is in one room while each
@@ -427,10 +429,10 @@ queries also exhibit a few common patterns that could be abstracted.
 
 To improve this situation, EzQL includes an entity framework inspired
 by Object-Relational Mapping tools for databases, that allows the
-developer to model entities that constitute a scenario, as well as the
-associations between them. This results in simpler queries compared to
-the ones above. For example, defining an entity to model rooms can be
-done as follows:
+developer to model the entities that make up a scenario, as well as
+the associations between them. This results in simpler queries
+compared to the ones above. For example, defining an entity to model
+rooms can be done as follows:
 
 \begin{lstlisting}
   entity Room =
@@ -444,20 +446,20 @@ arrives on \verb=tempReadings=. In addition, \verb=createFrom= adds
 the stream fields to the class. This way, every Room instance ends up
 with two attributes: \verb=roomId= and \verb=temperature=. These
 attributes are automatically filled and updated by the system as new
-events arrive, so that the developer doesn't have to worry with such
+events arrive, so that developers don't have to worry with such
 details.
 
 Having declared \verb=Room=, we can now run a simulation to see how
 the system manages these entities automatically. All the \verb=Room=
 instances are accessible using \verb=Room.all=. This is a dictionary
-that maps \verb=Room= id's (taken from the \verb=:roomId= field in
+that maps \verb=Room= id's (taken from the \verb=roomId= field in
 this case) to the \verb=Room=s themselves. In essence, it plays a similar
 role to \verb=allRooms= above. If the stream \verb=tempsReadings=
 receives the following events:
 
 \begin{tabular}{ |l|l|c| }
   \hline
-  Timestamp & \verb=:roomId= & \verb=:temperature= \\
+  \verb=timestamp= & \verb=roomId= & \verb=temperature= \\
   \hline
   11:00:00 am & \verb="A"= & 20 \\
   11:01:00 am & \verb="B"= & 29 \\
@@ -492,7 +494,7 @@ This results in a subset of \verb=Room.all= containing only one room:
   \hline
   Entity id & Entity \\
   \hline
-  \verb="A"= & Room with room\_id = \verb="B"=, temperature = 30 \\
+  \verb="B"= & Room with room\_id = \verb="B"=, temperature = 30 \\
   \hline
 \end{tabular}
 
@@ -524,9 +526,8 @@ list of products in room A may be retrieved with:
 In fact, \verb=products= is not a list, but a dictionary defined by
 taking only those products that belong to room A from
 \verb=Product.all=. As such, we can apply other dictionary operators
-to this attribute. To show this, the next example determintes which
-products that are now in room A were also in room B less than 5
-minutes ago:
+to this attribute. To show this, the next example finds which products
+that are now in room A were also in room B less than 5 minutes ago:
 
 \begin{lstlisting}
   from p in Room.all["A"].products
@@ -534,8 +535,8 @@ minutes ago:
 \end{lstlisting}
 
 The predicate opens a window over the result of \verb!p.roomId == "B"!
-and the \verb=.any?()= aggregator discussed in section ?? checks if
-the value was true any time during that interval.
+and the \verb=.any?()= aggregator checks if the value was true any
+time during that interval.
 
 This example also features a previously unseen situation where the
 predicate requires historical data in order to actuate. This poses
@@ -548,35 +549,14 @@ dictionaries with temporal windows --, presents some challenges that
 will be discussed in chapter ??.
 
 Proceeding with the previous example, \verb=belongsTo= sets up the
-reverse association, i.e., it means that every product is inside one
-room. Moreover, this instruction also adds an attribute \verb=room= to
-every \verb=Product=. Thus, to find out in which room product 123 is,
-one could write:
+reverse association, i.e., every product is inside one room. Moreover,
+this instruction also adds an attribute \verb=room= to every
+\verb=Product=. Thus, you could find in which room product 123 is
+with:
 
 \begin{lstlisting}
   Products.all[123].room
-  # or ...
-  Products.all[123].room.roomId  # ... to get just the ID
 \end{lstlisting}
-
-And you can find the number of products per room using:
-
-\begin{lstlisting}
-  from   room in Room.all
-  select room.products.count()
-\end{lstlisting}
-
-As you can verify, this is simpler -- though equivalent --, than the
-definition of \verb=productsPerRoom= above and, what's more important,
-this simplification was achieved by abstracting a few patterns that
-show up recurringly and not by introducing very specific features that
-are useless 99.9\% of time time.
-
-All these attributes created automatically are managed by the engine
-without any additional effort required from the programmer. Thus, when
-product 123 enters room B, its \verb=room= attribute will point to
-room B and B's \verb=products= list will contain a reference to
-product 123.
 
 This may seem like a bit of hidden magic at first, but it's really
 just a simple convention:
@@ -708,17 +688,16 @@ modifying the syntax is the easy part.
 \subsection{Variants and pattern matching}
 
 Sometimes we would like to classify the status of a set of entities
-using descriptive names. For example, a room could be categorized into
+using descriptive names. For example, a room could be categorized as
 hot or cold, crowded or empty. We could use strings for this, but
 strings are not type-safe (what happens if the programmer makes a
 typo?). Variants and pattern matching are two features commonly found
 in functional languages that work together to help solve these
 problems.
 
-Conceptually, a variant -- also called a ``sum type'' in literature
---, is a value that may take a number of forms. For example, a variant
-to hold the different states we may classify a room's temperature may
-be declared with:
+Conceptually, a variant is a value that may take a number of
+forms. For example, a variant to classify the room temperature may be
+declared with:
 
 \begin{lstlisting}
   enum RoomState =
@@ -730,17 +709,19 @@ We could now define a \verb=state= attribute inside the definition of
 the \verb=Room= entity that classifies the room as cold or hot:
 
 \begin{lstlisting}
-  member self.state = if self.temperature <= 25
-                        then Cold ()
-                        else Hot ()
+  member self.state =
+    if self.temperature <= 25
+      then Cold ()
+      else Hot ()
 \end{lstlisting}
 
 Now, to find out how many rooms are hot we could write the following query:
 
 \begin{lstlisting}
   hotCount =
-    let hotRooms = from room in Room.all
-                   where room.state == Hot ()
+    let hotRooms =
+      from room in Room.all
+      where room.state == Hot ()
     in hotRooms.count()
 \end{lstlisting}
 
@@ -788,17 +769,18 @@ In the second part we use pattern matching for the first time. The
 variant. Basically, if the current value is \verb=Cold=, the next
 value will continue to be \verb=Cold=. However, if the current state
 is \verb=Hot c= for any counter \verb=c=, then we would like the next
-state to be \verb=Hot= with the counter incremented.
+state to be \verb=Hot= with the counter incremented by one.
 
 Now we may use these definitions to find out how many rooms are
 \verb=Hot= and have more than 10 entries at the same time:
 
 \begin{lstlisting}
   hotPopulatedCount =
-    let hotRooms = from room in Room.all
-                   where match room.state with
-                         | Hot c if c > 10 -> true
-                         | _ -> false
+    let hotRooms =
+      from room in Room.all
+      where match room.state with
+              | Hot c if c > 10 -> true
+              | _ -> false
     in hotRooms.count()
 \end{lstlisting}
 
@@ -814,7 +796,113 @@ the following chapters.
 
 \subsection{Functions}
 
-\subsection{User defined aggregators}
+EzQL allows the developer to create user-defined functions and use
+them in queries. The following example implements the factorial
+function and uses it to calculate the factorial of the number of
+products in room A:
+
+\begin{lstlisting}
+  def fact n =
+    if n == 0
+      then 1
+      else n * fact (n - 1)
+
+  factCount = fact (Room.all["A"].products.count())
+\end{lstlisting}
+
+When the number of products inside the room changes, the system
+automatically reevaluates the entire expression and updates
+\verb=factCount=.
+
+In EzQL, functions are not status values. Quite the contrary,
+functions are allowed to change and their modifications are propagated
+downward to the places where they are used. The best way to illustrate
+this is through an example:
+
+\begin{lstlisting}
+  def twoHourMax id =
+    let prodCount = Room.all[id].products.count() in
+    prodCount[2 hour].max()
+
+  maxProductsPerRoom_2h =
+    from room in Room.all
+    select twoHourMax (room.roomId)
+\end{lstlisting}
+
+This snippet calculates the maximum number of products that were in
+each room over the past two hours. To avoid duplication, the code
+responsible for this calculation has been abstracted inside a function
+-- \verb=twoHourMax= --, that receives the id of the room as a
+parameter.
+
+The function itself depends on the result of the \verb=count()=. When
+\verb=prodCount= changes, the entire body must be reevaluated, because
+a new maximum may have been found and we want
+\verb=maxProductsPerRoom_2h= to be immediately updated. Furthermore,
+the function includes a kind of internal state -- the 2 hours window
+--, that may itself trigger the computation of a new value.
+
+The next example combines functions with when blocks to illustrate the
+full potential of treating functions as active entities:
+
+\begin{lstlisting}
+def sumValues (n:int) =
+  let acc = 0
+    when n.changes() -> acc + n
+  in
+    acc;;
+\end{lstlisting}
+
+The function \verb=sumValues()= receives an integer\footnote{Type
+  declarations are optional in EzQL. In this example we declared n as
+  an integer to serve as documentation. If we had ommited this
+  declaration, the system would have inferred it anyway.}. Inside the
+body, we declare a variable -- \verb=acc=, that will act as an
+accumulator. \verb=acc= starts at 0 and then, when \verb=n= changes,
+it sums the new \verb=n= into the old \verb=acc=. In practice,
+\verb=sumValues()= is equivalent to the built-in \verb=sum()= method
+for integers. That is, \verb=Room.all.count.sum()= and
+\verb=sumValues (Room.all.count)= would return the same result.
+
+This example showed how functions can be used to implement
+user-defined aggregators (UDA). We believe this is an important
+feature, because many programs require aggregations that go beyond the
+usual \verb=min=, \verb=max=, \verb=avg=, \verb=sum= and
+\verb=count=. Chapter ?? will explore this idea with a few more
+examples.
+
+\subsection{Other features}
+
+
+Finally, EzQL supports higher-order functions, i.e., functions that
+may passed to or returned from other fuctions:
+
+\begin{lstlisting}
+  def deriv (f, dx) =
+    fun x -> (f(x + dx) - f(x)) / dx
+\end{lstlisting}
+
+\verb=deriv= is a function that receives another function \verb=f= and
+a step size \verb=dx= and returns another function
+(\verb=fun ... -> ...=) that receives an \verb=x= and calculates the
+derivative of \verb=f= at \verb=x=.
+
+Let's use this to calculate the derivative of \(x^2\) when \verb=x=
+is the number of products in room A:
+
+\begin{lstlisting}
+  dProdCount =
+    let derivX2 = deriv (fun x -> x * x, 0.01)
+    let prodCount = Room.all["A"].products.count()
+    derivX2 (prodCount)
+\end{lstlisting}
+
+Higher-order functions are used extensively in EzQL programs, even if,
+most of the times, the user is not aware of their presence. For
+example, the SQL-like syntax we have been using in some queries is
+actually just syntactic sugar that is rewritten by the parser before
+evaluation begins. This will be explained in chapter ??.
+
 
 \subsection{EzQL from a design point of view}
 
