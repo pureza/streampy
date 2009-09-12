@@ -1,0 +1,136 @@
+\chapter{Introduction}
+\label{chap:introduction}
+
+\section{Motivation}
+
+Technology development and its widespread adoption over the last
+decades has significantly increased the demand for information
+processing systems. Not only do we now need to process larger amounts
+of information coming from everywhere, we must do it faster as
+well. For some companies, obtaining results a few milliseconds earlier
+may be a significant advantage over the competition. For others,
+however, reacting immediately is of critical importance, as it
+happens, for example, in the case of security breaches or nuclear
+power plant malfunctions.
+
+One particular class of applications, now referred to as Event Stream
+Processing (ESP), has been the subject of much attention over the last
+few years due to the potential it presents to solve many real-world
+problems. ESP applications are characterized by dealing with a
+possible infinite amount of data constantly flowing in to be processed
+as fast as possible to continuously produce new and updated results
+that may themselves be used to justify new decisions. It turns out
+that many applications fit naturally in this model: financial
+analysis, health-care monitoring, network intrusion detection,
+personnel and product tracking through RFID devices, business
+monitoring and many more.
+
+Due to the inability of existing technology to satisfy the increasing
+demands of all these markets, computer scientists developed the first
+Data Stream Management Systems (DSMS) \cite{stream} \cite{aurora}
+\cite{telegraphcq}. Coming mostly from the database community, these
+researchers intended to build a generic engine that abstracted away
+all the low level details of managing streams of data in high
+demanding scenarios, while retaining much of the querying capabilities
+of regular Database Management Systems (DBMS), so that they could be
+easily adapted to a multitude of domains. It's no surprise then, that
+the first DSMSs inherited a SQL dialect with some new
+extensions. Aurora \cite{aurora}, with its boxes and arrows graphical
+queries, was the exception, but the operators it provided still took
+inspiration from SQL. Later, when the first DSMS hit the market, some
+emphasis was put on end-user interaction and some applications began
+to include rule-based systems that allow the developer to specify how
+he wants to react to events using Event Condition Action (ECA) rules,
+a concept developed in the context of active databases
+\cite{adbms-manifesto}. At the same time DSMS began to incorporate
+features from Complex Event Processing (CEP) systems that allowed the
+user to detect complex patterns and correlations among the input
+streams of data. This required adding new constructs into the query
+language. Recently, some companies unhappy with declarative, SQL-like
+languages (see, for example, \cite{sql-impendance-mismatch:post} or
+\cite{flexstreams-whitepaper}), began to support procedural languages,
+more familiar to C and Java programmers. Nowadays, each product
+includes its own flavor of a SQL-like language with its own unique
+extensions, a rule-based language, a procedural language, or any
+combination of these three. Besides the obvious issue created by the
+lack of a standard, all this variety demonstrates that DSMS
+applications have their own needs and a satisfactory end-user query
+language for them is yet to be found.
+
+To make matters worse, the semantics on many of these products
+disagree in fundamental ways. In \cite{towards_stream_sql_standard},
+researchers analyzed how two of the most prominent products from
+Oracle and StreamBase react in the presence of simultaneous
+events. Surprisingly, they found that, in some scenarios, not only do
+their results diverge, but they also differ from the expected
+answer. Furthermore, they concluded that this disparity may be blamed
+on the semantics employed by each product. It also happens that many
+products consistently implement semantics that, despite working
+correctly for most problems, turn out to be inappropriate for others,
+making some queries difficult, if not impossible, to write. We will
+analyze a few examples where this happens later in chapter
+\ref{chap:simple-questions-complex-answers}.
+
+Nonetheless, more and more organizations are adopting DSMS and relying
+on them to process data coming from everywhere, including core
+business processes. As a consequence, ESP applications tend to grow
+and become more complex. However, we believe that languages available
+in existing products are not prepared for this kind of ``programming
+in the large'', because they lack essential features that allow code
+to mature without becoming unmaintainable.
+
+\section{Goals}
+
+In this thesis we will highlight the problems with existing languages
+through concrete examples and, armed with this knowledge, we will then
+propose a new query language for ESP systems and apply it to a few
+realistic scenarios. Hopefully, our language will not suffer from the
+same problems and will prove to be more expressive and user-friendly
+than the alternatives.
+
+Designing a programming language from scratch is a daunting task,
+though, so it was necessary to set up a few limits. In particular, we
+have not defined the semantics using formal methods, something which
+is a requirement in today's programming language research
+field. Instead, we opted to develop an experimental prototype -- a
+decision that, we believe, was correct, considering that ESP languages
+are very different from traditional ones. We have also opted to leave
+out a few useful features from existing languages, not because they
+wouldn't still be useful, but because they don't bring much to the
+table. We favoured new constructs instead of the old ones, because
+this helps to differentiate our language from the others. For this
+reason, our prototype does not support important operators such as
+\verb=join=, despite the fact that their integration would be
+relatively straightforward. Finally, we have largely ignored
+optimization concerns -- a dangerous issue when you consider how
+different our language is.
+
+\section{Contributions}
+
+The contributions of this work are twofold. First, we have shown that
+existing languages need to be improved, in order to cope with
+increasing demand for solutions to harder and harder problems. Second,
+we have presented an alternative language that, we believe, is in the
+right direction, as it is able to handle some of these harder problems
+through code that is understandable, reusable and, most of all,
+maintainable.
+
+\section{Outline}
+
+The rest of this thesis is organized as follows:
+
+\begin{itemize}
+\item In chapter \ref{chap:soa}, we will discuss the state of the art
+  pertaining to ESP languages;
+\item Chapter \ref{chap:simple-questions-complex-answers} presents a
+  few problems where currently available languages show
+  limitations. We will also discuss how they could be fixed;
+\item Our proposal --- EzQL ---, will then be introduced in chapter
+  \ref{chap:ezql};
+\item Chapter \ref{chap:implementation} will discuss the inner-workings
+  of the prototype;
+\item Evaluation of our language using common event processing
+  problems takes place in chapter \ref{chap:eval};
+\item Finally, conclusions and future work will be the topic of
+  chapter \ref{chap:future-work}.
+\end{itemize}

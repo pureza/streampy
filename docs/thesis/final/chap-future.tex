@@ -1,0 +1,85 @@
+\chapter{Conclusions and future work}
+\label{chap:future-work}
+
+The concept of \emph{abstraction} is one of the most important ones in
+computer engineering. In this field, abstractions are methods that can
+be employed to control the complexity of a system. They are
+everywhere: a procedure is an abstraction -- in general, the caller
+doesn't need to, and should not need to, know the details of its inner
+workings --, and so are data structures, modules, APIs. The operating
+system is a (very concrete) abstraction for all the low-level work it
+relieves from user-level programs. TCP/IP is an abstraction as
+well. Even DBMSs and SQL are abstractions.
+
+Over the years, software engineers have learned the value of having
+good abstractions in their code. Experience tells that such code is
+more extensible, reusable, readable and maintainable. Bad
+abstractions, on the other hand, lead to code with many
+inter-dependencies that is hard to understand and harder to modify,
+which results in its eventual abandonment. Only it may be too late.
+
+Which role do programming languages play in this world? It is simple:
+they are the tools that allow us to create new abstractions. Some put
+their emphasis on functions, others prefer classes and objects, but
+they all seek the same: to provide a powerful medium over which one
+can express the best abstractions to solve any given problem. This is
+probably the single most important point that must be taken into
+consideration when comparing languages, not syntactic details.
+
+Over the course of this work, we have tried to analyze whether
+existing event processing languages possess the means to handle
+increasingly complex -- but still realistic -- problems. What we have
+found is that (1) the simplistic semantics employed by the systems are
+inappropriate for many problems and this gets in the way of
+developers, (2) the developer needs to spend a lot of effort handling
+low-level details, and (3) the limited operator sets these languages
+provide are not enough to attend some of the special needs of event
+processing problems. All these problems are the result of having the
+wrong abstractions -- or having no abstractions at all.
+
+These findings have led us to create an alternative language which, we
+believe, is better at handling more complex problems. This is due to
+features such as continuous values, entities and a richer operator set
+that allows more expressive solutions. Features such as user-defined
+aggregators and functions, on the other hand, provide some extension
+capabilities that are providential in order to develop better
+abstractions to tackle new problems. This work is far from complete,
+though.
+
+\section{Future work}
+
+Future work should proceed in three directions: enriching the
+language, studying possible optimizations to speed up processing and
+creating better developer tools.
+
+First and foremost, new features should be added to the language, in
+particular the ability to create complex data types, because this kind
+of power is required to handle really difficult problems. Then, to
+simplify the core language -- which would be advantageous later on --,
+we could perhaps re-implement many of the now primitive data types and
+operators, such as windows or \verb=group by=, using only EzQL. Other
+features that would be welcome additions include a module system,
+inheritance (and using it with the entity association mechanism) and
+integration with traditional databases.
+
+Second, we should begin to pay attention to an aspect that was
+completely overlooked during this work: optimization. Being a
+higher-level language with more features than existing ones, it is, at
+the same time, more difficult to optimize EzQL code and easier to use
+it in inefficient ways. On the other hand, event processing
+applications bring some new optimization opportunities with a lot of
+potential. For example, during execution there are many operators that
+could be updated in parallel, using multiple threads. We already have
+a dependency graph that shows how data flows downward. The next step
+would be to analyze it in order to find disjoint paths that could be
+worked out in parallel. Other optimizations to study include ways to
+decrease memory usage by sharing data and, why not, compilation to
+machine code.
+
+Finally, in this age of integrated debuggers and code-completion, any
+language will be largely ignored without good developer tools. In the
+case of EzQL, more than a tool to write code, we believe that a
+debugger allowing the user to peek at the state of his program during
+execution -- setting up breakpoints, checking the value of an operator,
+see what kind of changes are being propagated -- would be a major
+productivity booster.

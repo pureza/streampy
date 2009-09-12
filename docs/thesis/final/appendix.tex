@@ -1,0 +1,344 @@
+\chapter{Solutions to a few problems}
+
+This appendix contains solutions to some of the problems discussed in
+chapter \ref{chap:simple-questions-complex-answers}. We can't claim
+these are the best solutions nor the smallest, but they shouldn't be
+too far away. We added a few comments to help the understanding of the
+code.
+
+\section{The ACME problem}
+\label{sec:acme-problem-solution}
+
+\lstset{
+  language=CCL,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+}
+
+
+\begin{lstlisting}
+-- Algorithm:
+--
+-- Keep two windows: one for the last 20 minutes of data, and another
+-- with the newest event that is older than 20 minutes (i.e., the one
+-- that expired last from the first window). Then, join both windows
+-- (union would be better, but Coral8 doesn't support it) and get
+-- the max of prices in any of the two windows.
+
+create input stream StreamIn
+schema (
+   symbol string,
+   price  float
+);
+
+-- Keep the events from the last 20 minutes.
+create window Last20Mins
+schema (
+  symbol string,
+  price  float
+) keep 20 minutes
+insert removed rows into Expired;
+
+ -- Insert the events into the window.
+insert into Last20Mins
+select *
+from StreamIn;
+
+-- Keeps the previously expired event from Last20Mins (one per symbol)
+create window Expired
+schema (
+  symbol string,
+  price  float
+) keep last per symbol;
+
+-- For each symbol, store its max value over the last 20 minutes.
+create window Result
+schema (
+  symbol string,
+  result float
+) keep last per symbol;
+
+-- Join both windows and get the max of either of them
+-- This would be prettier with UNION
+--
+-- Note: When events expire, this generates two events: one before
+--       the expiration and another after.
+insert into Result
+select L.symbol,
+       max(coalesce(max(L.price),0), coalesce(max(E.price),0))
+from   Last20Mins as L full outer join Expired as E
+         on L.symbol = E.symbol
+group by L.symbol;
+\end{lstlisting}
+
+\section{The defective products problem}
+\label{sec:defective-products-solution}
+
+This is just a simplification of the original problem. In particular,
+it doesn't handle humidity and assumes that rooms have a single
+temperature sensor.
+
+\begin{lstlisting}
+-- Algorithm:
+--
+-- - Always maintain an explicit counter per product containing
+--   the number of seconds the product spent at > 20 degrees.
+--   This counter also contains the time the product was last
+--   updated (last_update).
+--
+-- - When a product switches rooms, if the temperature in the
+--   previous room was > 20, add now() + last_update to the
+--   counter and replace the previous last_update with now();
+--
+-- - When the temperature in a room changes, if the previous
+--   temperature was > 20, add now() + last_update to the
+--   counter and replace the previous last_update with now();
+--
+
+create input stream entries
+schema (
+   product_id string,
+   room_id string
+);
+
+create input stream temp_readings
+schema (
+   room_id string,
+   temperature integer
+);
+
+-- Holds the last two entries per product
+create window ProductRoom
+schema (
+   product_id string,
+   room_id string
+) keep 2 rows per product_id;
+
+insert into ProductRoom
+select *
+from entries;
+
+-- Holds the last two temp_readings per room
+create window RoomTemperature
+schema (
+   room_id string,
+   temperature integer
+) keep 2 rows per room_id;
+
+insert into RoomTemperature
+select *
+from temp_readings;
+
+create local stream OnExit
+schema (
+   product_id string,
+   old_room_id string
+);
+
+-- When a product leaves a room, generate an event containing the
+-- product and the old room.
+insert into OnExit
+select entries.product_id, ProductRoom.room_id
+from   entries left outer join ProductRoom
+         on entries.product_id = ProductRoom.product_id
+where  entries.room_id != ProductRoom.room_id;
+
+create local stream OnTemperatureChange
+schema (
+   room_id string,
+   old_temperature string
+);
+
+-- When the temperature changes, generate an event containing the
+-- room and the old temperature
+insert into OnTemperatureChange
+select temp_readings.room_id, RoomTemperature.temperature
+from   temp_readings left outer join RoomTemperature
+         on temp_readings.room_id = RoomTemperature.room_id
+where  temp_readings.temperature != RoomTemperature.temperature;
+
+-- Per each product, maintain a counter with the time the product
+-- spent above 20 degrees and the last time this counter was updated
+create window ProductTemperatureCounter
+schema (
+   product_id    string,
+   time_above_20 interval,
+   last_update   timestamp
+) keep last per product_id;
+
+-- Initialize this counter
+insert into ProductTemperatureCounter
+select product_id, 0 seconds, now()
+from entries
+where room_id = "A";
+
+-- Every time the product leaves the room, checks if the temperature
+-- in the old room was > 20 and updates the counter of that product
+insert into ProductTemperatureCounter
+select E.product_id,
+       if T.temperature > 20
+         then time_above_20 + now() - C.last_update
+         else time_above_20
+       end,
+       now()
+from  OnExit as E, RoomTemperature as T,
+      ProductTemperatureCounter as C
+where E.old_room_id = T.room_id
+        and E.product_id = C.product_id;
+
+-- Every time the temperature changes, checks if the previous
+-- temperature was > 20 and updates the counters of all the products
+-- in that room
+insert into ProductTemperatureCounter
+select R.product_id,
+       if T.old_temperature > 20
+         then time_above_20 + now() - C.last_update
+         else time_above_20
+       end,
+       now()
+from  OnTemperatureChange as T, ProductRoom as R,
+      ProductTemperatureCounter as C
+where T.room_id = R.room_id
+        and R.product_id = C.product_id;
+\end{lstlisting}
+
+\section{The Linear Road Benchmark in CQL}
+\label{sec:lrb-cql}
+
+\lstset{
+  language=CQL,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+}
+
+
+\begin{lstlisting}
+Query 1: SegSpeedStr(vehicleId, speed, segNo, dir, hwy)
+
+  select vehicleId, speed, xPos/1760 as segNo, dir, hwy
+  from PosSpeedStr
+
+Query 2: ActiveVehicleSegRel(vehicleId, segNo, dir, hwy):
+
+  select distinct L.vehicleId, L.segNo, L.dir, L.hwy
+  from SegSpeedStr [range 30 seconds] as A,
+        SegSpeedStr [partition by vehicleId rows 1] as L
+  where A.vehicleId = L.vehicleId
+
+Query 3: VehicleSegEntryStr(vehicleId, segNo, dir, hwy)
+
+  select istream(*) from ActiveVehicleSegRel
+
+Query 4: CongestedSegRel(segNo, dir, hwy)
+
+  select segNo, dir, hwy
+  from SegSpeedStr [range 5 minutes]
+  group by segNo, dir, hwy
+  having Avg(speed) < 40
+
+Query 5: SegVolRel(segNo, dir, hwy, numVehicles)
+
+  select segNo, dir, hwy, count(vehicleId) as numVehicles
+  from ActiveVehicleSegRel
+  group by segNo, dir, hwy
+
+Query 6: TollStr(vehicleId, toll)
+
+  select rstream(E.vehicleId,
+                    basetoll * (V.numVehicles - 150)
+                              * (V.numVehicles - 150) as toll)
+  from VehicleSegEntryStr [now] as E,
+       CongestedSegRel as C, SegVolRel as V
+  where E.segNo = C.segNo and C.segNo = V.segNo and
+         E.dir = C.dir and C.dir = V.dir and
+         E.hwy = C.hwy and C.hwy = V.hwy
+\end{lstlisting}
+
+
+\section{MACD calculation in StreamSQL}
+\label{sec:macd}
+
+\lstset{
+  language=StreamSQL,
+  columns=fullflexible,
+  basicstyle=\tt,
+  keywordstyle=[1]\bf,
+  keywordstyle=[2]\it,
+}
+
+\begin{lstlisting}
+create input stream stocks (
+    symbol string,
+    price double,
+    date timestamp
+);
+create output stream OutputAll;
+create output stream OutputDELL;
+create output stream OutputIBM;
+
+create memory table SequenceTable
+(
+    sequence_name string,
+    count int
+) primary key(sequence_name) using hash;
+
+create stream out__AddSequenceNumber_1;
+
+insert into SequenceTable (sequence_name, count)
+select "sequence" as sequence_name, 1 as count
+from stocks
+on duplicate key update
+count = SequenceTable.count + 1
+returning stocks.symbol as symbol,
+          stocks.price as price, stocks.date as date,
+          SequenceTable.count as count
+into out__AddSequenceNumber_1;
+
+create stream out__EMA_1 ;
+select symbol as symbol,
+       exp_moving_avg(price, 26,  0.0741) as EMaslow,
+       exp_moving_avg(price, 12, 0.15385) as EMAFast,
+       lastval(count) as count,
+       lastval(date) as date,
+       lastval(price) as price
+from out__AddSequenceNumber_1[tuples valid always offset 0]
+group by symbol
+into out__EMA_1;
+
+create stream out__ValidateEMA_1;
+select * from out__EMA_1
+where (notnull(EMaslow) && notnull(EMAFast)) into out__ValidateEMA_1;
+
+create stream out__MACD_1;
+select symbol as symbol,
+       EMAFast as EMAFast,
+       EMaslow as EMaslow,
+       EMAFast - EMaslow as MACD,
+       count as count,
+       date as date,
+       price as price
+ from out__ValidateEMA_1
+ into out__MACD_1;
+
+create stream out__AggregateSignal_1;
+select symbol as symbol, lastval(price) as price, lastval(MACD) as MACD,
+       exp_moving_avg(MACD, 9, 0.2) as signal, lastval(date) as date
+from out__MACD_1[tuples valid always offset 0]
+group by symbol
+into out__AggregateSignal_1;
+
+select * from out__AggregateSignal_1
+where notnull(signal) into OutputAll;
+
+select * from OutputAll
+where (symbol=="DELL") into OutputDELL;
+
+select * from OutputAll
+where (symbol=="IBM") into OutputIBM;
+
+
+\end{lstlisting}
